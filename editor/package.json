@@ -12,7 +12,9 @@
     "@emotion/styled": "^11.14.1",
     "@monaco-editor/react": "^4.7.0",
     "@mui/material": "^7.0.1",
+    "lucide-react": "^0.575.0",
     "next": "^15.2.0",
+    "rc-tree": "^5.13.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

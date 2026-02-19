@@ -3,15 +3,43 @@ import path from "node:path";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { Program } from "../../types/program";
 
+function isProjectRoot(dir: string): boolean {
+  return (
+    fs.existsSync(path.resolve(dir, "index.js")) &&
+    fs.existsSync(path.resolve(dir, "runtime", "Runtime.js")) &&
+    fs.existsSync(path.resolve(dir, "editor", "package.json")) &&
+    fs.existsSync(path.resolve(dir, "programs"))
+  );
+}
+
+function findProjectRootFrom(startDir: string): string | null {
+  let current = path.resolve(startDir);
+  while (true) {
+    if (isProjectRoot(current)) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
 function resolveProgramPath() {
   const envPath = process.env.KUFAYEKA_PROGRAM_PATH;
   if (envPath && envPath.trim()) {
     return path.resolve(envPath);
   }
 
+  // Next.js bisa set process.cwd() ke workspace root yang bukan root project ini.
+  // Cari root project dari beberapa anchor supaya selalu pakai programs/main.af.json yang benar.
+  const anchors = [process.cwd(), __dirname];
+  for (const anchor of anchors) {
+    const root = findProjectRootFrom(anchor);
+    if (root) {
+      return path.resolve(root, "programs", "main.af.json");
+    }
+  }
+
   const cwd = process.cwd();
   const cwdBasename = path.basename(cwd).toLowerCase();
-
   const rootCandidate = path.resolve(cwd, "programs", "main.af.json");
   const editorCandidate = path.resolve(cwd, "..", "programs", "main.af.json");
 
@@ -31,35 +59,38 @@ function resolveProgramPath() {
   return cwdBasename === "editor" ? editorCandidate : rootCandidate;
 }
 
-const PROGRAM_PATH = resolveProgramPath();
-
-function ensureProgramFile() {
-  if (fs.existsSync(PROGRAM_PATH)) {
+function ensureProgramFile(programPath: string) {
+  if (fs.existsSync(programPath)) {
     return;
   }
 
-  fs.mkdirSync(path.dirname(PROGRAM_PATH), { recursive: true });
+  fs.mkdirSync(path.dirname(programPath), { recursive: true });
   const initialProgram: Program = {
     meta: { name: "Kufayeka AF Program", version: 1 },
     triggers: [],
     actions: [],
-    flows: { links: [] }
+    flows: { links: [] },
+    assets: { assets: [], attributeTemplates: [] }
   };
-  fs.writeFileSync(PROGRAM_PATH, JSON.stringify(initialProgram, null, 2));
+  fs.writeFileSync(programPath, JSON.stringify(initialProgram, null, 2));
 }
 
-type ProgramResponse = { program: Program } | { ok: true } | { error: string };
+type ProgramResponse =
+  | { program: Program; path: string }
+  | { ok: true; path: string }
+  | { error: string };
 
 export default function handler(
   req: NextApiRequest,
   res: NextApiResponse<ProgramResponse>
 ) {
-  ensureProgramFile();
+  const programPath = resolveProgramPath();
+  ensureProgramFile(programPath);
 
   if (req.method === "GET") {
-    const raw = fs.readFileSync(PROGRAM_PATH, "utf8");
+    const raw = fs.readFileSync(programPath, "utf8");
     const program = JSON.parse(raw) as Program;
-    res.status(200).json({ program });
+    res.status(200).json({ program, path: programPath });
     return;
   }
 
@@ -70,8 +101,8 @@ export default function handler(
       return;
     }
 
-    fs.writeFileSync(PROGRAM_PATH, JSON.stringify(body.program, null, 2));
-    res.status(200).json({ ok: true });
+    fs.writeFileSync(programPath, JSON.stringify(body.program, null, 2));
+    res.status(200).json({ ok: true, path: programPath });
     return;
   }
 

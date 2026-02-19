@@ -95,5 +95,75 @@
         "y": 221.03448974225853
       }
     }
+  },
+  "assets": {
+    "assets": [
+      {
+        "id": "asset_1771522872455_780",
+        "name": "Jasuindo",
+        "parentId": null,
+        "templateIds": [
+          "template_1771522392767_162"
+        ],
+        "attributes": {}
+      },
+      {
+        "id": "asset_1771523526532_41",
+        "name": "OffsetPrinter",
+        "parentId": "asset_1771522872455_780",
+        "templateIds": [],
+        "attributes": {}
+      },
+      {
+        "id": "asset_1771523555133_418",
+        "name": "Taiyo1",
+        "parentId": "asset_1771523526532_41",
+        "templateIds": [
+          "template_1771523720677_855"
+        ],
+        "attributes": {}
+      },
+      {
+        "id": "asset_1771523561675_86",
+        "name": "Taiyo2",
+        "parentId": "asset_1771523526532_41",
+        "templateIds": [
+          "template_1771523720677_855"
+        ],
+        "attributes": {}
+      }
+    ],
+    "attributeTemplates": [
+      {
+        "id": "template_1771522392767_162",
+        "name": "Basic",
+        "attributes": [
+          {
+            "name": "Timestamp",
+            "type": "string",
+            "defaultValue": 0,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "id": "template_1771523720677_855",
+        "name": "OffsetPrinter",
+        "attributes": [
+          {
+            "name": "MachineSpeed",
+            "type": "number",
+            "defaultValue": 0,
+            "unit": "meter/minute"
+          },
+          {
+            "name": "PaperLength",
+            "type": "number",
+            "defaultValue": 0,
+            "unit": "meter"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -1,5 +1,6 @@
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import type { AppProps } from "next/app";
+import "rc-tree/assets/index.css";
 
 const theme = createTheme({
   typography: {

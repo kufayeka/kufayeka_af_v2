@@ -1,5 +1,6 @@
 import type {
   ActionDefinition,
+  AssetFrameworkDefinition,
   FlowLink,
   Program,
   TriggerDefinition
@@ -34,6 +35,22 @@ export function parseMaybeJson(input: string): unknown {
 }
 
 export function normalizeProgram(program: Program): Program {
+  const normalizedAssets: AssetFrameworkDefinition = {
+    assets: (program.assets?.assets || []).map((asset) => ({
+      ...asset,
+      parentId: asset.parentId ?? null,
+      templateIds: Array.isArray(asset.templateIds) ? asset.templateIds : [],
+      attributes: asset.attributes || {}
+    })),
+    attributeTemplates: (program.assets?.attributeTemplates || []).map((template) => ({
+      ...template,
+      attributes: (template.attributes || []).map((attribute) => ({
+        ...attribute,
+        unit: attribute.unit ?? ""
+      }))
+    }))
+  };
+
   return {
     ...program,
     triggers: (program.triggers || []).map(
@@ -55,6 +72,7 @@ export function normalizeProgram(program: Program): Program {
         ...link,
         enabled: link.enabled !== false
       }))
-    }
+    },
+    assets: normalizedAssets
   };
 }

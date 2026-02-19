@@ -13,6 +13,7 @@ import {
 import TriggerManager from "../components/managers/TriggerManager";
 import ActionManager from "../components/managers/ActionManager";
 import FlowManager from "../components/managers/FlowManager";
+import AssetManager from "../components/managers/AssetManager";
 import {
   normalizeProgram,
   parseMaybeJson,
@@ -22,6 +23,7 @@ import {
 } from "../lib/programUtils";
 import type {
   ActionDefinition,
+  AssetFrameworkDefinition,
   FlowLink,
   Program,
   TriggerDefinition
@@ -31,7 +33,8 @@ const EMPTY_PROGRAM: Program = {
   meta: { name: "Kufayeka AF Program", version: 1 },
   triggers: [],
   actions: [],
-  flows: { links: [] }
+  flows: { links: [] },
+  assets: { assets: [], attributeTemplates: [] }
 };
 
 type ProgramUpdater = (program: Program) => Program;
@@ -208,10 +211,48 @@ export default function HomePage() {
         setStatus(`Save error: ${data.error ?? "unknown error"}`);
         return;
       }
-      setStatus("Saved to programs/main.af.json");
+      const data = (await res.json()) as { path?: string };
+      setStatus(`Saved to ${data.path ?? "programs/main.af.json"}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(`Save error: ${message}`);
+    }
+  };
+
+  const buildProgramForExport = (): Program => ({
+    ...program,
+    actions: program.actions.map((action) => ({
+      ...action,
+      script:
+        latestActionScriptsRef.current[action.id] !== undefined
+          ? latestActionScriptsRef.current[action.id]
+          : action.script
+    }))
+  });
+
+  const downloadProgramJson = (): void => {
+    try {
+      const programForExport = buildProgramForExport();
+      const json = JSON.stringify(programForExport, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const filenameBase = (program.meta.name || "program")
+        .trim()
+        .replace(/[^a-zA-Z0-9-_]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+      const filename = `${filenameBase || "program"}.af.json`;
+
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setStatus(`Downloaded ${filename}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(`Download error: ${message}`);
     }
   };
 
@@ -320,6 +361,15 @@ export default function HomePage() {
     }));
   };
 
+  const updateAssets = (
+    updater: AssetFrameworkDefinition | ((assets: AssetFrameworkDefinition) => AssetFrameworkDefinition)
+  ): void => {
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      assets: typeof updater === "function" ? updater(prev.assets) : updater
+    }));
+  };
+
   const updateLink = (index: number, patch: Partial<FlowLink>): void => {
     applyProgramUpdate((prev) => ({
       ...prev,
@@ -359,9 +409,12 @@ export default function HomePage() {
         <Button variant="contained" onClick={saveProgram}>
           Save JSON
         </Button>
+        <Button variant="outlined" onClick={downloadProgramJson}>
+          Download JSON
+        </Button>
       </Box>
     ),
-    [canUndo, canRedo]
+    [canUndo, canRedo, program]
   );
 
   return (
@@ -393,6 +446,7 @@ export default function HomePage() {
           <Tab label="Trigger Manager" />
           <Tab label="Action Script Manager" />
           <Tab label="Flow Manager" />
+          <Tab label="Asset Manager" />
         </Tabs>
       </AppBar>
 
@@ -437,6 +491,7 @@ export default function HomePage() {
             onNodePositionChange={updateNodePosition}
           />
         )}
+        {tab === 3 && <AssetManager assets={program.assets} onChange={updateAssets} />}
       </Box>
     </Box>
   );
