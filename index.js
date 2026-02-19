@@ -1,7 +1,6 @@
 const Runtime = require("./runtime/Runtime");
-const { registerNodes, registerWires } = require("./flow/flow");
-const createInjectNode = require("./nodes/injectNode");
 const createApiServer = require("./api/createApiServer");
+const { loadProgramFromFile, startProgram } = require("./runtime/programEngine");
 
 function bootstrap() {
   const rt = new Runtime({
@@ -9,17 +8,15 @@ function bootstrap() {
     maxQueuePerNode: 2000,
   });
 
-  registerNodes(rt);
-  registerWires(rt);
+  const { absolutePath, program } = loadProgramFromFile("./programs/main.af.json");
+  console.log(`Program loaded: ${absolutePath}`);
+  startProgram(rt, program);
 
   const apiServer = createApiServer(rt, {
     host: "127.0.0.1",
     port: 4000,
   });
   apiServer.start();
-
-  const inject = createInjectNode(rt);
-  inject(5);
 }
 
 bootstrap();

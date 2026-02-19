@@ -1,0 +1,85 @@
+{
+  "meta": {
+    "name": "Kufayeka AF Program",
+    "version": 1
+  },
+  "triggers": [
+    {
+      "id": "trigger.tick_1s",
+      "type": "interval",
+      "enabled": true,
+      "intervalMs": 1000,
+      "message": {
+        "payload": 5
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "action.add_one",
+      "type": "script",
+      "script": "msg.payload = (msg.payload ?? 0) + 1; send(msg);"
+    },
+    {
+      "id": "action.multiply_ten",
+      "type": "script",
+      "script": "msg.payload = {\r\n    result: msg.payload * 10 \r\n};\r\n\r\nsend(msg)"
+    },
+    {
+      "id": "action.debug",
+      "type": "script",
+      "script": "helpers.log('payload:', msg.payload); "
+    },
+    {
+      "id": "action.script_1771507062991",
+      "type": "script",
+      "script": "msg.payload = \"HALOOOO\"\r\n\r\nsend(msg);"
+    }
+  ],
+  "flows": {
+    "links": [
+      {
+        "from": "trigger.tick_1s",
+        "to": "action.script_1771507062991"
+      },
+      {
+        "from": "trigger.tick_1s",
+        "to": "action.add_one"
+      },
+      {
+        "from": "action.add_one",
+        "to": "action.multiply_ten"
+      },
+      {
+        "from": "action.multiply_ten",
+        "to": "action.debug"
+      },
+      {
+        "from": "action.script_1771507062991",
+        "to": "action.debug"
+      },
+      {
+        "from": "trigger.tick_1s",
+        "to": "action.debug"
+      }
+    ],
+    "nodePositions": {
+      "action.debug": {
+        "x": 1619.7807886974408,
+        "y": 125.7319018076127
+      },
+      "action.multiply_ten": {
+        "x": 958.0008355983183,
+        "y": 71.01722028337369
+      },
+      "action.add_one": {
+        "x": 498.4444445670981,
+        "y": 87.52087765924726
+      },
+      "action.script_1771507062991": {
+        "x": 1123.335491962321,
+        "y": 221.03448974225853
+      }
+    }
+  }
+}
