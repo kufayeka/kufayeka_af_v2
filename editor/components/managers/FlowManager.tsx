@@ -3,10 +3,12 @@ import {
   Box,
   Button,
   FormControl,
+  FormControlLabel,
   InputLabel,
   MenuItem,
   Paper,
   Select,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -46,7 +48,7 @@ export default function FlowManager({
   onNodePositionChange
 }: FlowManagerProps) {
   const [selectedLinkIndex, setSelectedLinkIndex] = useState(-1);
-  const [draft, setDraft] = useState<FlowLink>({ from: "", to: "" });
+  const [draft, setDraft] = useState<FlowLink>({ from: "", to: "", enabled: true });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
@@ -61,11 +63,21 @@ export default function FlowManager({
   }, [links.length, rowsPerPage, page]);
 
   return (
-    <Box sx={{ p: 2, display: "grid", gridTemplateRows: "minmax(420px, 45vh) minmax(340px, 1fr)", gap: 2 }}>
-      <Paper variant="outlined" sx={{ p: 1.5 }}>
-        <Typography variant="h6" sx={{ mb: 1 }}>
+    <Box sx={{ width: "100%" }}>
+      <Paper
+        variant="outlined"
+        sx={{
+          p: 1,
+          height: 430,
+          display: "flex",
+          flexDirection: "column",
+          mb: 1
+        }}
+      >
+        <Typography variant="subtitle1" sx={{ mb: 0.75 }}>
           Flow Diagram
         </Typography>
+        <Box sx={{ flex: 1, minHeight: 0 }}>
         <FlowDiagram
           triggerIds={triggerIds}
           actionIds={actionIds}
@@ -79,13 +91,14 @@ export default function FlowManager({
           onNodeDragStart={onNodePositionDragStart}
           onNodePositionChange={onNodePositionChange}
         />
+        </Box>
       </Paper>
 
-      <Paper variant="outlined" sx={{ p: 1.5 }}>
-        <Typography variant="h6" sx={{ mb: 1 }}>
+      <Paper variant="outlined" sx={{ p: 1, width: "100%" }}>
+        <Typography variant="subtitle1" sx={{ mb: 0.75 }}>
           Connection Manager
         </Typography>
-        <Box sx={{ mb: 1.5, display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 1 }}>
+        <Box sx={{ mb: 1, display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 0.75 }}>
           <FormControl size="small" fullWidth>
             <InputLabel>From</InputLabel>
             <Select
@@ -123,21 +136,22 @@ export default function FlowManager({
             onClick={() => {
               if (!draft.from || !draft.to) return;
               onAddLink(draft);
-              setDraft({ from: "", to: "" });
+              setDraft({ from: "", to: "", enabled: true });
             }}
           >
             Add
           </Button>
         </Box>
 
-        <TableContainer sx={{ maxHeight: 360, border: "1px solid #e2e8f0", borderRadius: 1 }}>
+        <TableContainer sx={{ maxHeight: 300, border: "1px solid #e2e8f0", borderRadius: 0.5 }}>
           <Table stickyHeader size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ width: 70 }}>No</TableCell>
-                <TableCell>From</TableCell>
-                <TableCell>To</TableCell>
-                <TableCell sx={{ width: 120 }}>Action</TableCell>
+                <TableCell sx={{ width: 60, py: 0.75 }}>No</TableCell>
+                <TableCell sx={{ py: 0.75 }}>From</TableCell>
+                <TableCell sx={{ py: 0.75 }}>To</TableCell>
+                <TableCell sx={{ width: 120, py: 0.75 }}>Enabled</TableCell>
+                <TableCell sx={{ width: 92, py: 0.75 }}>Action</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -151,8 +165,8 @@ export default function FlowManager({
                     hover
                     onClick={() => setSelectedLinkIndex(actualIndex)}
                   >
-                    <TableCell>{actualIndex + 1}</TableCell>
-                    <TableCell>
+                    <TableCell sx={{ py: 0.5 }}>{actualIndex + 1}</TableCell>
+                    <TableCell sx={{ py: 0.5 }}>
                       <FormControl size="small" fullWidth>
                         <Select
                           value={link.from}
@@ -168,7 +182,7 @@ export default function FlowManager({
                         </Select>
                       </FormControl>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ py: 0.5 }}>
                       <FormControl size="small" fullWidth>
                         <Select
                           value={link.to}
@@ -184,7 +198,22 @@ export default function FlowManager({
                         </Select>
                       </FormControl>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ py: 0.5 }}>
+                      <FormControlLabel
+                        sx={{ m: 0 }}
+                        control={
+                          <Switch
+                            size="small"
+                            checked={link.enabled !== false}
+                            onChange={(_e, checked) =>
+                              onUpdateLink(actualIndex, { enabled: checked })
+                            }
+                          />
+                        }
+                        label=""
+                      />
+                    </TableCell>
+                    <TableCell sx={{ py: 0.5 }}>
                       <Button
                         size="small"
                         color="error"

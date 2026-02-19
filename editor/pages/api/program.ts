@@ -3,7 +3,35 @@ import path from "node:path";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { Program } from "../../types/program";
 
-const PROGRAM_PATH = path.resolve(process.cwd(), "..", "programs", "main.af.json");
+function resolveProgramPath() {
+  const envPath = process.env.KUFAYEKA_PROGRAM_PATH;
+  if (envPath && envPath.trim()) {
+    return path.resolve(envPath);
+  }
+
+  const cwd = process.cwd();
+  const cwdBasename = path.basename(cwd).toLowerCase();
+
+  const rootCandidate = path.resolve(cwd, "programs", "main.af.json");
+  const editorCandidate = path.resolve(cwd, "..", "programs", "main.af.json");
+
+  const hasRootPrograms = fs.existsSync(path.resolve(cwd, "programs"));
+  const hasEditorSiblingPrograms = fs.existsSync(path.resolve(cwd, "..", "programs"));
+
+  if (cwdBasename === "editor" && hasEditorSiblingPrograms) {
+    return editorCandidate;
+  }
+  if (hasRootPrograms) {
+    return rootCandidate;
+  }
+  if (hasEditorSiblingPrograms) {
+    return editorCandidate;
+  }
+
+  return cwdBasename === "editor" ? editorCandidate : rootCandidate;
+}
+
+const PROGRAM_PATH = resolveProgramPath();
 
 function ensureProgramFile() {
   if (fs.existsSync(PROGRAM_PATH)) {

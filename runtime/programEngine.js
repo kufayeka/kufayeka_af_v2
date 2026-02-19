@@ -22,6 +22,10 @@ function registerActions(runtime, actions = []) {
     if (!action.id) {
       throw new Error("Action wajib punya id");
     }
+    if (action.enabled === false) {
+      runtime.addNode(action.id, async (_msg, _send) => {});
+      continue;
+    }
     const handler = createActionHandler(action);
     runtime.addNode(action.id, handler);
   }
@@ -31,6 +35,9 @@ function registerLinks(runtime, links = []) {
   for (const link of links) {
     if (!link.from || !link.to) {
       throw new Error("Link wajib punya from dan to");
+    }
+    if (link.enabled === false) {
+      continue;
     }
     runtime.wire(link.from, link.to);
   }

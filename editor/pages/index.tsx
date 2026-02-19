@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   AppBar,
   Box,
   Button,
-  Container,
-  Paper,
+  Divider,
   Tab,
   Tabs,
   TextField,
@@ -15,12 +14,18 @@ import TriggerManager from "../components/managers/TriggerManager";
 import ActionManager from "../components/managers/ActionManager";
 import FlowManager from "../components/managers/FlowManager";
 import {
+  normalizeProgram,
   parseMaybeJson,
   removeNodeFromLinks,
   renameNodeInLinks,
   upsertById
 } from "../lib/programUtils";
-import type { ActionDefinition, Program, TriggerDefinition } from "../types/program";
+import type {
+  ActionDefinition,
+  FlowLink,
+  Program,
+  TriggerDefinition
+} from "../types/program";
 
 const EMPTY_PROGRAM: Program = {
   meta: { name: "Kufayeka AF Program", version: 1 },
@@ -113,6 +118,7 @@ export default function HomePage() {
   const [selectedTriggerId, setSelectedTriggerId] = useState("");
   const [selectedActionId, setSelectedActionId] = useState("");
   const [status, setStatus] = useState("Loading...");
+  const latestActionScriptsRef = useRef<Record<string, string>>({});
 
   const program = history.present;
   const canUndo = history.past.length > 0;
@@ -130,7 +136,10 @@ export default function HomePage() {
     fetch("/api/program")
       .then((res) => res.json())
       .then((data: { program?: Program }) => {
-        const next = data.program ?? EMPTY_PROGRAM;
+        const next = normalizeProgram(data.program ?? EMPTY_PROGRAM);
+        latestActionScriptsRef.current = Object.fromEntries(
+          next.actions.map((action) => [action.id, action.script || ""])
+        );
         dispatch({ type: "INIT", program: next });
         setSelectedTriggerId(next.triggers[0]?.id ?? "");
         setSelectedActionId(next.actions[0]?.id ?? "");
@@ -176,18 +185,34 @@ export default function HomePage() {
   }, []);
 
   const saveProgram = async () => {
-    const res = await fetch("/api/program", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ program })
-    });
+    const programForSave: Program = {
+      ...program,
+      actions: program.actions.map((action) => ({
+        ...action,
+        script:
+          latestActionScriptsRef.current[action.id] !== undefined
+            ? latestActionScriptsRef.current[action.id]
+            : action.script
+      }))
+    };
 
-    if (!res.ok) {
-      const data = (await res.json()) as { error?: string };
-      setStatus(`Save error: ${data.error ?? "unknown error"}`);
-      return;
+    try {
+      const res = await fetch("/api/program", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ program: programForSave })
+      });
+
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        setStatus(`Save error: ${data.error ?? "unknown error"}`);
+        return;
+      }
+      setStatus("Saved to programs/main.af.json");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(`Save error: ${message}`);
     }
-    setStatus("Saved to programs/main.af.json");
   };
 
   const addTrigger = (): void => {
@@ -208,8 +233,11 @@ export default function HomePage() {
     const next: ActionDefinition = {
       id,
       type: "script",
+      enabled: true,
+      description: "",
       script: "send(msg);"
     };
+    latestActionScriptsRef.current[id] = next.script;
     applyProgramUpdate((prev) => ({ ...prev, actions: [...prev.actions, next] }));
     setSelectedActionId(id);
   };
@@ -224,6 +252,7 @@ export default function HomePage() {
   };
 
   const removeAction = (id: string): void => {
+    delete latestActionScriptsRef.current[id];
     applyProgramUpdate((prev) => ({
       ...prev,
       actions: prev.actions.filter((item) => item.id !== id),
@@ -242,6 +271,11 @@ export default function HomePage() {
   };
 
   const renameAction = (oldId: string, newId: string): void => {
+    if (oldId !== newId) {
+      const value = latestActionScriptsRef.current[oldId];
+      delete latestActionScriptsRef.current[oldId];
+      if (value !== undefined) latestActionScriptsRef.current[newId] = value;
+    }
     setSelectedActionId(newId);
     applyProgramUpdate((prev) => ({
       ...prev,
@@ -258,6 +292,9 @@ export default function HomePage() {
   };
 
   const updateAction = (id: string, patch: Partial<ActionDefinition>): void => {
+    if (typeof patch.script === "string") {
+      latestActionScriptsRef.current[id] = patch.script;
+    }
     applyProgramUpdate((prev) => ({
       ...prev,
       actions: upsertById(prev.actions, id, patch)
@@ -272,18 +309,18 @@ export default function HomePage() {
     });
   };
 
-  const addLink = (link: { from: string; to: string }): void => {
+  const addLink = (link: FlowLink): void => {
     const exists = program.flows.links.some(
       (item) => item.from === link.from && item.to === link.to
     );
     if (exists) return;
     applyProgramUpdate((prev) => ({
       ...prev,
-      flows: { ...prev.flows, links: [...prev.flows.links, link] }
+      flows: { ...prev.flows, links: [...prev.flows.links, { ...link, enabled: link.enabled !== false }] }
     }));
   };
 
-  const updateLink = (index: number, patch: { from?: string; to?: string }): void => {
+  const updateLink = (index: number, patch: Partial<FlowLink>): void => {
     applyProgramUpdate((prev) => ({
       ...prev,
       flows: {
@@ -312,7 +349,7 @@ export default function HomePage() {
 
   const headerActions = useMemo(
     () => (
-      <Box sx={{ display: "flex", gap: 1 }}>
+      <Box sx={{ display: "flex", gap: 0.75 }}>
         <Button disabled={!canUndo} variant="outlined" onClick={() => dispatch({ type: "UNDO" })}>
           Undo
         </Button>
@@ -329,20 +366,13 @@ export default function HomePage() {
 
   return (
     <Box sx={{ minHeight: "100vh", background: "linear-gradient(180deg, #eef2ff 0%, #f8fafc 100%)" }}>
-      <AppBar position="static" color="transparent" elevation={0}>
-        <Toolbar>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: "#0f172a" }}>
-            Kufayeka AF Editor
+      <AppBar position="sticky" color="inherit" elevation={1}>
+        <Toolbar variant="dense" sx={{ minHeight: "56px !important", gap: 1 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap" }}>
+            Asset Framework Editor
           </Typography>
-          <Box sx={{ flexGrow: 1 }} />
-          {headerActions}
-        </Toolbar>
-      </AppBar>
-
-      <Container maxWidth={false} sx={{ py: 2 }}>
-        <Paper sx={{ p: 2, mb: 2 }}>
           <TextField
-            fullWidth
+            size="small"
             label="Program Name"
             value={program.meta.name}
             onChange={(e) =>
@@ -351,61 +381,63 @@ export default function HomePage() {
                 meta: { ...prev.meta, name: e.target.value }
               }))
             }
+            sx={{ minWidth: 300, maxWidth: 520, flexGrow: 1 }}
           />
-          <Typography variant="body2" sx={{ mt: 1, color: "#334155" }}>
+          <Typography variant="caption" sx={{ color: "#475569", minWidth: 170, textAlign: "right" }}>
             {status}
           </Typography>
-        </Paper>
+          {headerActions}
+        </Toolbar>
+        <Divider />
+        <Tabs value={tab} onChange={(_, value: number) => setTab(value)} variant="scrollable" scrollButtons="auto">
+          <Tab label="Trigger Manager" />
+          <Tab label="Action Script Manager" />
+          <Tab label="Flow Manager" />
+        </Tabs>
+      </AppBar>
 
-        <Paper sx={{ p: 0 }}>
-          <Tabs value={tab} onChange={(_, value: number) => setTab(value)}>
-            <Tab label="Trigger Manager" />
-            <Tab label="Action Script Manager" />
-            <Tab label="Flow Manager" />
-          </Tabs>
-
-          {tab === 0 && (
-            <TriggerManager
-              triggers={program.triggers}
-              selectedTriggerId={selectedTriggerId}
-              onSelectTrigger={setSelectedTriggerId}
-              onAddTrigger={addTrigger}
-              onRemoveTrigger={removeTrigger}
-              onRenameTrigger={renameTrigger}
-              onUpdateTrigger={updateTrigger}
-              onUpdateTriggerPayload={updateTriggerPayload}
-            />
-          )}
-          {tab === 1 && (
-            <ActionManager
-              actions={program.actions}
-              selectedActionId={selectedActionId}
-              onSelectAction={setSelectedActionId}
-              onAddAction={addAction}
-              onRemoveAction={removeAction}
-              onRenameAction={renameAction}
-              onUpdateAction={updateAction}
-            />
-          )}
-          {tab === 2 && (
-            <FlowManager
-              triggerIds={program.triggers.map((item) => item.id)}
-              actionIds={program.actions.map((item) => item.id)}
-              links={program.flows.links}
-              nodePositions={program.flows.nodePositions || {}}
-              onAddLink={addLink}
-              onUpdateLink={updateLink}
-              onRemoveLink={removeLink}
-              onActionNodeDoubleClick={(actionId) => {
-                setSelectedActionId(actionId);
-                setTab(1);
-              }}
-              onNodePositionDragStart={() => dispatch({ type: "PUSH_SNAPSHOT" })}
-              onNodePositionChange={updateNodePosition}
-            />
-          )}
-        </Paper>
-      </Container>
+      <Box sx={{ px: 1, py: 1 }}>
+        {tab === 0 && (
+          <TriggerManager
+            triggers={program.triggers}
+            selectedTriggerId={selectedTriggerId}
+            onSelectTrigger={setSelectedTriggerId}
+            onAddTrigger={addTrigger}
+            onRemoveTrigger={removeTrigger}
+            onRenameTrigger={renameTrigger}
+            onUpdateTrigger={updateTrigger}
+            onUpdateTriggerPayload={updateTriggerPayload}
+          />
+        )}
+        {tab === 1 && (
+          <ActionManager
+            actions={program.actions}
+            selectedActionId={selectedActionId}
+            onSelectAction={setSelectedActionId}
+            onAddAction={addAction}
+            onRemoveAction={removeAction}
+            onRenameAction={renameAction}
+            onUpdateAction={updateAction}
+          />
+        )}
+        {tab === 2 && (
+          <FlowManager
+            triggerIds={program.triggers.map((item) => item.id)}
+            actionIds={program.actions.map((item) => item.id)}
+            links={program.flows.links}
+            nodePositions={program.flows.nodePositions || {}}
+            onAddLink={addLink}
+            onUpdateLink={updateLink}
+            onRemoveLink={removeLink}
+            onActionNodeDoubleClick={(actionId) => {
+              setSelectedActionId(actionId);
+              setTab(1);
+            }}
+            onNodePositionDragStart={() => dispatch({ type: "PUSH_SNAPSHOT" })}
+            onNodePositionChange={updateNodePosition}
+          />
+        )}
+      </Box>
     </Box>
   );
 }

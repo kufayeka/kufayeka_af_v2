@@ -15,12 +15,15 @@ export interface TriggerDefinition {
 export interface ActionDefinition {
   id: string;
   type: ActionType;
+  enabled: boolean;
+  description?: string;
   script: string;
 }
 
 export interface FlowLink {
   from: string;
   to: string;
+  enabled?: boolean;
 }
 
 export interface NodePosition {

@@ -1,4 +1,9 @@
-import type { FlowLink } from "../types/program";
+import type {
+  ActionDefinition,
+  FlowLink,
+  Program,
+  TriggerDefinition
+} from "../types/program";
 
 export function upsertById<T extends { id: string }>(
   items: T[],
@@ -10,6 +15,7 @@ export function upsertById<T extends { id: string }>(
 
 export function renameNodeInLinks(links: FlowLink[], oldId: string, newId: string): FlowLink[] {
   return links.map((link) => ({
+    ...link,
     from: link.from === oldId ? newId : link.from,
     to: link.to === oldId ? newId : link.to
   }));
@@ -25,4 +31,30 @@ export function parseMaybeJson(input: string): unknown {
   } catch {
     return input;
   }
+}
+
+export function normalizeProgram(program: Program): Program {
+  return {
+    ...program,
+    triggers: (program.triggers || []).map(
+      (trigger): TriggerDefinition => ({
+        ...trigger,
+        enabled: trigger.enabled !== false
+      })
+    ),
+    actions: (program.actions || []).map(
+      (action): ActionDefinition => ({
+        ...action,
+        enabled: action.enabled !== false,
+        description: action.description ?? ""
+      })
+    ),
+    flows: {
+      ...program.flows,
+      links: ((program.flows && program.flows.links) || []).map((link) => ({
+        ...link,
+        enabled: link.enabled !== false
+      }))
+    }
+  };
 }

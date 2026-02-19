@@ -18,49 +18,63 @@
     {
       "id": "action.add_one",
       "type": "script",
-      "script": "msg.payload = (msg.payload ?? 0) + 1; send(msg);"
+      "script": "msg.payload = (msg.payload ?? 0) + 1; send(msg);",
+      "enabled": true,
+      "description": ""
     },
     {
       "id": "action.multiply_ten",
       "type": "script",
-      "script": "msg.payload = {\r\n    result: msg.payload * 10 \r\n};\r\n\r\nsend(msg)"
+      "script": "msg.payload = {\r\n    result: msg.payload * 10 \r\n};\r\n\r\nsend(msg)",
+      "enabled": true,
+      "description": ""
     },
     {
       "id": "action.debug",
       "type": "script",
-      "script": "helpers.log('payload:', msg.payload); "
+      "script": "console.log('payloadd:', msg.payload); ",
+      "enabled": true,
+      "description": ""
     },
     {
       "id": "action.script_1771507062991",
       "type": "script",
-      "script": "msg.payload = \"HALOOOO\"\r\n\r\nsend(msg);"
+      "script": "msg.payload = \"HALOOOO\"\r\n\r\nsend(msg);",
+      "enabled": true,
+      "description": ""
     }
   ],
   "flows": {
     "links": [
       {
         "from": "trigger.tick_1s",
-        "to": "action.script_1771507062991"
+        "to": "action.script_1771507062991",
+        "enabled": true
       },
       {
         "from": "trigger.tick_1s",
-        "to": "action.add_one"
+        "to": "action.add_one",
+        "enabled": true
       },
       {
         "from": "action.add_one",
-        "to": "action.multiply_ten"
+        "to": "action.multiply_ten",
+        "enabled": true
       },
       {
         "from": "action.multiply_ten",
-        "to": "action.debug"
+        "to": "action.debug",
+        "enabled": true
       },
       {
         "from": "action.script_1771507062991",
-        "to": "action.debug"
+        "to": "action.debug",
+        "enabled": true
       },
       {
         "from": "trigger.tick_1s",
-        "to": "action.debug"
+        "to": "action.debug",
+        "enabled": true
       }
     ],
     "nodePositions": {

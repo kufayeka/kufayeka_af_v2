@@ -171,7 +171,7 @@ export default function FlowDiagram({
   const diagramWidth = Math.max(1200, maxX + 260);
   const diagramHeight = Math.max(420, maxY + 140);
 
-  const [zoom, setZoom] = useState(0.75);
+  const [zoom, setZoom] = useState(0.45);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragPanRef = useRef({
@@ -194,14 +194,18 @@ export default function FlowDiagram({
   });
 
   const zoomIn = () => setZoom((prev) => Math.min(2, Number((prev + 0.1).toFixed(2))));
-  const zoomOut = () => setZoom((prev) => Math.max(0.35, Number((prev - 0.1).toFixed(2))));
-  const zoomReset = () => setZoom(0.75);
+  const zoomOut = () => setZoom((prev) => Math.max(0.2, Number((prev - 0.1).toFixed(2))));
+  const zoomReset = () => setZoom(0.45);
 
   return (
     <Box
       sx={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
         border: "1px solid #cbd5e1",
-        borderRadius: 2,
+        borderRadius: 0.5,
         overflow: "hidden",
         userSelect: "none",
         WebkitUserSelect: "none",
@@ -214,7 +218,8 @@ export default function FlowDiagram({
     >
       <Box
         sx={{
-          p: 1,
+          p: 0.5,
+          
           borderBottom: "1px solid #e2e8f0",
           display: "flex",
           alignItems: "center",
@@ -241,12 +246,15 @@ export default function FlowDiagram({
       <Box
         ref={scrollerRef}
         sx={{
-          height: 420,
-          overflow: "auto",
+          flex: 1,
+          minHeight: 0,
+          overflowX: "auto",
+          overflowY: "auto",
           cursor: dragPanRef.current.active ? "grabbing" : "grab",
           background: "#f8fafc",
           userSelect: "none",
-          WebkitUserSelect: "none"
+          WebkitUserSelect: "none",
+          position: "relative"
         }}
         onMouseDown={(event) => {
           const target = event.target as Element;
@@ -298,10 +306,17 @@ export default function FlowDiagram({
           dragNodeRef.current.active = false;
         }}
       >
+        <Box
+          sx={{
+            width: Math.max(1, diagramWidth * zoom),
+            height: Math.max(1, diagramHeight * zoom),
+            display: "inline-block"
+          }}
+        >
         <svg
           ref={svgRef}
-          width={diagramWidth * zoom}
-          height={diagramHeight * zoom}
+          width="100%"
+          height="100%"
           viewBox={`0 0 ${diagramWidth} ${diagramHeight}`}
         >
           <defs>
@@ -332,6 +347,7 @@ export default function FlowDiagram({
             const midX = (startX + endX) / 2;
             const d = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
             const isSelected = selectedLinkIndex === index;
+            const isEnabled = link.enabled !== false;
             const edgeLabelX = midX;
             const edgeLabelY = (startY + endY) / 2 - 8;
 
@@ -340,8 +356,9 @@ export default function FlowDiagram({
                 <path
                   d={d}
                   fill="none"
-                  stroke={isSelected ? "#dc2626" : "#1e293b"}
-                  strokeWidth={1.5}
+                  stroke={isSelected ? "#dc2626" : isEnabled ? "#1e293b" : "#94a3b8"}
+                  strokeWidth={3}
+                  strokeDasharray={isEnabled ? undefined : "7 5"}
                   markerEnd="url(#flowArrow)"
                   pointerEvents="none"
                   style={isSelected ? { animation: "wireBlink 0.8s linear infinite" } : undefined}
@@ -355,12 +372,12 @@ export default function FlowDiagram({
                   onClick={() => onSelectLink(index)}
                   style={{ cursor: "pointer" }}
                 />
-                <circle cx={edgeLabelX} cy={edgeLabelY+5} r={11} fill="#fff" stroke="#94a3b8" strokeWidth={1} onClick={() => onSelectLink(index)} style={{ cursor: "pointer" }}/>
+                <circle cx={edgeLabelX} cy={edgeLabelY+5} r={10} fill="#fff" stroke="#94a3b8" strokeWidth={1} onClick={() => onSelectLink(index)} style={{ cursor: "pointer" }}/>
                 <text
                   x={edgeLabelX}
                   y={edgeLabelY + 8}
                   textAnchor="middle"
-                  fontFamily="Arial, sans-serif"
+                  fontFamily="Ubuntu, 'Segoe UI', Arial, sans-serif"
                   fontSize="11"
                   fontWeight="700"
                   fill="#0f172a"
@@ -390,7 +407,7 @@ export default function FlowDiagram({
                   y={node.y - 26}
                   width={250}
                   height={52}
-                  rx={10}
+                  rx={4}
                   fill={isAction ? "#dbeafe" : "#ccfbf1"}
                   stroke={isAction ? "#2563eb" : "#0f766e"}
                   strokeWidth={0.7}
@@ -399,8 +416,8 @@ export default function FlowDiagram({
                   x={node.x}
                   y={node.y + 5}
                   textAnchor="middle"
-                  fontFamily="Arial, sans-serif"
-                  fontSize={isAction ? "14" : "12"}
+                  fontFamily="Ubuntu, 'Segoe UI', Arial, sans-serif"
+                  fontSize={isAction ? "18" : "16"}
                   fontWeight={isAction ? "700" : "600"}
                   fill="#0f172a"
                 >
@@ -435,7 +452,7 @@ export default function FlowDiagram({
                       y={moveIconY - 10}
                       width={40}
                       height={20}
-                      rx={4}
+                      rx={2}
                       fill="#ffffff"
                       stroke="#64748b"
                       strokeWidth={1}
@@ -444,7 +461,7 @@ export default function FlowDiagram({
                       x={moveIconX}
                       y={moveIconY + 4}
                       textAnchor="middle"
-                      fontFamily="Arial, sans-serif"
+                      fontFamily="Ubuntu, 'Segoe UI', Arial, sans-serif"
                       fontSize="12"
                       fontWeight="700"
                       fill="#334155"
@@ -457,6 +474,7 @@ export default function FlowDiagram({
             );
           })}
         </svg>
+        </Box>
       </Box>
     </Box>
   );

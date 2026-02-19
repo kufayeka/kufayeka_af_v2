@@ -1,4 +1,13 @@
-import { Box, Button, Paper, TextField, Typography } from "@mui/material";
+import { useMemo, useState } from "react";
+import {
+  Box,
+  Button,
+  FormControlLabel,
+  Paper,
+  Switch,
+  TextField,
+  Typography
+} from "@mui/material";
 import type { TriggerDefinition } from "../../types/program";
 
 interface TriggerManagerProps {
@@ -22,47 +31,92 @@ export default function TriggerManager({
   onUpdateTrigger,
   onUpdateTriggerPayload
 }: TriggerManagerProps) {
+  const [search, setSearch] = useState("");
   const selectedTrigger = triggers.find((item) => item.id === selectedTriggerId);
+  const filteredTriggers = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return triggers;
+    return triggers.filter((trigger) => {
+      const haystack = `${trigger.id} ${trigger.type}`.toLowerCase();
+      return haystack.includes(keyword);
+    });
+  }, [search, triggers]);
 
   return (
-    <Box sx={{ p: 2, display: "grid", gridTemplateColumns: "340px 1fr", gap: 2 }}>
-      <Paper variant="outlined" sx={{ p: 1.5, height: "calc(100vh - 260px)", overflow: "auto" }}>
-        <Button fullWidth variant="outlined" onClick={onAddTrigger}>
-          Add Trigger
-        </Button>
-        <Box sx={{ mt: 1.5, display: "grid", gap: 1 }}>
-          {triggers.map((trigger) => (
-            <Paper
+    <Box sx={{ p: 1.25, display: "grid", gridTemplateColumns: "320px 1fr", gap: 1.25 }}>
+      <Paper variant="outlined" sx={{ p: 1, display: "grid", gridTemplateRows: "auto 1fr", gap: 1 }}>
+        <Box sx={{ display: "grid", gap: 0.75 }}>
+          <Button fullWidth variant="outlined" onClick={onAddTrigger}>
+            Add Trigger
+          </Button>
+          <TextField
+            size="small"
+            label="Search Trigger"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </Box>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 0.5, // 4px antar card
+            overflow: "auto",
+            maxHeight: "calc(100vh - 220px)"
+          }}
+        >
+          {filteredTriggers.map((trigger) => (
+            <Box
               key={trigger.id}
-              variant="outlined"
               sx={{
-                p: 1.25,
+                height: "fit-content",
+                p: 0.75,
+                display: "grid",
+                border: "1px solid #cbd5e1",
+                borderRadius: "3px",
                 borderColor: selectedTriggerId === trigger.id ? "#0f766e" : undefined,
                 cursor: "pointer"
               }}
               onClick={() => onSelectTrigger(trigger.id)}
             >
               <Typography variant="subtitle2">{trigger.id}</Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                 {trigger.type} / {trigger.intervalMs} ms
               </Typography>
-              <Button
-                size="small"
-                color="error"
-                sx={{ mt: 0.5 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveTrigger(trigger.id);
-                }}
-              >
-                Remove
-              </Button>
-            </Paper>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <FormControlLabel
+                  sx={{ m: 0 }}
+                  control={
+                    <Switch
+                      size="small"
+                      checked={trigger.enabled !== false}
+                      onChange={(_e, checked) =>
+                        onUpdateTrigger(trigger.id, { enabled: checked })
+                      }
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  }
+                  label={<Typography variant="caption">Enabled</Typography>}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <Button
+                  size="small"
+                  color="error"
+                  sx={{ minWidth: 0, px: 0.5 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveTrigger(trigger.id);
+                  }}
+                >
+                  Remove
+                </Button>
+              </Box>
+            </Box>
           ))}
         </Box>
       </Paper>
 
-      <Paper variant="outlined" sx={{ p: 2, minHeight: "calc(100vh - 260px)" }}>
+      <Paper variant="outlined" sx={{ p: 1.25, minHeight: "calc(100vh - 220px)" }}>
         {!selectedTrigger && (
           <Typography variant="body2" color="text.secondary">
             Pilih trigger di panel kiri.
@@ -91,6 +145,17 @@ export default function TriggerManager({
               label="Initial Payload"
               value={JSON.stringify(selectedTrigger.message?.payload ?? 0)}
               onChange={(e) => onUpdateTriggerPayload(selectedTrigger.id, e.target.value)}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={selectedTrigger.enabled !== false}
+                  onChange={(_event, checked) =>
+                    onUpdateTrigger(selectedTrigger.id, { enabled: checked })
+                  }
+                />
+              }
+              label="Trigger Enabled"
             />
           </Box>
         )}
