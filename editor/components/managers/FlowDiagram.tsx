@@ -19,6 +19,7 @@ interface FlowDiagramProps {
   selectedLinkIndex: number;
   onSelectLink: (index: number) => void;
   onNodeDoubleClick?: (nodeId: string, kind: NodeKind) => void;
+  onNodeDragStart?: () => void;
   onNodePositionChange?: (nodeId: string, position: NodePosition) => void;
 }
 
@@ -148,6 +149,7 @@ export default function FlowDiagram({
   selectedLinkIndex,
   onSelectLink,
   onNodeDoubleClick,
+  onNodeDragStart,
   onNodePositionChange
 }: FlowDiagramProps) {
   const autoNodes = useMemo(
@@ -201,6 +203,8 @@ export default function FlowDiagram({
         border: "1px solid #cbd5e1",
         borderRadius: 2,
         overflow: "hidden",
+        userSelect: "none",
+        WebkitUserSelect: "none",
         "@keyframes wireBlink": {
           "0%": { opacity: 1 },
           "50%": { opacity: 0.2 },
@@ -240,7 +244,9 @@ export default function FlowDiagram({
           height: 420,
           overflow: "auto",
           cursor: dragPanRef.current.active ? "grabbing" : "grab",
-          background: "#f8fafc"
+          background: "#f8fafc",
+          userSelect: "none",
+          WebkitUserSelect: "none"
         }}
         onMouseDown={(event) => {
           const target = event.target as Element;
@@ -255,6 +261,7 @@ export default function FlowDiagram({
             scrollLeft: el.scrollLeft,
             scrollTop: el.scrollTop
           };
+          event.preventDefault();
         }}
         onMouseMove={(event) => {
           const el = scrollerRef.current;
@@ -334,7 +341,7 @@ export default function FlowDiagram({
                   d={d}
                   fill="none"
                   stroke={isSelected ? "#dc2626" : "#1e293b"}
-                  strokeWidth={2.2}
+                  strokeWidth={1.5}
                   markerEnd="url(#flowArrow)"
                   pointerEvents="none"
                   style={isSelected ? { animation: "wireBlink 0.8s linear infinite" } : undefined}
@@ -348,15 +355,17 @@ export default function FlowDiagram({
                   onClick={() => onSelectLink(index)}
                   style={{ cursor: "pointer" }}
                 />
-                <circle cx={edgeLabelX} cy={edgeLabelY} r={11} fill="#fff" stroke="#94a3b8" strokeWidth={1} />
+                <circle cx={edgeLabelX} cy={edgeLabelY+5} r={11} fill="#fff" stroke="#94a3b8" strokeWidth={1} onClick={() => onSelectLink(index)} style={{ cursor: "pointer" }}/>
                 <text
                   x={edgeLabelX}
-                  y={edgeLabelY + 4}
+                  y={edgeLabelY + 8}
                   textAnchor="middle"
                   fontFamily="Arial, sans-serif"
                   fontSize="11"
                   fontWeight="700"
                   fill="#0f172a"
+                  onClick={() => onSelectLink(index)}
+                  style={{ cursor: "pointer" }}
                 >
                   {index + 1}
                 </text>
@@ -384,7 +393,7 @@ export default function FlowDiagram({
                   rx={10}
                   fill={isAction ? "#dbeafe" : "#ccfbf1"}
                   stroke={isAction ? "#2563eb" : "#0f766e"}
-                  strokeWidth={1.7}
+                  strokeWidth={0.7}
                 />
                 <text
                   x={node.x}
@@ -404,6 +413,7 @@ export default function FlowDiagram({
                     onMouseDown={(event) => {
                       const svg = svgRef.current;
                       if (!svg) return;
+                      onNodeDragStart?.();
                       const rect = svg.getBoundingClientRect();
                       const scaleX = diagramWidth / rect.width;
                       const scaleY = diagramHeight / rect.height;
@@ -417,12 +427,13 @@ export default function FlowDiagram({
                         dy: svgY - node.y
                       };
                       event.stopPropagation();
+                      event.preventDefault();
                     }}
                   >
                     <rect
-                      x={moveIconX - 10}
+                      x={moveIconX - 20}
                       y={moveIconY - 10}
-                      width={20}
+                      width={40}
                       height={20}
                       rx={4}
                       fill="#ffffff"
@@ -438,7 +449,7 @@ export default function FlowDiagram({
                       fontWeight="700"
                       fill="#334155"
                     >
-                      M
+                      move
                     </text>
                   </g>
                 )}

@@ -29,6 +29,7 @@ interface FlowManagerProps {
   onUpdateLink: (index: number, patch: Partial<FlowLink>) => void;
   onRemoveLink: (index: number) => void;
   onActionNodeDoubleClick?: (actionId: string) => void;
+  onNodePositionDragStart?: () => void;
   onNodePositionChange?: (nodeId: string, position: NodePosition) => void;
 }
 
@@ -41,6 +42,7 @@ export default function FlowManager({
   onUpdateLink,
   onRemoveLink,
   onActionNodeDoubleClick,
+  onNodePositionDragStart,
   onNodePositionChange
 }: FlowManagerProps) {
   const [selectedLinkIndex, setSelectedLinkIndex] = useState(-1);
@@ -74,6 +76,7 @@ export default function FlowManager({
           onNodeDoubleClick={(nodeId, kind) => {
             if (kind === "action") onActionNodeDoubleClick?.(nodeId);
           }}
+          onNodeDragStart={onNodePositionDragStart}
           onNodePositionChange={onNodePositionChange}
         />
       </Paper>
