@@ -77,11 +77,57 @@ function ensureProgramFile(programPath: string) {
 }
 
 type ProgramResponse =
-  | { program: Program; path: string }
-  | { ok: true; path: string }
+  | { program: Program; path: string; runtimeRead?: boolean }
+  | { ok: true; path: string; runtimeSynced?: boolean; runtimeError?: string }
   | { error: string };
 
-export default function handler(
+function getRuntimeAssetApiUrl() {
+  return (
+    process.env.KUFAYEKA_RUNTIME_ASSET_API?.trim() ||
+    "http://127.0.0.1:4000/api/assets/system"
+  );
+}
+
+async function fetchRuntimeAssets(): Promise<Program["assets"] | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+  try {
+    const res = await fetch(getRuntimeAssetApiUrl(), {
+      method: "GET",
+      signal: controller.signal
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { data?: Program["assets"] };
+    if (!data.data || typeof data.data !== "object") return null;
+    return data.data;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function pushRuntimeAssets(
+  assets: Program["assets"]
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(getRuntimeAssetApiUrl(), {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(assets)
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      return { ok: false, error: data.error || `Runtime API error ${res.status}` };
+    }
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: message };
+  }
+}
+
+export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ProgramResponse>
 ) {
@@ -91,7 +137,11 @@ export default function handler(
   if (req.method === "GET") {
     const raw = fs.readFileSync(programPath, "utf8");
     const program = JSON.parse(raw) as Program;
-    res.status(200).json({ program, path: programPath });
+    const runtimeAssets = await fetchRuntimeAssets();
+    const nextProgram = runtimeAssets
+      ? { ...program, assets: runtimeAssets }
+      : program;
+    res.status(200).json({ program: nextProgram, path: programPath, runtimeRead: Boolean(runtimeAssets) });
     return;
   }
 
@@ -102,8 +152,25 @@ export default function handler(
       return;
     }
 
-    fs.writeFileSync(programPath, JSON.stringify(body.program, null, 2));
-    res.status(200).json({ ok: true, path: programPath });
+    const runtimeResult = await pushRuntimeAssets(body.program.assets);
+    if (!runtimeResult.ok) {
+      fs.writeFileSync(programPath, JSON.stringify(body.program, null, 2));
+      res.status(200).json({
+        ok: true,
+        path: programPath,
+        runtimeSynced: false,
+        runtimeError: runtimeResult.error
+      });
+      return;
+    }
+
+    const runtimeAssets = await fetchRuntimeAssets();
+    const programForSave: Program = runtimeAssets
+      ? { ...body.program, assets: runtimeAssets }
+      : body.program;
+    fs.writeFileSync(programPath, JSON.stringify(programForSave, null, 2));
+
+    res.status(200).json({ ok: true, path: programPath, runtimeSynced: true });
     return;
   }
 

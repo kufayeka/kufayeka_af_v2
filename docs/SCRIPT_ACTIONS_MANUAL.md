@@ -9,6 +9,7 @@ Di action type `script`, kamu punya parameter:
 - `msg`: payload/message yang mengalir di flow
 - `send(msg)`: kirim output ke node berikutnya
 - `context.global`: akses global store runtime
+- `context.asset`: akses asset storage engine (single source of truth)
 - `helpers`: util bawaan
   - `helpers.log(...)`
   - `helpers.sleep(ms)`
@@ -24,7 +25,42 @@ send(msg);
 
 ## 2) Akses Asset Attribute dari Script
 
-### Opsi A (paling aman): lewat API runtime
+### Opsi A (recommended): `context.asset`
+
+Get satu nilai attribute:
+
+```javascript
+const speed = context.asset.get("Jasuindo.Taiyo1.MachineSpeed", 0);
+msg.payload = { speed };
+send(msg);
+```
+
+Set satu nilai attribute:
+
+```javascript
+context.asset.set("Jasuindo.Taiyo1.MachineSpeed", 8);
+send(msg);
+```
+
+Query wildcard:
+
+```javascript
+const matches = context.asset.query("Jasuindo.*.MachineSpeed");
+msg.payload = matches;
+send(msg);
+```
+
+Bulk set:
+
+```javascript
+context.asset.setMany([
+  { path: "Jasuindo.Taiyo1.MachineSpeed", value: 8 },
+  { path: "Jasuindo.Taiyo2.MachineSpeed", value: 10 }
+]);
+send(msg);
+```
+
+### Opsi B: lewat API runtime
 
 Get 1 attribute:
 
@@ -63,7 +99,7 @@ msg.payload = data.matches;
 send(msg);
 ```
 
-### Opsi B: baca global store langsung
+### Opsi C: baca global snapshot (compat)
 
 ```javascript
 const assetFramework = context.global.get("assetFramework", { assets: [], attributeTemplates: [] });
@@ -71,14 +107,7 @@ msg.payload = assetFramework;
 send(msg);
 ```
 
-Catatan: kalau update manual global object, kamu wajib set kembali:
-
-```javascript
-const af = context.global.get("assetFramework", { assets: [], attributeTemplates: [] });
-// ...ubah af...
-context.global.set("assetFramework", af);
-send(msg);
-```
+Catatan: untuk update value attribute, jangan mutate `assetFramework` snapshot manual. Pakai `context.asset.set(...)`.
 
 ## 3) Pattern Error Handling
 
@@ -97,8 +126,16 @@ send(msg);
 
 ## 4) Persistensi yang Perlu Dipahami
 
-Update ke `http://localhost:4000/api/assets/...` mengubah state runtime (memory/global store).
+- Runtime `assetStorage` adalah source of truth nilai attribute.
+- UI editor (tree/dashboard) membaca assets dari runtime saat runtime aktif.
+- Saat Save program, backend akan:
+1. Push assets config ke runtime.
+2. Ambil snapshot latest assets dari runtime.
+3. Tulis snapshot itu ke `programs/main.af.json`.
 
-Editor tree membaca data dari file program (`/api/program` -> `programs/main.af.json`), bukan langsung dari runtime memory.
+Jadi file program menjadi snapshot terakhir runtime saat save.
 
-Jadi perubahan runtime tidak otomatis terlihat di editor kalau file belum disimpan ulang.
+Optional env:
+
+- `KUFAYEKA_RUNTIME_ASSET_API`
+  - untuk override URL runtime API yang dipakai editor saat load/save assets.

@@ -25,7 +25,7 @@
     {
       "id": "action.multiply_ten",
       "type": "script",
-      "script": "msg.payload = {\r\n    result: msg.payload * 10 \r\n};\r\n\r\nsend(msg)",
+      "script": "msg.payload = {\r\n    result: msg.payload * 10 * 10\r\n};\r\n\r\nsend(msg)",
       "enabled": true,
       "description": ""
     },
@@ -39,7 +39,7 @@
     {
       "id": "action.halooo",
       "type": "script",
-      "script": "msg.payload = \"HALOOOO-\" + JSON.stringify(msg.payload);\r\n\r\nsend(msg);",
+      "script": "const speed = context.asset.get(\"Jasuindo.Taiyo1.MachineSpeed\", 0);\r\nmsg.payload = \"HALOOOO-\" + speed + JSON.stringify(msg.payload);\r\n\r\nsend(msg);",
       "enabled": true,
       "description": ""
     },
@@ -87,6 +87,16 @@
       {
         "from": "trigger.tick_1s",
         "to": "test.coba",
+        "enabled": true
+      },
+      {
+        "from": "action.add_one",
+        "to": "action.halooo",
+        "enabled": true
+      },
+      {
+        "from": "action.multiply_ten",
+        "to": "action.halooo",
         "enabled": true
       }
     ],
@@ -139,13 +149,14 @@
         ],
         "attributes": {
           "Operator": {
-            "value": "3488ac21-aedc-49b3-8f17-c7a1dc4a1b8a"
+            "value": "e9550a72-b194-466a-93f9-4e75e324f6a9"
           },
           "MachineCondition": {
             "value": "working"
           },
           "MachineSpeed": {
-            "value": 0
+            "value": 33,
+            "ts": "2026-02-20T10:50:45.407Z"
           }
         }
       },
@@ -183,10 +194,9 @@
             "optionsSource": "static",
             "options": [],
             "optionsApiUrl": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": "",
             "optionsTransformScript": "",
-            "optionTableKey": ""
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "MachineCondition",
@@ -209,10 +219,9 @@
               }
             ],
             "optionsApiUrl": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": "",
             "optionsTransformScript": "",
-            "optionTableKey": ""
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           }
         ]
       },
@@ -232,10 +241,9 @@
             "optionsSource": "static",
             "options": [],
             "optionsApiUrl": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": "",
             "optionsTransformScript": "",
-            "optionTableKey": ""
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "PaperLength",
@@ -249,10 +257,9 @@
             "optionsSource": "static",
             "options": [],
             "optionsApiUrl": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": "",
             "optionsTransformScript": "",
-            "optionTableKey": ""
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "Operator",
@@ -275,10 +282,9 @@
               }
             ],
             "optionsApiUrl": "http://192.168.68.99:2000/api/accounts",
-            "optionsLabelPath": "",
-            "optionsValuePath": "",
             "optionsTransformScript": "const rows = Array.isArray(input) ? input : [];\nreturn rows.map((r) => ({\n  value: r.id,\n  label: r.full_name\n}));",
-            "optionTableKey": ""
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           }
         ]
       },
@@ -298,10 +304,9 @@
             "optionsSource": "static",
             "options": [],
             "optionsApiUrl": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": "",
             "optionsTransformScript": "",
-            "optionTableKey": ""
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "AHUTemperature",
@@ -315,10 +320,9 @@
             "optionsSource": "static",
             "options": [],
             "optionsApiUrl": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": "",
             "optionsTransformScript": "",
-            "optionTableKey": ""
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "CorridorHumidity",
@@ -332,10 +336,9 @@
             "optionsSource": "static",
             "options": [],
             "optionsApiUrl": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": "",
             "optionsTransformScript": "",
-            "optionTableKey": ""
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "AHUHumidity",
@@ -349,10 +352,9 @@
             "optionsSource": "static",
             "options": [],
             "optionsApiUrl": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": "",
             "optionsTransformScript": "",
-            "optionTableKey": ""
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "InletTemperature",
@@ -366,10 +368,9 @@
             "optionsSource": "static",
             "options": [],
             "optionsApiUrl": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": "",
             "optionsTransformScript": "",
-            "optionTableKey": ""
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           }
         ]
       }

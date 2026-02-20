@@ -213,8 +213,18 @@ export default function HomePage() {
         setStatus(`Save error: ${data.error ?? "unknown error"}`);
         return;
       }
-      const data = (await res.json()) as { path?: string };
-      setStatus(`Saved to ${data.path ?? "programs/main.af.json"}`);
+      const data = (await res.json()) as {
+        path?: string;
+        runtimeSynced?: boolean;
+        runtimeError?: string;
+      };
+      if (data.runtimeSynced === false) {
+        setStatus(
+          `Saved file only (${data.path ?? "programs/main.af.json"}), runtime sync failed: ${data.runtimeError ?? "unknown error"}`
+        );
+      } else {
+        setStatus(`Saved to ${data.path ?? "programs/main.af.json"} (runtime synced)`);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(`Save error: ${message}`);

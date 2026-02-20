@@ -25,13 +25,15 @@ import type { SelectChangeEvent } from "@mui/material/Select";
 import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
 import { ArrowRight, Building2, RefreshCcw } from "lucide-react";
+import { normalizeProgram } from "../../lib/programUtils";
 import type {
   AssetDashboardInputMode,
   AssetOptionSource,
   AssetAttributeType,
   AssetAttributeValue,
   AssetDefinition,
-  AssetFrameworkDefinition
+  AssetFrameworkDefinition,
+  Program
 } from "../../types/program";
 
 const ATTRIBUTE_TYPES: AssetAttributeType[] = [
@@ -203,6 +205,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
   const [optionMap, setOptionMap] = useState<Record<string, Array<{ label: string; value: unknown }>>>({});
+  const [loadingRuntime, setLoadingRuntime] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
   const assetById = useMemo(
@@ -372,11 +375,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     if (!selectedAsset) return [];
     return getEffectiveAttributes(selectedAsset, templateById);
   }, [selectedAsset, templateById]);
-  const selectedAssetDashboardAttributes = useMemo(
-    () => selectedAssetEffectiveAttributes.filter((attribute) => attribute.dashboardVisible),
-    [selectedAssetEffectiveAttributes]
-  );
-
   const runTransform = (script: string, input: unknown): unknown => {
     if (!script.trim()) return input;
     try {
@@ -409,10 +407,12 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       .filter(Boolean) as Array<{ label: string; value: unknown }>;
   };
 
-  const loadOptionProviders = async () => {
+  const loadOptionProviders = async (
+    templates: AssetFrameworkDefinition["attributeTemplates"] = assets.attributeTemplates
+  ) => {
     setLoadingOptions(true);
     try {
-      const providerDefs = assets.attributeTemplates.flatMap((template) =>
+      const providerDefs = templates.flatMap((template) =>
         template.attributes
           .filter((attr) =>
             attr.inputMode === "select" || attr.inputMode === "radio" || attr.inputMode === "multiselect"
@@ -451,8 +451,39 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   };
 
   useEffect(() => {
-    void loadOptionProviders();
+    void loadOptionProviders(assets.attributeTemplates);
   }, [assets.attributeTemplates]);
+
+  const reloadFromRuntime = async () => {
+    setLoadingRuntime(true);
+    try {
+      const res = await fetch("/api/program");
+      const data = (await res.json()) as { program?: Program };
+      const normalized = normalizeProgram(
+        data.program ?? {
+          meta: { name: "Kufayeka AF Program", version: 1 },
+          triggers: [],
+          actions: [],
+          scriptTemplates: [],
+          flows: { links: [] },
+          assets: { assets: [], attributeTemplates: [] }
+        }
+      );
+      onChange(normalized.assets);
+      setSelectedAssetId((prev) => {
+        if (prev && normalized.assets.assets.some((asset) => asset.id === prev)) {
+          return prev;
+        }
+        return normalized.assets.assets[0]?.id || "";
+      });
+      setExpandedKeys(normalized.assets.assets.map((asset) => `asset:${asset.id}`));
+      await loadOptionProviders(normalized.assets.attributeTemplates);
+    } catch {
+      // keep previous state when reload fails
+    } finally {
+      setLoadingRuntime(false);
+    }
+  };
 
   function formatTreeValue(
     attr: ReturnType<typeof getEffectiveAttributes>[number],
@@ -494,7 +525,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         <Tabs value={mainTab} onChange={(_e, v: number) => setMainTab(v)}>
           <Tab label="Asset Explorer" />
           <Tab label="Attribute Template" />
-          <Tab label="Asset Dashboard Setting" />
         </Tabs>
       </Paper>
 
@@ -505,12 +535,12 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
               <Button variant="outlined" onClick={() => addAsset(null)}>
                 Add Root Asset
               </Button>
-              <Tooltip title="Reload option label providers">
+              <Tooltip title="Reload latest assets + option labels">
                 <span>
                   <Button
                     variant="outlined"
-                    onClick={() => void loadOptionProviders()}
-                    disabled={loadingOptions}
+                    onClick={() => void reloadFromRuntime()}
+                    disabled={loadingOptions || loadingRuntime}
                     sx={{ minWidth: 40, px: 1 }}
                   >
                     <RefreshCcw size={15} />
@@ -1012,103 +1042,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         </Box>
       )}
 
-      {mainTab === 2 && (
-        <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
-          <Paper variant="outlined" sx={{ p: 1, display: "grid", gridTemplateRows: "auto 1fr", gap: 0.75 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <Typography variant="subtitle2">Asset Tree Selector</Typography>
-              <Tooltip title="Reload option label providers">
-                <span>
-                  <Button
-                    variant="outlined"
-                    onClick={() => void loadOptionProviders()}
-                    disabled={loadingOptions}
-                    sx={{ minWidth: 40, px: 1 }}
-                  >
-                    <RefreshCcw size={15} />
-                  </Button>
-                </span>
-              </Tooltip>
-            </Box>
-            <Box sx={{ overflow: "auto", maxHeight: "calc(100vh - 260px)", border: "1px solid #e2e8f0", borderRadius: 0.5, p: 0.5 }}>
-              <Tree
-                treeData={treeData}
-                expandedKeys={expandedKeys}
-                selectedKeys={selectedAssetId ? [`asset:${selectedAssetId}`] : []}
-                onExpand={(keys) => setExpandedKeys(keys)}
-                onSelect={(keys) => {
-                  const key = String(keys[0] || "");
-                  if (!key) return;
-                  if (key.startsWith("asset:")) {
-                    setSelectedAssetId(key.slice("asset:".length));
-                    return;
-                  }
-                  if (key.startsWith("attr:")) {
-                    const segments = key.split(":");
-                    if (segments.length >= 2) setSelectedAssetId(segments[1]);
-                  }
-                }}
-              />
-            </Box>
-          </Paper>
-
-          <Paper variant="outlined" sx={{ p: 1.25, minHeight: "calc(100vh - 220px)" }}>
-            {!selectedAsset && (
-              <Typography variant="body2" color="text.secondary">
-                Pilih asset di tree selector.
-              </Typography>
-            )}
-            {selectedAsset && (
-              <Box sx={{ display: "grid", gap: 0.75 }}>
-                <Typography variant="h6">Dashboard Attribute Editor</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Hanya attribute template dengan flag Dashboard aktif yang muncul di sini.
-                </Typography>
-                <Table size="small" sx={{ border: "1px solid #e2e8f0" }}>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Value</TableCell>
-                      <TableCell>Unit</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {selectedAssetDashboardAttributes.map((attribute) => (
-                      <TableRow key={`dashboard-${attribute.name}`}>
-                        <TableCell>{attribute.name}</TableCell>
-                        <TableCell sx={{ minWidth: 220 }}>
-                          <TextField
-                            size="small"
-                            fullWidth
-                            value={serializeValue(attribute.value)}
-                            onChange={(e) => {
-                              const patch: AssetAttributeValue = { value: parseMaybeJson(e.target.value) };
-                              updateAssetWith(selectedAsset.id, (asset) => ({
-                                ...asset,
-                                attributes: { ...asset.attributes, [attribute.name]: patch }
-                              }));
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>{attribute.unit || "-"}</TableCell>
-                      </TableRow>
-                    ))}
-                    {selectedAssetDashboardAttributes.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={3}>
-                          <Typography variant="caption" color="text.secondary">
-                            Tidak ada attribute yang di-expose ke dashboard.
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </Box>
-            )}
-          </Paper>
-        </Box>
-      )}
     </Box>
   );
 }

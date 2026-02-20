@@ -50,6 +50,39 @@ function serializeValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function runTransform(script: string, input: unknown): unknown {
+  if (!script.trim()) return input;
+  try {
+    const fn = new Function("input", script);
+    return fn(input);
+  } catch {
+    return input;
+  }
+}
+
+function normalizeOptions(input: unknown): Array<{ label: string; value: unknown }> {
+  const list = Array.isArray(input)
+    ? input
+    : input && typeof input === "object" && Array.isArray((input as { data?: unknown[] }).data)
+      ? (input as { data: unknown[] }).data
+      : [];
+
+  return list
+    .map((item) => {
+      if (item && typeof item === "object") {
+        const row = item as { label?: unknown; value?: unknown; name?: unknown; id?: unknown };
+        const label = String(row.label ?? row.name ?? row.value ?? row.id ?? "");
+        const value = row.value ?? row.id ?? row.label ?? row.name;
+        return label ? { label, value } : null;
+      }
+      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+        return { label: String(item), value: item };
+      }
+      return null;
+    })
+    .filter(Boolean) as Array<{ label: string; value: unknown }>;
+}
+
 function buildChildrenMap(assets: AssetDefinition[]): Map<string | null, AssetDefinition[]> {
   const map = new Map<string | null, AssetDefinition[]>();
   for (const asset of assets) {
@@ -83,6 +116,7 @@ function getEffectiveDashboardAttributes(
       options: Array<{ label: string; value: unknown }>;
       optionsApiUrl: string;
       optionsTransformScript: string;
+      optionKeys: string[];
     }
   >();
 
@@ -104,10 +138,18 @@ function getEffectiveDashboardAttributes(
           optionsSource: attr.optionsSource ?? "static",
           options: Array.isArray(attr.options) ? attr.options : [],
           optionsApiUrl: attr.optionsApiUrl ?? "",
-          optionsTransformScript: attr.optionsTransformScript ?? ""
+          optionsTransformScript: attr.optionsTransformScript ?? "",
+          optionKeys: [`${template.id}:${attr.name}`]
         });
-      } else if (attr.dashboardVisible === true) {
-        rows.set(attr.name, { ...prev, dashboardVisible: true });
+      } else {
+        const nextKeys = prev.optionKeys.includes(`${template.id}:${attr.name}`)
+          ? prev.optionKeys
+          : [...prev.optionKeys, `${template.id}:${attr.name}`];
+        rows.set(attr.name, {
+          ...prev,
+          dashboardVisible: prev.dashboardVisible || attr.dashboardVisible === true,
+          optionKeys: nextKeys
+        });
       }
     }
   }
@@ -164,13 +206,79 @@ export default function AssetDashboardPage() {
   );
   const selectedAsset = selectedAssetId ? assetById.get(selectedAssetId) : undefined;
 
+  useEffect(() => {
+    const loadOptionProviders = async () => {
+      const providerDefs = program.assets.attributeTemplates.flatMap((template) =>
+        template.attributes
+          .filter(
+            (attr) =>
+              attr.inputMode === "select" || attr.inputMode === "radio" || attr.inputMode === "multiselect"
+          )
+          .map((attr) => ({
+            key: `${template.id}:${attr.name}`,
+            source: attr.optionsSource ?? "static",
+            url: attr.optionsApiUrl ?? "",
+            script: attr.optionsTransformScript ?? "",
+            staticOptions: Array.isArray(attr.options) ? attr.options : []
+          }))
+      );
+
+      const entries: Array<[string, Array<{ label: string; value: unknown }>]> = [];
+      for (const def of providerDefs) {
+        if (def.source === "static") {
+          entries.push([def.key, def.staticOptions]);
+          continue;
+        }
+        if (!def.url) {
+          entries.push([def.key, def.staticOptions]);
+          continue;
+        }
+        try {
+          const raw = await fetch(def.url).then((r) => r.json());
+          const transformed = runTransform(def.script, raw);
+          entries.push([def.key, normalizeOptions(transformed)]);
+        } catch {
+          entries.push([def.key, def.staticOptions]);
+        }
+      }
+      setOptionMap(Object.fromEntries(entries));
+    };
+
+    void loadOptionProviders();
+  }, [program.assets.attributeTemplates]);
+
+  const getAttributeOptions = (
+    attribute: {
+      inputMode: string;
+      optionsSource: AssetOptionSource;
+      options: Array<{ label: string; value: unknown }>;
+      optionKeys: string[];
+    }
+  ): Array<{ label: string; value: unknown }> => {
+    if (
+      attribute.inputMode !== "select" &&
+      attribute.inputMode !== "radio" &&
+      attribute.inputMode !== "multiselect"
+    ) {
+      return [];
+    }
+
+    if (attribute.optionsSource === "static") {
+      return attribute.options || [];
+    }
+
+    const resolved = attribute.optionKeys.flatMap((key) => optionMap[key] || []);
+    if (resolved.length > 0) return resolved;
+    return attribute.options || [];
+  };
+
   const formatTreeAttributeValue = (
     attribute: {
       inputMode: string;
       value: unknown;
       optionsSource: AssetOptionSource;
       options: Array<{ label: string; value: unknown }>;
-      name: string;
+      optionKeys: string[];
     }
   ): string => {
     if (
@@ -181,10 +289,7 @@ export default function AssetDashboardPage() {
       return serializeValue(attribute.value);
     }
 
-    const options =
-      attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform"
-        ? optionMap[attribute.name] || []
-        : attribute.options || [];
+    const options = getAttributeOptions(attribute);
     const lookup = new Map(options.map((opt) => [String(opt.value), opt.label]));
 
     if (attribute.inputMode === "multiselect") {
@@ -241,78 +346,6 @@ export default function AssetDashboardPage() {
     if (!selectedAsset) return [];
     return getEffectiveDashboardAttributes(selectedAsset, templateById);
   }, [selectedAsset, templateById]);
-
-  useEffect(() => {
-    const apiAttributes = dashboardAttributes.filter(
-      (attribute) =>
-        (attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform") &&
-        attribute.optionsApiUrl
-    );
-    if (apiAttributes.length === 0) return;
-
-    let cancelled = false;
-    const loadOptions = async () => {
-      const entries: Array<[string, Array<{ label: string; value: unknown }>]> = [];
-      for (const attribute of apiAttributes) {
-        try {
-          const res = await fetch(attribute.optionsApiUrl);
-          const raw = (await res.json()) as unknown;
-          const transformed = (() => {
-            if (attribute.optionsSource !== "scriptTransform" || !attribute.optionsTransformScript?.trim()) {
-              return raw;
-            }
-            try {
-              const fn = new Function("input", attribute.optionsTransformScript);
-              return fn(raw);
-            } catch {
-              return raw;
-            }
-          })();
-          const list = Array.isArray(transformed)
-            ? transformed
-            : transformed && typeof transformed === "object" && Array.isArray((transformed as { data?: unknown[] }).data)
-              ? (transformed as { data: unknown[] }).data
-              : [];
-          const normalized = list
-            .map((item) => {
-              if (item && typeof item === "object") {
-                const row = item as { label?: unknown; value?: unknown; name?: unknown; id?: unknown };
-                const label = String(row.label ?? row.name ?? row.value ?? row.id ?? "");
-                const value = row.value ?? row.id ?? row.label ?? row.name;
-                return label ? { label, value } : null;
-              }
-              if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
-                return { label: String(item), value: item };
-              }
-              return null;
-            })
-            .filter(Boolean) as Array<{ label: string; value: unknown }>;
-          entries.push([attribute.name, normalized]);
-        } catch {
-          entries.push([attribute.name, []]);
-        }
-      }
-      if (cancelled) return;
-      setOptionMap((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
-    };
-
-    void loadOptions();
-    return () => {
-      cancelled = true;
-    };
-  }, [dashboardAttributes]);
-
-  useEffect(() => {
-    const localOptionAttrs = dashboardAttributes.filter(
-      (attribute) =>
-        attribute.optionsSource === "static"
-    );
-    if (localOptionAttrs.length === 0) return;
-    const nextMap = Object.fromEntries(
-      localOptionAttrs.map((attribute) => [attribute.name, attribute.options || []])
-    );
-    setOptionMap((prev) => ({ ...prev, ...nextMap }));
-  }, [dashboardAttributes]);
 
   const updateAttributeValue = (attributeName: string, rawValue: string) => {
     if (!selectedAsset) return;
@@ -388,8 +421,16 @@ export default function AssetDashboardPage() {
         setStatus(`Save error: ${data.error ?? "unknown error"}`);
         return;
       }
+      const result = (await res.json()) as {
+        runtimeSynced?: boolean;
+        runtimeError?: string;
+      };
       setProgram(nextProgram);
-      setStatus("Saved");
+      if (result.runtimeSynced === false) {
+        setStatus(`Saved file only, runtime sync failed: ${result.runtimeError ?? "unknown error"}`);
+      } else {
+        setStatus("Saved (runtime synced)");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(`Save error: ${message}`);
@@ -500,10 +541,7 @@ export default function AssetDashboardPage() {
                               value={String(attribute.value ?? "")}
                               onChange={(e) => updateAttributeUnknown(attribute.name, e.target.value)}
                             >
-                              {(attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform"
-                                ? optionMap[attribute.name] || []
-                                : attribute.options || []
-                              ).map((option) => (
+                              {getAttributeOptions(attribute).map((option) => (
                                 <FormControlLabel
                                   key={`${attribute.name}-${String(option.value)}`}
                                   value={String(option.value)}
@@ -518,10 +556,7 @@ export default function AssetDashboardPage() {
                           <FormControl fullWidth>
                             <FormLabel sx={{ mb: 0.5 }}>Multi Select</FormLabel>
                             <FormGroup row>
-                              {(attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform"
-                                ? optionMap[attribute.name] || []
-                                : attribute.options || []
-                              ).map((option) => {
+                              {getAttributeOptions(attribute).map((option) => {
                                 const current = Array.isArray(attribute.value) ? attribute.value : [];
                                 const checked = current.some((item) => item === option.value);
                                 return (
@@ -555,10 +590,7 @@ export default function AssetDashboardPage() {
                               }
                               disabled={!attribute.dashboardEditable}
                             >
-                              {(attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform"
-                                ? optionMap[attribute.name] || []
-                                : attribute.options || []
-                              ).map((option) => (
+                              {getAttributeOptions(attribute).map((option) => (
                                 <MenuItem key={`${attribute.name}-${String(option.value)}`} value={String(option.value)}>
                                   {option.label}
                                 </MenuItem>

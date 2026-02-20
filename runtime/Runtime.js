@@ -40,6 +40,8 @@ class Runtime {
   }
 
   createNodeContext(nodeId) {
+    const getAssetStorage = () => this.getGlobal("assetStorage");
+
     return {
       nodeId,
       global: {
@@ -47,6 +49,38 @@ class Runtime {
         set: (key, value) => this.setGlobal(key, value),
         has: (key) => this.hasGlobal(key),
         delete: (key) => this.deleteGlobal(key),
+      },
+      asset: {
+        query: (path) => {
+          const store = getAssetStorage();
+          if (!store || typeof store.query !== "function") return [];
+          return store.query(path);
+        },
+        get: (path, defaultValue) => {
+          const store = getAssetStorage();
+          if (!store || typeof store.getAttribute !== "function") return defaultValue;
+          return store.getAttribute(path, defaultValue);
+        },
+        getAll: (path) => {
+          const store = getAssetStorage();
+          if (!store || typeof store.getAttributes !== "function") return [];
+          return store.getAttributes(path);
+        },
+        set: (path, value) => {
+          const store = getAssetStorage();
+          if (!store || typeof store.setAttribute !== "function") return [];
+          return store.setAttribute(path, value);
+        },
+        setMany: (items) => {
+          const store = getAssetStorage();
+          if (!store || typeof store.setAttributes !== "function") return [];
+          return store.setAttributes(items);
+        },
+        hierarchy: (options) => {
+          const store = getAssetStorage();
+          if (!store || typeof store.getHierarchy !== "function") return [];
+          return store.getHierarchy(options);
+        },
       },
     };
   }

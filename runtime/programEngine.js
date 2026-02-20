@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const createScriptActionHandler = require("./createScriptActionHandler");
 const { normalizeAssetSection } = require("./assetFramework");
+const { ensureAssetStorage } = require("./assetStorage");
 
 function loadProgramFromFile(programPath) {
   const absolutePath = path.resolve(programPath);
@@ -81,7 +82,8 @@ function startTriggers(runtime, triggers = []) {
 }
 
 function startProgram(runtime, program) {
-  runtime.setGlobal("assetFramework", normalizeAssetSection(program.assets || {}));
+  const assetStorage = ensureAssetStorage(runtime, normalizeAssetSection(program.assets || {}));
+  assetStorage.replace(normalizeAssetSection(program.assets || {}));
   registerActions(runtime, program.actions || []);
   registerLinks(runtime, (program.flows && program.flows.links) || []);
   const stops = startTriggers(runtime, program.triggers || []);

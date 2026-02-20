@@ -46,6 +46,26 @@ function splitPath(path) {
 
 function createAssetFrameworkStore(initialSection = {}) {
   let state = normalizeAssetSection(initialSection);
+  let revision = 0;
+  let updatedAt = new Date().toISOString();
+  const listeners = new Set();
+
+  function emitChange() {
+    revision += 1;
+    updatedAt = new Date().toISOString();
+    const snapshot = getState();
+    for (const listener of listeners) {
+      try {
+        listener(snapshot, { revision, updatedAt });
+      } catch (error) {
+        console.error("asset store listener error:", error);
+      }
+    }
+  }
+
+  function getState() {
+    return structuredClone(state);
+  }
 
   function getAssetPath(assetId, assetById) {
     const asset = assetById.get(assetId);
@@ -231,6 +251,7 @@ function createAssetFrameworkStore(initialSection = {}) {
           return { ...asset, attributes: nextAttributes };
         }),
       };
+      emitChange();
 
       matches = resolve(path).filter((item) => item.kind === "attribute");
       return matches;
@@ -256,23 +277,64 @@ function createAssetFrameworkStore(initialSection = {}) {
         return { ...asset, attributes: nextAttributes };
       }),
     };
+    emitChange();
 
     return resolve(path).filter((item) => item.kind === "attribute");
   }
 
   return {
-    getState() {
-      return structuredClone(state);
+    getState,
+    getSnapshot() {
+      return {
+        state: getState(),
+        revision,
+        updatedAt,
+      };
+    },
+    getRevision() {
+      return revision;
+    },
+    getUpdatedAt() {
+      return updatedAt;
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
     replace(nextState) {
       state = normalizeAssetSection(nextState);
-      return this.getState();
+      emitChange();
+      return getState();
     },
     query(path) {
       return resolve(path);
     },
+    getAttribute(path, defaultValue = undefined) {
+      const matches = resolve(path).filter((item) => item.kind === "attribute");
+      if (matches.length === 0) return defaultValue;
+      if (matches.length === 1) return matches[0].value;
+      return matches.map((item) => item.value);
+    },
+    getAttributes(path) {
+      return resolve(path).filter((item) => item.kind === "attribute");
+    },
     setAttribute(path, value) {
       return setAttributeByPath(path, value);
+    },
+    setAttributes(items = []) {
+      const results = [];
+      for (const item of items) {
+        if (!item || typeof item !== "object") continue;
+        if (!Object.prototype.hasOwnProperty.call(item, "path")) continue;
+        if (!Object.prototype.hasOwnProperty.call(item, "value")) continue;
+        const matches = setAttributeByPath(item.path, item.value);
+        results.push({
+          path: item.path,
+          count: matches.length,
+          matches,
+        });
+      }
+      return results;
     },
     getHierarchy(options) {
       return buildHierarchy(options);

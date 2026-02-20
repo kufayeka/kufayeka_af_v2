@@ -133,9 +133,24 @@ curl -X PUT "http://localhost:4000/api/assets/value/Surabaya.Plant1.*.Encoder" \
   -d '{ "value": 0 }'
 ```
 
+## 7) Batch Set Attribute Value
+
+- `PUT /api/assets/values:batch`
+- Body:
+
+```json
+{
+  "items": [
+    { "path": "Surabaya.Plant1.M1.Speed", "value": 8 },
+    { "path": "Surabaya.Plant1.M2.Speed", "value": 9 }
+  ]
+}
+```
+
 ## Catatan Penting
 
-- API ini sinkron ke `runtime.globalStore` key: `assetFramework`.
+- API ini memakai `assetStorage` runtime sebagai single source of truth.
+- Snapshot compat tetap tersedia di `runtime.globalStore` key: `assetFramework`.
 - Endpoint `PUT /api/assets/system` mengganti seluruh state asset system.
 - Jika mau patch sebagian, lakukan:
   1. `GET /api/assets/system`

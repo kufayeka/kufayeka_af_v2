@@ -1,5 +1,5 @@
 const http = require("node:http");
-const { createAssetFrameworkStore } = require("../runtime/assetFramework");
+const { ensureAssetStorage } = require("../runtime/assetStorage");
 
 function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, { "content-type": "application/json" });
@@ -41,11 +41,7 @@ function getKeyFromPath(urlPath) {
 function createApiServer(runtime, options = {}) {
   const port = options.port ?? 4000;
   const host = options.host ?? "0.0.0.0";
-  const assetStore = createAssetFrameworkStore(runtime.getGlobal("assetFramework", {}));
-
-  const syncAssetGlobal = () => {
-    runtime.setGlobal("assetFramework", assetStore.getState());
-  };
+  const assetStore = ensureAssetStorage(runtime, runtime.getGlobal("assetFramework", {}));
 
   const server = http.createServer(async (req, res) => {
     const method = req.method || "GET";
@@ -66,7 +62,6 @@ function createApiServer(runtime, options = {}) {
       try {
         const body = await parseJsonBody(req);
         const next = assetStore.replace(body);
-        syncAssetGlobal();
         sendJson(res, 200, { data: next });
       } catch (error) {
         sendJson(res, 400, { error: error.message });
@@ -83,7 +78,6 @@ function createApiServer(runtime, options = {}) {
       try {
         const body = await parseJsonBody(req);
         const next = assetStore.replace(body);
-        syncAssetGlobal();
         sendJson(res, 200, { data: next });
       } catch (error) {
         sendJson(res, 400, { error: error.message });
@@ -139,13 +133,24 @@ function createApiServer(runtime, options = {}) {
             return;
           }
           const matches = assetStore.setAttribute(pathQuery, body.value);
-          syncAssetGlobal();
           sendJson(res, 200, { path: pathQuery, count: matches.length, matches });
         } catch (error) {
           sendJson(res, 400, { error: error.message });
         }
         return;
       }
+    }
+
+    if (urlPath === "/api/assets/values:batch" && method === "PUT") {
+      try {
+        const body = await parseJsonBody(req);
+        const items = Array.isArray(body.items) ? body.items : [];
+        const results = assetStore.setAttributes(items);
+        sendJson(res, 200, { count: results.length, results });
+      } catch (error) {
+        sendJson(res, 400, { error: error.message });
+      }
+      return;
     }
 
     const key = getKeyFromPath(urlPath);
