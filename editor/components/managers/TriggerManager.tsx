@@ -37,7 +37,7 @@ export default function TriggerManager({
     const keyword = search.trim().toLowerCase();
     if (!keyword) return triggers;
     return triggers.filter((trigger) => {
-      const haystack = `${trigger.id} ${trigger.type}`.toLowerCase();
+      const haystack = `${trigger.id} ${trigger.label ?? ""} ${trigger.type}`.toLowerCase();
       return haystack.includes(keyword);
     });
   }, [search, triggers]);
@@ -80,6 +80,11 @@ export default function TriggerManager({
               onClick={() => onSelectTrigger(trigger.id)}
             >
               <Typography variant="subtitle2">{trigger.id}</Typography>
+              {!!trigger.label?.trim() && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                  {trigger.label}
+                </Typography>
+              )}
               <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                 {trigger.type} / {trigger.intervalMs} ms
               </Typography>
@@ -130,6 +135,12 @@ export default function TriggerManager({
               label="Trigger ID"
               value={selectedTrigger.id}
               onChange={(e) => onRenameTrigger(selectedTrigger.id, e.target.value)}
+            />
+            <TextField
+              label="Trigger Label"
+              value={selectedTrigger.label ?? ""}
+              onChange={(e) => onUpdateTrigger(selectedTrigger.id, { label: e.target.value })}
+              helperText="Label tampilan node di flow (ID internal tetap)."
             />
             <TextField
               label="Interval (ms)"

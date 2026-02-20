@@ -11,45 +11,64 @@
       "intervalMs": 1000,
       "message": {
         "payload": 5
-      }
+      },
+      "label": ""
     }
   ],
   "actions": [
     {
       "id": "action.add_one",
       "type": "script",
-      "script": "msg.payload = (msg.payload ?? 0) + 1; \r\n\r\nsend(msg);",
+      "script": "// ini adalah template script\r\n\r\nmsg.payload = msg.payload + 1;",
       "enabled": true,
-      "description": ""
+      "description": "",
+      "label": "",
+      "templateBindingOverrides": {}
     },
     {
       "id": "action.multiply_ten",
       "type": "script",
-      "script": "msg.payload = {\r\n    result: msg.payload * 10 * 10\r\n};\r\n\r\nsend(msg)",
+      "script": "// ini adalah template script\r\n\r\nmsg.payload = msg.payload * 10;",
       "enabled": true,
-      "description": ""
+      "description": "",
+      "label": "",
+      "templateBindingOverrides": {}
     },
     {
       "id": "action.debug",
       "type": "script",
       "script": "console.log(\"--------\")\r\nconsole.log('payloadd:', msg.payload);",
       "enabled": true,
-      "description": ""
+      "description": "",
+      "label": "",
+      "templateBindingOverrides": {}
     },
     {
       "id": "action.halooo",
       "type": "script",
-      "script": "const speed = context.asset.get(\"Jasuindo.Taiyo1.MachineSpeed\", 0);\r\nmsg.payload = \"HALOOOO-\" + speed + JSON.stringify(msg.payload);\r\n\r\nsend(msg);",
+      "script": "const data = {\r\n    1: context.asset.get(\"Jasuindo.Taiyo1.MachineSpeed\", 0),\r\n    2: context.asset.get(\"Jasuindo.Taiyo2.MachineSpeed\", 0)\r\n}\r\n\r\nmsg.payload = \"HALOOOO-\" + JSON.stringify(data) + JSON.stringify(msg.payload);\r\n\r\nsend(msg);",
       "enabled": true,
-      "description": ""
+      "description": "",
+      "label": "",
+      "templateBindingOverrides": {}
     },
     {
       "id": "test.coba",
       "type": "script",
       "enabled": true,
       "description": "",
-      "script": "// ini adalah template script",
-      "templateId": "template.script_1771563203022"
+      "script": "// ini adalah template script\r\n\r\nconsole.log(\"----variable binding----\")\r\n\r\nconsole.log(binding_1)\r\nconsole.log(JSON.stringify(binding_2));",
+      "label": "",
+      "templateId": "template.script_1771563203022",
+      "templateBindingOverrides": {
+        "binding_2": {
+          "name": "binding_2",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo1.MachineSpeed",
+          "allowOverride": true
+        }
+      }
     }
   ],
   "flows": {
@@ -65,11 +84,6 @@
         "enabled": true
       },
       {
-        "from": "action.add_one",
-        "to": "action.multiply_ten",
-        "enabled": true
-      },
-      {
         "from": "action.multiply_ten",
         "to": "action.debug",
         "enabled": true
@@ -81,53 +95,48 @@
       },
       {
         "from": "trigger.tick_1s",
-        "to": "action.debug",
-        "enabled": true
-      },
-      {
-        "from": "trigger.tick_1s",
         "to": "test.coba",
         "enabled": true
       },
       {
-        "from": "action.add_one",
-        "to": "action.halooo",
+        "from": "test.coba",
+        "to": "action.debug",
         "enabled": true
       },
       {
-        "from": "action.multiply_ten",
-        "to": "action.halooo",
+        "from": "action.add_one",
+        "to": "action.debug",
         "enabled": true
       }
     ],
     "nodePositions": {
-      "action.debug": {
-        "x": 1960,
-        "y": 160
-      },
       "action.multiply_ten": {
         "x": 1080,
-        "y": 100
+        "y": 110
       },
       "action.add_one": {
-        "x": 580,
-        "y": 100
+        "x": 710,
+        "y": 110
       },
       "action.script_1771507062991": {
         "x": 1400,
         "y": 280
       },
       "trigger.tick_1s": {
-        "x": 220,
+        "x": 310,
         "y": 200
       },
       "action.halooo": {
-        "x": 1460,
-        "y": 300
+        "x": 710,
+        "y": 220
+      },
+      "action.debug": {
+        "x": 1080,
+        "y": 220
       },
       "test.coba": {
-        "x": 600,
-        "y": 310
+        "x": 700,
+        "y": 330
       }
     }
   },
@@ -155,8 +164,8 @@
             "value": "working"
           },
           "MachineSpeed": {
-            "value": 33,
-            "ts": "2026-02-20T10:50:45.407Z"
+            "value": 35,
+            "ts": "2026-02-20T16:54:53.509Z"
           }
         }
       },
@@ -173,6 +182,10 @@
           },
           "MachineCondition": {
             "value": "maintenance"
+          },
+          "MachineSpeed": {
+            "value": 25,
+            "ts": "2026-02-20T16:54:53.511Z"
           }
         }
       }
@@ -183,6 +196,7 @@
         "name": "Basic",
         "attributes": [
           {
+            "enabled": true,
             "name": "Timestamp",
             "type": "string",
             "defaultValue": 0,
@@ -199,6 +213,7 @@
             "optionsValuePath": ""
           },
           {
+            "enabled": true,
             "name": "MachineCondition",
             "type": "string",
             "defaultValue": 0,
@@ -230,6 +245,7 @@
         "name": "OffsetPrinter",
         "attributes": [
           {
+            "enabled": true,
             "name": "MachineSpeed",
             "type": "number",
             "defaultValue": 0,
@@ -246,6 +262,7 @@
             "optionsValuePath": ""
           },
           {
+            "enabled": true,
             "name": "PaperLength",
             "type": "number",
             "defaultValue": 0,
@@ -262,6 +279,7 @@
             "optionsValuePath": ""
           },
           {
+            "enabled": true,
             "name": "Operator",
             "type": "string",
             "defaultValue": 0,
@@ -293,6 +311,7 @@
         "name": "DataLoggerSuhu",
         "attributes": [
           {
+            "enabled": true,
             "name": "CorridorTemperature",
             "type": "number",
             "defaultValue": 0,
@@ -309,6 +328,7 @@
             "optionsValuePath": ""
           },
           {
+            "enabled": true,
             "name": "AHUTemperature",
             "type": "number",
             "defaultValue": 0,
@@ -325,6 +345,7 @@
             "optionsValuePath": ""
           },
           {
+            "enabled": true,
             "name": "CorridorHumidity",
             "type": "number",
             "defaultValue": 0,
@@ -341,6 +362,7 @@
             "optionsValuePath": ""
           },
           {
+            "enabled": true,
             "name": "AHUHumidity",
             "type": "number",
             "defaultValue": 0,
@@ -357,6 +379,7 @@
             "optionsValuePath": ""
           },
           {
+            "enabled": true,
             "name": "InletTemperature",
             "type": "number",
             "defaultValue": 10,
@@ -381,7 +404,23 @@
       "id": "template.script_1771563203022",
       "name": "Script Template 1",
       "description": "",
-      "script": "// ini adalah template script"
+      "script": "// ini adalah template script\r\n\r\nconsole.log(\"----variable binding----\")\r\n\r\nconsole.log(binding_1)\r\nconsole.log(JSON.stringify(binding_2));",
+      "variableBindings": [
+        {
+          "name": "binding_1",
+          "source": "static_string",
+          "staticValue": "haloooo bitch",
+          "attributePath": "",
+          "allowOverride": false
+        },
+        {
+          "name": "binding_2",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo1.Operator",
+          "allowOverride": true
+        }
+      ]
     }
   ]
 }

@@ -1,6 +1,13 @@
 export type TriggerType = "interval";
 export type ActionType = "script";
 export type AssetAttributeType = "number" | "boolean" | "string" | "array" | "object";
+export type ScriptBindingSource =
+  | "attribute"
+  | "static_number"
+  | "static_string"
+  | "static_boolean"
+  | "static_array"
+  | "static_object";
 export type AssetDashboardInputMode =
   | "text"
   | "number"
@@ -20,6 +27,7 @@ export interface AssetAttributeOption {
 }
 
 export interface AssetTemplateAttributeDefinition {
+  enabled?: boolean;
   name: string;
   type: AssetAttributeType;
   defaultValue: unknown;
@@ -63,6 +71,7 @@ export interface AssetFrameworkDefinition {
 
 export interface TriggerDefinition {
   id: string;
+  label?: string;
   type: TriggerType;
   enabled: boolean;
   intervalMs: number;
@@ -74,11 +83,21 @@ export interface TriggerDefinition {
 
 export interface ActionDefinition {
   id: string;
+  label?: string;
   type: ActionType;
   enabled: boolean;
   description?: string;
   templateId?: string;
+  templateBindingOverrides?: Record<string, ScriptVariableBindingDefinition>;
   script: string;
+}
+
+export interface ScriptVariableBindingDefinition {
+  name: string;
+  source: ScriptBindingSource;
+  staticValue?: unknown;
+  attributePath?: string;
+  allowOverride?: boolean;
 }
 
 export interface ScriptTemplateDefinition {
@@ -86,6 +105,7 @@ export interface ScriptTemplateDefinition {
   name: string;
   description?: string;
   script: string;
+  variableBindings?: ScriptVariableBindingDefinition[];
 }
 
 export interface FlowLink {

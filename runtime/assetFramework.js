@@ -17,6 +17,7 @@ function normalizeAssetSection(input = {}) {
       name: template.name,
       attributes: Array.isArray(template.attributes)
         ? template.attributes.map((attribute) => ({
+            enabled: attribute.enabled !== false,
             name: attribute.name,
             type: attribute.type,
             defaultValue: attribute.defaultValue,
@@ -92,6 +93,7 @@ function createAssetFrameworkStore(initialSection = {}) {
       const template = templateById.get(templateId);
       if (!template) continue;
       for (const attribute of template.attributes || []) {
+        if (attribute.enabled === false) continue;
         if (!map.has(attribute.name)) {
           map.set(attribute.name, {
             value: attribute.defaultValue,

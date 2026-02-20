@@ -18,6 +18,7 @@ import {
   normalizeProgram,
   parseMaybeJson,
   removeNodeFromLinks,
+  renameNodePositionKey,
   renameNodeInLinks,
   upsertById
 } from "../lib/programUtils";
@@ -122,6 +123,7 @@ export default function HomePage() {
   });
   const [selectedTriggerId, setSelectedTriggerId] = useState("");
   const [selectedActionId, setSelectedActionId] = useState("");
+  const [flowZoom, setFlowZoom] = useState(1);
   const [status, setStatus] = useState("Loading...");
   const latestActionScriptsRef = useRef<Record<string, string>>({});
 
@@ -272,6 +274,7 @@ export default function HomePage() {
     const id = `trigger.tick_${Date.now()}`;
     const next: TriggerDefinition = {
       id,
+      label: "",
       type: "interval",
       enabled: true,
       intervalMs: 1000,
@@ -290,6 +293,7 @@ export default function HomePage() {
     const id = `${safeParent}.action_${Date.now()}`;
     const next: ActionDefinition = {
       id,
+      label: "",
       type: "script",
       enabled: true,
       description: "",
@@ -324,7 +328,11 @@ export default function HomePage() {
     applyProgramUpdate((prev) => ({
       ...prev,
       triggers: upsertById(prev.triggers, oldId, { id: newId }),
-      flows: { ...prev.flows, links: renameNodeInLinks(prev.flows.links, oldId, newId) }
+      flows: {
+        ...prev.flows,
+        links: renameNodeInLinks(prev.flows.links, oldId, newId),
+        nodePositions: renameNodePositionKey(prev.flows.nodePositions, oldId, newId)
+      }
     }));
   };
 
@@ -338,9 +346,22 @@ export default function HomePage() {
     applyProgramUpdate((prev) => ({
       ...prev,
       actions: upsertById(prev.actions, oldId, { id: newId }),
-      flows: { ...prev.flows, links: renameNodeInLinks(prev.flows.links, oldId, newId) }
+      flows: {
+        ...prev.flows,
+        links: renameNodeInLinks(prev.flows.links, oldId, newId),
+        nodePositions: renameNodePositionKey(prev.flows.nodePositions, oldId, newId)
+      }
     }));
   };
+
+  const flowNodeLabels = useMemo(
+    () =>
+      Object.fromEntries([
+        ...program.triggers.map((item) => [item.id, (item.label || item.id).trim() || item.id]),
+        ...program.actions.map((item) => [item.id, (item.label || item.id).trim() || item.id])
+      ]),
+    [program.actions, program.triggers]
+  );
 
   const updateTrigger = (id: string, patch: Partial<TriggerDefinition>): void => {
     applyProgramUpdate((prev) => ({
@@ -353,9 +374,20 @@ export default function HomePage() {
     if (typeof patch.script === "string") {
       latestActionScriptsRef.current[id] = patch.script;
     }
+    const resolvedPatch: Partial<ActionDefinition> = { ...patch };
+    if (Object.prototype.hasOwnProperty.call(patch, "templateId")) {
+      const nextTemplateId = patch.templateId;
+      const template = nextTemplateId
+        ? program.scriptTemplates.find((item) => item.id === nextTemplateId)
+        : null;
+      const current = program.actions.find((item) => item.id === id);
+      resolvedPatch.script = template ? template.script : patch.script ?? current?.script ?? "";
+      resolvedPatch.templateBindingOverrides = nextTemplateId ? current?.templateBindingOverrides || {} : {};
+      latestActionScriptsRef.current[id] = resolvedPatch.script;
+    }
     applyProgramUpdate((prev) => ({
       ...prev,
-      actions: upsertById(prev.actions, id, patch)
+      actions: upsertById(prev.actions, id, resolvedPatch)
     }));
   };
 
@@ -365,7 +397,8 @@ export default function HomePage() {
       id,
       name: `Script Template ${program.scriptTemplates.length + 1}`,
       description: "",
-      script: "send(msg);"
+      script: "send(msg);",
+      variableBindings: []
     };
     applyProgramUpdate((prev) => ({
       ...prev,
@@ -384,10 +417,32 @@ export default function HomePage() {
     id: string,
     patch: Partial<ScriptTemplateDefinition>
   ): void => {
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      scriptTemplates: upsertById(prev.scriptTemplates, id, patch)
-    }));
+    applyProgramUpdate((prev) => {
+      const nextScriptTemplates = upsertById(prev.scriptTemplates, id, patch);
+      const updatedTemplate = nextScriptTemplates.find((item) => item.id === id);
+      if (!updatedTemplate) {
+        return {
+          ...prev,
+          scriptTemplates: nextScriptTemplates
+        };
+      }
+      const nextActions = prev.actions.map((action) =>
+        action.templateId === id
+          ? {
+              ...action,
+              script: updatedTemplate.script
+            }
+          : action
+      );
+      for (const action of nextActions) {
+        latestActionScriptsRef.current[action.id] = action.script || "";
+      }
+      return {
+        ...prev,
+        scriptTemplates: nextScriptTemplates,
+        actions: nextActions
+      };
+    });
   };
 
   const updateTriggerPayload = (id: string, rawPayload: string): void => {
@@ -443,6 +498,21 @@ export default function HomePage() {
         nodePositions: { ...(prev.flows.nodePositions || {}), [nodeId]: position }
       }
     }));
+  };
+
+  const removeNodeFromFlow = (nodeId: string): void => {
+    applyProgramUpdate((prev) => {
+      const nextPositions = { ...(prev.flows.nodePositions || {}) };
+      delete nextPositions[nodeId];
+      return {
+        ...prev,
+        flows: {
+          ...prev.flows,
+          links: prev.flows.links.filter((link) => link.from !== nodeId && link.to !== nodeId),
+          nodePositions: nextPositions
+        }
+      };
+    });
   };
 
   const headerActions = useMemo(
@@ -515,6 +585,7 @@ export default function HomePage() {
           <ActionManager
             actions={program.actions}
             scriptTemplates={program.scriptTemplates}
+            assets={program.assets}
             selectedActionId={selectedActionId}
             onSelectAction={setSelectedActionId}
             onAddAction={addAction}
@@ -530,11 +601,15 @@ export default function HomePage() {
           <FlowManager
             triggerIds={program.triggers.map((item) => item.id)}
             actionIds={program.actions.map((item) => item.id)}
+            nodeLabels={flowNodeLabels}
             links={program.flows.links}
             nodePositions={program.flows.nodePositions || {}}
+            zoom={flowZoom}
+            onZoomChange={setFlowZoom}
             onAddLink={addLink}
             onUpdateLink={updateLink}
             onRemoveLink={removeLink}
+            onRemoveNodeFromFlow={removeNodeFromFlow}
             onActionNodeDoubleClick={(actionId) => {
               setSelectedActionId(actionId);
               setTab(1);

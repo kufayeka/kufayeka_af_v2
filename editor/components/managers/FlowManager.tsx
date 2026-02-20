@@ -1,35 +1,20 @@
-import { useEffect, useState } from "react";
-import {
-  Box,
-  Button,
-  FormControl,
-  FormControlLabel,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
-  Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TablePagination,
-  TableRow,
-  Typography
-} from "@mui/material";
-import type { SelectChangeEvent } from "@mui/material/Select";
+import { useEffect, useMemo, useState } from "react";
+import { Box, Paper, TextField, Typography } from "@mui/material";
 import type { FlowLink, NodePosition } from "../../types/program";
 import FlowDiagram from "./FlowDiagram";
 
 interface FlowManagerProps {
   triggerIds: string[];
   actionIds: string[];
+  nodeLabels?: Record<string, string>;
   links: FlowLink[];
   nodePositions: Record<string, NodePosition>;
+  zoom?: number;
+  onZoomChange?: (zoom: number) => void;
   onAddLink: (link: FlowLink) => void;
   onUpdateLink: (index: number, patch: Partial<FlowLink>) => void;
   onRemoveLink: (index: number) => void;
+  onRemoveNodeFromFlow?: (nodeId: string) => void;
   onActionNodeDoubleClick?: (actionId: string) => void;
   onNodePositionDragStart?: () => void;
   onNodePositionChange?: (nodeId: string, position: NodePosition) => void;
@@ -39,213 +24,139 @@ interface FlowManagerProps {
 export default function FlowManager({
   triggerIds,
   actionIds,
+  nodeLabels = {},
   links,
   nodePositions,
-  onAddLink,
-  onUpdateLink,
+  zoom,
+  onZoomChange,
   onRemoveLink,
+  onRemoveNodeFromFlow,
   onActionNodeDoubleClick,
   onNodePositionDragStart,
   onNodePositionChange,
   onConnectNodes
 }: FlowManagerProps) {
   const [selectedLinkIndex, setSelectedLinkIndex] = useState(-1);
-  const [draft, setDraft] = useState<FlowLink>({ from: "", to: "", enabled: true });
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [selectedNodeId, setSelectedNodeId] = useState("");
+  const [search, setSearch] = useState("");
 
-  const nodeOptions = [...triggerIds, ...actionIds];
-  const pagedLinks = links.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  const allNodes = useMemo(
+    () => [
+      ...triggerIds.map((id) => ({ id, kind: "trigger" as const })),
+      ...actionIds.map((id) => ({ id, kind: "action" as const }))
+    ],
+    [triggerIds, actionIds]
+  );
+
+  const placedIds = useMemo(() => new Set(Object.keys(nodePositions || {})), [nodePositions]);
+  const availableNodes = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    return allNodes.filter((node) => {
+      if (placedIds.has(node.id)) return false;
+      if (!keyword) return true;
+      return `${node.id} ${node.kind}`.toLowerCase().includes(keyword);
+    });
+  }, [allNodes, placedIds, search]);
 
   useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(links.length / rowsPerPage) - 1);
-    if (page > maxPage) {
-      setPage(maxPage);
-    }
-  }, [links.length, rowsPerPage, page]);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      if (selectedNodeId) {
+        onRemoveNodeFromFlow?.(selectedNodeId);
+        setSelectedNodeId("");
+        setSelectedLinkIndex(-1);
+        event.preventDefault();
+        return;
+      }
+      if (selectedLinkIndex >= 0) {
+        onRemoveLink(selectedLinkIndex);
+        setSelectedLinkIndex(-1);
+      }
+      event.preventDefault();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onRemoveLink, onRemoveNodeFromFlow, selectedLinkIndex, selectedNodeId]);
 
   return (
-    <Box sx={{ width: "100%" }}>
-      <Paper
-        variant="outlined"
-        sx={{
-          p: 1,
-          height: 430,
-          display: "flex",
-          flexDirection: "column",
-          mb: 1
-        }}
-      >
-        <Typography variant="subtitle1" sx={{ mb: 0.75 }}>
-          Flow Diagram
-        </Typography>
-        <Box sx={{ flex: 1, minHeight: 0 }}>
+    <Box sx={{ width: "100%", height: "calc(100vh - 120px)", display: "grid", gridTemplateColumns: "320px 1fr", gap: 1 }}>
+      <Paper variant="outlined" sx={{ p: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto auto 1fr", gap: 0.75 }}>
+        <Typography variant="subtitle1">Available Nodes</Typography>
+        <TextField
+          size="small"
+          label="Search Node"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <Box sx={{ minHeight: 0, overflow: "auto", border: "1px solid #e2e8f0", borderRadius: 0.5, p: 0.5, display: "flex", flexDirection: "column", gap: 0.5, alignItems: "stretch" }}>
+          {availableNodes.map((node) => (
+            <Box
+              key={node.id}
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.setData("application/x-flow-node", node.id);
+                event.dataTransfer.setData("text/plain", node.id);
+                event.dataTransfer.setData("application/x-flow-node-kind", node.kind);
+                event.dataTransfer.effectAllowed = "copyMove";
+              }}
+              sx={{
+                px: 1,
+                py: 0.75,
+                borderRadius: 1,
+                border: "1px solid",
+                borderColor: node.kind === "action" ? "#14f4b4" : "#94a3b8",
+                background: node.kind === "action" ? "#01806b" : "#676e6c",
+                cursor: "grab",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                minHeight: 40,
+                maxHeight: 40,
+                width: "100%"
+              }}
+            >
+              <Typography variant="body2" sx={{ fontFamily: "monospace", fontWeight: 700, color: "#fff" }}>
+                {(nodeLabels[node.id] || node.id).trim() || node.id}
+              </Typography>
+              <Typography variant="caption" sx={{ fontFamily: "monospace", color: "#dbeafe", ml: 1, opacity: 0.9 }}>
+                {node.id}
+              </Typography>
+            </Box>
+          ))}
+          {availableNodes.length === 0 && (
+            <Typography variant="caption" color="text.secondary">
+              No available nodes.
+            </Typography>
+          )}
+        </Box>
+      </Paper>
+
+      <Paper variant="outlined" sx={{ p: 1, minHeight: 0, display: "grid", gridTemplateRows: "1fr" }}>
         <FlowDiagram
           triggerIds={triggerIds}
           actionIds={actionIds}
+          nodeLabels={nodeLabels}
           links={links}
           nodePositions={nodePositions}
+          zoom={zoom}
+          onZoomChange={onZoomChange}
           selectedLinkIndex={selectedLinkIndex}
-          onSelectLink={setSelectedLinkIndex}
+          selectedNodeId={selectedNodeId}
+          onSelectLink={(index) => {
+            setSelectedLinkIndex(index);
+            if (index >= 0) setSelectedNodeId("");
+          }}
+          onSelectNode={setSelectedNodeId}
           onNodeDoubleClick={(nodeId, kind) => {
             if (kind === "action") onActionNodeDoubleClick?.(nodeId);
           }}
           onNodeDragStart={onNodePositionDragStart}
           onNodePositionChange={onNodePositionChange}
           onConnectNodes={onConnectNodes}
-        />
-        </Box>
-      </Paper>
-
-      <Paper variant="outlined" sx={{ p: 1, width: "100%" }}>
-        <Typography variant="subtitle1" sx={{ mb: 0.75 }}>
-          Connection Manager
-        </Typography>
-        <Box sx={{ mb: 1, display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 0.75 }}>
-          <FormControl size="small" fullWidth>
-            <InputLabel>From</InputLabel>
-            <Select
-              label="From"
-              value={draft.from}
-              onChange={(e: SelectChangeEvent<string>) =>
-                setDraft((prev) => ({ ...prev, from: e.target.value }))
-              }
-            >
-              {nodeOptions.map((id) => (
-                <MenuItem key={id} value={id}>
-                  {id}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" fullWidth>
-            <InputLabel>To</InputLabel>
-            <Select
-              label="To"
-              value={draft.to}
-              onChange={(e: SelectChangeEvent<string>) =>
-                setDraft((prev) => ({ ...prev, to: e.target.value }))
-              }
-            >
-              {nodeOptions.map((id) => (
-                <MenuItem key={id} value={id}>
-                  {id}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <Button
-            variant="contained"
-            onClick={() => {
-              if (!draft.from || !draft.to) return;
-              onAddLink(draft);
-              setDraft({ from: "", to: "", enabled: true });
-            }}
-          >
-            Add
-          </Button>
-        </Box>
-
-        <TableContainer sx={{ maxHeight: 300, border: "1px solid #e2e8f0", borderRadius: 0.5 }}>
-          <Table stickyHeader size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ width: 60, py: 0.75 }}>No</TableCell>
-                <TableCell sx={{ py: 0.75 }}>From</TableCell>
-                <TableCell sx={{ py: 0.75 }}>To</TableCell>
-                <TableCell sx={{ width: 120, py: 0.75 }}>Enabled</TableCell>
-                <TableCell sx={{ width: 92, py: 0.75 }}>Action</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {pagedLinks.map((link, rowIndex) => {
-                const actualIndex = page * rowsPerPage + rowIndex;
-                const isSelected = actualIndex === selectedLinkIndex;
-                return (
-                  <TableRow
-                    key={`${link.from}-${link.to}-${actualIndex}`}
-                    selected={isSelected}
-                    hover
-                    onClick={() => setSelectedLinkIndex(actualIndex)}
-                  >
-                    <TableCell sx={{ py: 0.5 }}>{actualIndex + 1}</TableCell>
-                    <TableCell sx={{ py: 0.5 }}>
-                      <FormControl size="small" fullWidth>
-                        <Select
-                          value={link.from}
-                          onChange={(e: SelectChangeEvent<string>) =>
-                            onUpdateLink(actualIndex, { from: e.target.value })
-                          }
-                        >
-                          {nodeOptions.map((id) => (
-                            <MenuItem key={id} value={id}>
-                              {id}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </TableCell>
-                    <TableCell sx={{ py: 0.5 }}>
-                      <FormControl size="small" fullWidth>
-                        <Select
-                          value={link.to}
-                          onChange={(e: SelectChangeEvent<string>) =>
-                            onUpdateLink(actualIndex, { to: e.target.value })
-                          }
-                        >
-                          {nodeOptions.map((id) => (
-                            <MenuItem key={id} value={id}>
-                              {id}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </TableCell>
-                    <TableCell sx={{ py: 0.5 }}>
-                      <FormControlLabel
-                        sx={{ m: 0 }}
-                        control={
-                          <Switch
-                            size="small"
-                            checked={link.enabled !== false}
-                            onChange={(_e, checked) =>
-                              onUpdateLink(actualIndex, { enabled: checked })
-                            }
-                          />
-                        }
-                        label=""
-                      />
-                    </TableCell>
-                    <TableCell sx={{ py: 0.5 }}>
-                      <Button
-                        size="small"
-                        color="error"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRemoveLink(actualIndex);
-                          setSelectedLinkIndex(-1);
-                        }}
-                      >
-                        Remove
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        <TablePagination
-          component="div"
-          rowsPerPageOptions={[5, 10, 20, 50]}
-          count={links.length}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={(_event, nextPage) => setPage(nextPage)}
-          onRowsPerPageChange={(event) => {
-            setRowsPerPage(Number(event.target.value));
-            setPage(0);
-          }}
         />
       </Paper>
     </Box>

@@ -124,6 +124,7 @@ function getEffectiveDashboardAttributes(
     const template = templateById.get(templateId);
     if (!template) continue;
     for (const attr of template.attributes) {
+      if (attr.enabled === false) continue;
       const prev = rows.get(attr.name);
       if (!prev) {
         rows.set(attr.name, {

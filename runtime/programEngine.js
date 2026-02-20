@@ -11,15 +11,20 @@ function loadProgramFromFile(programPath) {
   return { absolutePath, program: data };
 }
 
-function createActionHandler(action) {
+function createActionHandler(action, context = {}) {
   if (action.type === "script") {
-    return createScriptActionHandler(action);
+    return createScriptActionHandler(action, context);
   }
 
   throw new Error(`Action type "${action.type}" tidak didukung`);
 }
 
 function registerActions(runtime, actions = []) {
+  const scriptTemplates = runtime.getGlobal("scriptTemplates", []);
+  const templateById = new Map(
+    (Array.isArray(scriptTemplates) ? scriptTemplates : []).map((template) => [template.id, template])
+  );
+
   for (const action of actions) {
     if (!action.id) {
       throw new Error("Action wajib punya id");
@@ -28,7 +33,7 @@ function registerActions(runtime, actions = []) {
       runtime.addNode(action.id, async (_msg, _send) => {});
       continue;
     }
-    const handler = createActionHandler(action);
+    const handler = createActionHandler(action, { templateById });
     runtime.addNode(action.id, handler);
   }
 }
@@ -84,6 +89,7 @@ function startTriggers(runtime, triggers = []) {
 function startProgram(runtime, program) {
   const assetStorage = ensureAssetStorage(runtime, normalizeAssetSection(program.assets || {}));
   assetStorage.replace(normalizeAssetSection(program.assets || {}));
+  runtime.setGlobal("scriptTemplates", Array.isArray(program.scriptTemplates) ? program.scriptTemplates : []);
   registerActions(runtime, program.actions || []);
   registerLinks(runtime, (program.flows && program.flows.links) || []);
   const stops = startTriggers(runtime, program.triggers || []);

@@ -1,3 +1,4 @@
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import {
   Box,
@@ -35,6 +36,8 @@ import type {
   AssetFrameworkDefinition,
   Program
 } from "../../types/program";
+
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
 const ATTRIBUTE_TYPES: AssetAttributeType[] = [
   "number",
@@ -132,6 +135,7 @@ function getEffectiveAttributes(
     const template = templateById.get(templateId);
     if (!template) continue;
     for (const attr of template.attributes) {
+      if (attr.enabled === false) continue;
       if (!rows.has(attr.name)) {
         rows.set(attr.name, {
           name: attr.name,
@@ -271,6 +275,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     const next = {
       id,
       name: `Template_${assets.attributeTemplates.length + 1}`,
+      enabled: true,
       attributes: []
     };
     updateTemplates([...assets.attributeTemplates, next]);
@@ -412,10 +417,12 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   ) => {
     setLoadingOptions(true);
     try {
-      const providerDefs = templates.flatMap((template) =>
+      const providerDefs = templates
+        .flatMap((template) =>
         template.attributes
           .filter((attr) =>
-            attr.inputMode === "select" || attr.inputMode === "radio" || attr.inputMode === "multiselect"
+            attr.enabled !== false &&
+            (attr.inputMode === "select" || attr.inputMode === "radio" || attr.inputMode === "multiselect")
           )
           .map((attr) => ({
             key: `${template.id}:${attr.name}`,
@@ -426,25 +433,28 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
           }))
       );
 
-      const entries: Array<[string, Array<{ label: string; value: unknown }>]> = [];
-      for (const def of providerDefs) {
-        if (def.source === "static") {
-          entries.push([def.key, def.staticOptions]);
-          continue;
-        }
-        if (!def.url) {
-          entries.push([def.key, def.staticOptions]);
-          continue;
-        }
-        try {
-          const raw = await fetch(def.url).then((r) => r.json());
-          const transformed = runTransform(def.script, raw);
-          entries.push([def.key, normalizeOptions(transformed)]);
-        } catch {
-          entries.push([def.key, def.staticOptions]);
-        }
-      }
-      setOptionMap(Object.fromEntries(entries));
+      const results = await Promise.all(
+        providerDefs.map(async (def): Promise<[string, Array<{ label: string; value: unknown }>]> => {
+          if (def.source === "static" || !def.url) {
+            return [def.key, def.staticOptions];
+          }
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 2000);
+            let raw: unknown;
+            try {
+              raw = await fetch(def.url, { signal: controller.signal }).then((r) => r.json());
+            } finally {
+              clearTimeout(timer);
+            }
+            const transformed = runTransform(def.script, raw);
+            return [def.key, normalizeOptions(transformed)];
+          } catch {
+            return [def.key, def.staticOptions];
+          }
+        })
+      );
+      setOptionMap(Object.fromEntries(results));
     } finally {
       setLoadingOptions(false);
     }
@@ -477,7 +487,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         return normalized.assets.assets[0]?.id || "";
       });
       setExpandedKeys(normalized.assets.assets.map((asset) => `asset:${asset.id}`));
-      await loadOptionProviders(normalized.assets.attributeTemplates);
+      void loadOptionProviders(normalized.assets.attributeTemplates);
     } catch {
       // keep previous state when reload fails
     } finally {
@@ -540,7 +550,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                   <Button
                     variant="outlined"
                     onClick={() => void reloadFromRuntime()}
-                    disabled={loadingOptions || loadingRuntime}
+                    disabled={loadingRuntime}
                     sx={{ minWidth: 40, px: 1 }}
                   >
                     <RefreshCcw size={15} />
@@ -746,10 +756,11 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                     maxHeight: "calc(100vh - 360px)"
                   }}
                 >
-                <Table size="small" stickyHeader sx={{ minWidth: 1780 }}>
+                <Table size="small" stickyHeader sx={{ minWidth: 2100 }}>
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ minWidth: 220 }}>Name</TableCell>
+                      <TableCell sx={{ minWidth: 110 }}>Enabled</TableCell>
                       <TableCell sx={{ minWidth: 130 }}>Type</TableCell>
                       <TableCell sx={{ minWidth: 260 }}>Default Value</TableCell>
                       <TableCell sx={{ minWidth: 180 }}>Unit</TableCell>
@@ -758,7 +769,8 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                       <TableCell sx={{ minWidth: 120 }}>Nullable</TableCell>
                       <TableCell sx={{ minWidth: 150 }}>Input</TableCell>
                       <TableCell sx={{ minWidth: 150 }}>Option Source</TableCell>
-                      <TableCell sx={{ minWidth: 320 }}>Options / API</TableCell>
+                      <TableCell sx={{ minWidth: 340 }}>Options / API URL</TableCell>
+                      <TableCell sx={{ minWidth: 420 }}>Transform Script</TableCell>
                       <TableCell sx={{ minWidth: 100 }}>Action</TableCell>
                     </TableRow>
                   </TableHead>
@@ -775,6 +787,20 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                                 ...template,
                                 attributes: template.attributes.map((item, itemIdx) =>
                                   itemIdx === idx ? { ...item, name: e.target.value } : item
+                                )
+                              }));
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            size="small"
+                            checked={attribute.enabled !== false}
+                            onChange={(_e, checked) => {
+                              updateTemplateWith(selectedTemplate.id, (template) => ({
+                                ...template,
+                                attributes: template.attributes.map((item, itemIdx) =>
+                                  itemIdx === idx ? { ...item, enabled: checked } : item
                                 )
                               }));
                             }}
@@ -923,45 +949,33 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                             </Select>
                           </FormControl>
                         </TableCell>
-                        <TableCell sx={{ minWidth: 260 }}>
+                        <TableCell sx={{ minWidth: 320 }}>
                           {(attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform") ? (
                             <Box sx={{ display: "grid", gap: 0.5 }}>
-                              <TextField
-                                size="small"
-                                fullWidth
-                                placeholder="https://.../options"
-                                value={attribute.optionsApiUrl ?? ""}
-                                onChange={(e) => {
-                                  updateTemplateWith(selectedTemplate.id, (template) => ({
-                                    ...template,
-                                    attributes: template.attributes.map((item, itemIdx) =>
-                                      itemIdx === idx
-                                        ? { ...item, optionsApiUrl: e.target.value }
-                                        : item
-                                    )
-                                  }));
-                                }}
-                              />
-                              {attribute.optionsSource === "scriptTransform" && (
-                                <TextField
-                                  size="small"
-                                  fullWidth
-                                  multiline
-                                  minRows={2}
-                                  placeholder="return input.data.map(x => ({label:x.name, value:x.code}));"
-                                  value={attribute.optionsTransformScript ?? ""}
-                                  onChange={(e) => {
+                              <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
+                                <MonacoEditor
+                                  height="68px"
+                                  defaultLanguage="plaintext"
+                                  value={attribute.optionsApiUrl ?? ""}
+                                  onChange={(value) => {
                                     updateTemplateWith(selectedTemplate.id, (template) => ({
                                       ...template,
                                       attributes: template.attributes.map((item, itemIdx) =>
                                         itemIdx === idx
-                                          ? { ...item, optionsTransformScript: e.target.value }
+                                          ? { ...item, optionsApiUrl: value ?? "" }
                                           : item
                                       )
                                     }));
                                   }}
+                                  options={{
+                                    minimap: { enabled: false },
+                                    fontSize: 12,
+                                    lineNumbers: "off",
+                                    wordWrap: "on",
+                                    scrollBeyondLastLine: false
+                                  }}
                                 />
-                              )}
+                              </Box>
                             </Box>
                           ) : (
                             <TextField
@@ -984,6 +998,38 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                                 }));
                               }}
                             />
+                          )}
+                        </TableCell>
+                        <TableCell sx={{ minWidth: 380 }}>
+                          {attribute.optionsSource === "scriptTransform" ? (
+                            <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
+                              <MonacoEditor
+                                height="150px"
+                                defaultLanguage="javascript"
+                                value={attribute.optionsTransformScript ?? ""}
+                                onChange={(value) => {
+                                  updateTemplateWith(selectedTemplate.id, (template) => ({
+                                    ...template,
+                                    attributes: template.attributes.map((item, itemIdx) =>
+                                      itemIdx === idx
+                                        ? { ...item, optionsTransformScript: value ?? "" }
+                                        : item
+                                    )
+                                  }));
+                                }}
+                                options={{
+                                  minimap: { enabled: false },
+                                  fontSize: 12,
+                                  lineNumbers: "off",
+                                  wordWrap: "on",
+                                  scrollBeyondLastLine: false
+                                }}
+                              />
+                            </Box>
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">
+                              -
+                            </Typography>
                           )}
                         </TableCell>
                         <TableCell>
@@ -1015,6 +1061,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                       attributes: [
                         ...template.attributes,
                         {
+                          enabled: true,
                           name: `attribute_${template.attributes.length + 1}`,
                           type: "number",
                           defaultValue: 0,

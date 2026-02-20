@@ -1,6 +1,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import {
+  Autocomplete,
   Box,
   Button,
   Dialog,
@@ -12,6 +13,12 @@ import {
   Paper,
   Select,
   Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Tab,
   Tabs,
   TextField,
@@ -23,6 +30,9 @@ import type { DataNode, Key } from "rc-tree/lib/interface";
 import { FileCode2, FolderTree } from "lucide-react";
 import type {
   ActionDefinition,
+  AssetFrameworkDefinition,
+  ScriptBindingSource,
+  ScriptVariableBindingDefinition,
   ScriptTemplateDefinition
 } from "../../types/program";
 
@@ -31,6 +41,7 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false 
 interface ActionManagerProps {
   actions: ActionDefinition[];
   scriptTemplates: ScriptTemplateDefinition[];
+  assets: AssetFrameworkDefinition;
   selectedActionId: string;
   onSelectAction: (id: string) => void;
   onAddAction: (parentPath?: string) => void;
@@ -42,11 +53,128 @@ interface ActionManagerProps {
   onUpdateScriptTemplate: (id: string, patch: Partial<ScriptTemplateDefinition>) => void;
 }
 
+function parseMaybeJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function serializeValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  return JSON.stringify(value, null, 2);
+}
+
+function defaultBinding(): ScriptVariableBindingDefinition {
+  return {
+    name: "binding_1",
+    source: "static_string",
+    staticValue: "",
+    attributePath: "",
+    allowOverride: false
+  };
+}
+
+function getAssetAttributeOptions(assets: AssetFrameworkDefinition): Array<{
+  kind: "attribute";
+  path: string;
+  assetId: string;
+  attributeName: string;
+  value: unknown;
+  type: string;
+  unit: string;
+}> {
+  const byId = new Map(assets.assets.map((asset) => [asset.id, asset]));
+  const templateById = new Map(assets.attributeTemplates.map((template) => [template.id, template]));
+
+  const getPath = (assetId: string): string => {
+    const asset = byId.get(assetId);
+    if (!asset) return "";
+    const parts = [asset.name];
+    let parentId = asset.parentId;
+    while (parentId) {
+      const parent = byId.get(parentId);
+      if (!parent) break;
+      parts.unshift(parent.name);
+      parentId = parent.parentId;
+    }
+    return parts.join(".");
+  };
+
+  const options: Array<{
+    kind: "attribute";
+    path: string;
+    assetId: string;
+    attributeName: string;
+    value: unknown;
+    type: string;
+    unit: string;
+  }> = [];
+  for (const asset of assets.assets) {
+    const basePath = getPath(asset.id);
+    const attrMap = new Map<string, { value: unknown; type: string; unit: string }>();
+    for (const templateId of asset.templateIds) {
+      const template = templateById.get(templateId);
+      if (!template) continue;
+      for (const attr of template.attributes) {
+        if (attr.enabled === false) continue;
+        if (!attrMap.has(attr.name)) {
+          attrMap.set(attr.name, {
+            value: attr.defaultValue,
+            type: String(attr.type || "string"),
+            unit: String(attr.unit || "")
+          });
+        }
+      }
+    }
+    for (const [attrName, attr] of Object.entries(asset.attributes || {})) {
+      const typed = attr as { value?: unknown };
+      const prev = attrMap.get(attrName);
+      attrMap.set(attrName, {
+        value: Object.prototype.hasOwnProperty.call(typed, "value") ? typed.value : typed,
+        type: prev?.type || "string",
+        unit: prev?.unit || ""
+      });
+    }
+    for (const [attributeName, attr] of attrMap.entries()) {
+      options.push({
+        kind: "attribute",
+        path: `${basePath}.${attributeName}`,
+        assetId: asset.id,
+        attributeName,
+        value: attr.value,
+        type: attr.type,
+        unit: attr.unit
+      });
+    }
+  }
+
+  options.sort((a, b) => a.path.localeCompare(b.path));
+  return options;
+}
+
+function resolveAttributePath(
+  path: string,
+  options: Array<{
+    kind: "attribute";
+    path: string;
+    assetId: string;
+    attributeName: string;
+    value: unknown;
+    type: string;
+    unit: string;
+  }>
+) {
+  const found = options.find((item) => item.path === path);
+  return found?.path || path;
+}
+
 function buildHierarchyTree(actions: ActionDefinition[], search: string): DataNode[] {
   const keyword = search.trim().toLowerCase();
   const filteredActions = keyword
     ? actions.filter((action) =>
-        `${action.id} ${action.description ?? ""} ${action.type}`.toLowerCase().includes(keyword)
+        `${action.id} ${action.label ?? ""} ${action.description ?? ""} ${action.type}`.toLowerCase().includes(keyword)
       )
     : actions;
 
@@ -98,6 +226,11 @@ function buildHierarchyTree(actions: ActionDefinition[], search: string): DataNo
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
           <FileCode2 size={15} />
           <Typography variant="body2">{action.id.split(".").pop() || action.id}</Typography>
+          {!!action.label?.trim() && (
+            <Typography variant="caption" color="text.secondary">
+              {action.label}
+            </Typography>
+          )}
         </Box>
       ),
       isLeaf: true
@@ -109,9 +242,19 @@ function buildHierarchyTree(actions: ActionDefinition[], search: string): DataNo
   return walk("");
 }
 
+function getTemplateScriptForAction(
+  action: ActionDefinition,
+  scriptTemplates: ScriptTemplateDefinition[]
+): string {
+  if (!action.templateId) return action.script;
+  const template = scriptTemplates.find((item) => item.id === action.templateId);
+  return template?.script ?? action.script;
+}
+
 export default function ActionManager({
   actions,
   scriptTemplates,
+  assets,
   selectedActionId,
   onSelectAction,
   onAddAction,
@@ -127,11 +270,18 @@ export default function ActionManager({
   const [selectedHierarchyKey, setSelectedHierarchyKey] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
-  const [maxEditor, setMaxEditor] = useState(false);
+  const [maxEditor, setMaxEditor] = useState(false); // action editor
+  const [maxTemplateEditor, setMaxTemplateEditor] = useState(false); // template editor
 
   const selectedAction = actions.find((item) => item.id === selectedActionId);
   const selectedTemplate = scriptTemplates.find((item) => item.id === selectedTemplateId);
+  const selectedActionTemplate = scriptTemplates.find((item) => item.id === selectedAction?.templateId);
   const hierarchyTree = useMemo(() => buildHierarchyTree(actions, search), [actions, search]);
+  const attributeOptions = useMemo(() => getAssetAttributeOptions(assets), [assets]);
+  const assetAttributePaths = useMemo(
+    () => attributeOptions.map((item) => item.path),
+    [attributeOptions]
+  );
 
   const selectedFolderPath = useMemo(() => {
     if (!selectedHierarchyKey.startsWith("folder:")) return "";
@@ -213,41 +363,223 @@ export default function ActionManager({
                   onChange={(e) => onRenameAction(selectedAction.id, e.target.value)}
                   helperText="Contoh: areaA.line1.printer.offset.startup"
                 />
-                <TextField
-                  label="Description"
-                  value={selectedAction.description ?? ""}
-                  onChange={(e) =>
-                    onUpdateAction(selectedAction.id, { description: e.target.value })
-                  }
-                />
-                <FormControl fullWidth>
-                  <InputLabel>Script Template</InputLabel>
-                  <Select
-                    label="Script Template"
-                    value={selectedAction.templateId ?? ""}
-                    onChange={(e: SelectChangeEvent<string>) =>
-                      onUpdateAction(selectedAction.id, { templateId: e.target.value || undefined })
-                    }
-                  >
-                    <MenuItem value="">(None)</MenuItem>
-                    {scriptTemplates.map((template) => (
-                      <MenuItem key={template.id} value={template.id}>
-                        {template.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+
+            <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, overflowX: "auto" }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ minWidth: 160 }}>Field</TableCell>
+                    <TableCell>Value</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  <TableRow>
+                    <TableCell>Action Label</TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={selectedAction.label ?? ""}
+                        onChange={(e) => onUpdateAction(selectedAction.id, { label: e.target.value })}
+                      />
+                    </TableCell>
+                  </TableRow>
+
+                  <TableRow>
+                    <TableCell>Description</TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={selectedAction.description ?? ""}
+                        onChange={(e) => onUpdateAction(selectedAction.id, { description: e.target.value })}
+                      />
+                    </TableCell>
+                  </TableRow>
+
+                  <TableRow>
+                    <TableCell>Script Template</TableCell>
+                    <TableCell>
+                      <FormControl size="small" fullWidth>
+                        <Select
+                          value={selectedAction.templateId ?? ""}
+                          onChange={(e: SelectChangeEvent<string>) =>
+                            onUpdateAction(selectedAction.id, { templateId: e.target.value || undefined })
+                          }
+                        >
+                          <MenuItem value="">(None)</MenuItem>
+                          {scriptTemplates.map((template) => (
+                            <MenuItem key={template.id} value={template.id}>
+                              {template.name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+                <Typography variant="caption" color="text.secondary">
+                  Jika template dipilih, script action otomatis mengikuti template dan update real-time saat template berubah.
+                </Typography>
+                {selectedActionTemplate && (
+                  <Box sx={{ display: "grid", gap: 0.75 }}>
+                    <Typography variant="subtitle2">Template Bindings</Typography>
+                    <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, maxHeight: 260 }}>
+                      <Table size="small" stickyHeader>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ minWidth: 180 }}>Binding</TableCell>
+                            <TableCell sx={{ minWidth: 130 }}>Source</TableCell>
+                            <TableCell sx={{ minWidth: 320 }}>Value</TableCell>
+                            <TableCell sx={{ minWidth: 120 }}>Override</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {(selectedActionTemplate.variableBindings || []).map((binding) => {
+                            const canOverride = binding.allowOverride === true;
+                            const currentOverride = selectedAction.templateBindingOverrides?.[binding.name];
+                            const effective = canOverride && currentOverride ? currentOverride : binding;
+                            return (
+                              <TableRow key={`action-binding-${binding.name}`}>
+                                <TableCell>{binding.name}</TableCell>
+                                <TableCell>{binding.source}</TableCell>
+                                <TableCell>
+                                  {effective.source === "attribute" ? (
+                                    <Autocomplete
+                                      freeSolo
+                                      options={assetAttributePaths}
+                                      value={effective.attributePath ?? ""}
+                                      disabled={!canOverride}
+                                      onInputChange={(_e, value) => {
+                                        if (!canOverride) return;
+                                        onUpdateAction(selectedAction.id, {
+                                          templateBindingOverrides: {
+                                            ...(selectedAction.templateBindingOverrides || {}),
+                                            [binding.name]: {
+                                              ...binding,
+                                              ...currentOverride,
+                                              source: "attribute",
+                                              attributePath: resolveAttributePath(value, attributeOptions)
+                                            }
+                                          }
+                                        });
+                                      }}
+                                      renderInput={(params) => (
+                                        <TextField {...params} size="small" placeholder="Jasuindo.Taiyo1.Operator" />
+                                      )}
+                                    />
+                                  ) : effective.source === "static_boolean" ? (
+                                    <FormControl size="small" sx={{ minWidth: 120 }}>
+                                      <Select
+                                        value={String(effective.staticValue === true)}
+                                        disabled={!canOverride}
+                                        onChange={(e: SelectChangeEvent<string>) => {
+                                          if (!canOverride) return;
+                                          onUpdateAction(selectedAction.id, {
+                                            templateBindingOverrides: {
+                                              ...(selectedAction.templateBindingOverrides || {}),
+                                              [binding.name]: {
+                                                ...binding,
+                                                ...currentOverride,
+                                                source: "static_boolean",
+                                                staticValue: e.target.value === "true"
+                                              }
+                                            }
+                                          });
+                                        }}
+                                      >
+                                        <MenuItem value="true">true</MenuItem>
+                                        <MenuItem value="false">false</MenuItem>
+                                      </Select>
+                                    </FormControl>
+                                  ) : effective.source === "static_number" ? (
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      fullWidth
+                                      disabled={!canOverride}
+                                      value={Number(effective.staticValue ?? 0)}
+                                      onChange={(e) => {
+                                        if (!canOverride) return;
+                                        onUpdateAction(selectedAction.id, {
+                                          templateBindingOverrides: {
+                                            ...(selectedAction.templateBindingOverrides || {}),
+                                            [binding.name]: {
+                                              ...binding,
+                                              ...currentOverride,
+                                              source: "static_number",
+                                              staticValue: Number(e.target.value)
+                                            }
+                                          }
+                                        });
+                                      }}
+                                    />
+                                  ) : effective.source === "static_array" || effective.source === "static_object" ? (
+                                    <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
+                                      <MonacoEditor
+                                        height="84px"
+                                        defaultLanguage="json"
+                                        value={serializeValue(effective.staticValue ?? (effective.source === "static_array" ? [] : {}))}
+                                        onChange={(value) => {
+                                          if (!canOverride) return;
+                                          onUpdateAction(selectedAction.id, {
+                                            templateBindingOverrides: {
+                                              ...(selectedAction.templateBindingOverrides || {}),
+                                              [binding.name]: {
+                                                ...binding,
+                                                ...currentOverride,
+                                                source: effective.source,
+                                                staticValue: parseMaybeJson(value ?? "")
+                                              }
+                                            }
+                                          });
+                                        }}
+                                        options={{
+                                          minimap: { enabled: false },
+                                          fontSize: 12,
+                                          lineNumbers: "off",
+                                          wordWrap: "on",
+                                          readOnly: !canOverride,
+                                          scrollBeyondLastLine: false
+                                        }}
+                                      />
+                                    </Box>
+                                  ) : (
+                                    <TextField
+                                      size="small"
+                                      fullWidth
+                                      disabled={!canOverride}
+                                      value={String(effective.staticValue ?? "")}
+                                      onChange={(e) => {
+                                        if (!canOverride) return;
+                                        onUpdateAction(selectedAction.id, {
+                                          templateBindingOverrides: {
+                                            ...(selectedAction.templateBindingOverrides || {}),
+                                            [binding.name]: {
+                                              ...binding,
+                                              ...currentOverride,
+                                              source: "static_string",
+                                              staticValue: e.target.value
+                                            }
+                                          }
+                                        });
+                                      }}
+                                    />
+                                  )}
+                                </TableCell>
+                                <TableCell>{canOverride ? "Yes" : "No"}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Box>
+                )}
                 <Box sx={{ display: "flex", gap: 0.75 }}>
-                  <Button
-                    variant="outlined"
-                    onClick={() => {
-                      const template = scriptTemplates.find((item) => item.id === selectedAction.templateId);
-                      if (!template) return;
-                      onUpdateAction(selectedAction.id, { script: template.script });
-                    }}
-                  >
-                    Apply Selected Template
-                  </Button>
                   <Button
                     size="small"
                     color="error"
@@ -277,17 +609,23 @@ export default function ActionManager({
                   <MonacoEditor
                     height="calc(100vh - 410px)"
                     defaultLanguage="javascript"
-                    value={selectedAction.script}
+                    value={getTemplateScriptForAction(selectedAction, scriptTemplates)}
                     onChange={(value) =>
                       onUpdateAction(selectedAction.id, { script: value ?? "" })
                     }
                     options={{
                       minimap: { enabled: false },
                       fontSize: 14,
-                      wordWrap: "on"
+                      wordWrap: "on",
+                      readOnly: !!selectedAction.templateId
                     }}
                   />
                 </Box>
+                {selectedAction.templateId && (
+                  <Typography variant="caption" color="text.secondary">
+                    Script dikunci karena action ini pakai template. Ubah script dari tab Script Template.
+                  </Typography>
+                )}
 
                 <Dialog fullScreen open={maxEditor} onClose={() => setMaxEditor(false)}>
                   <DialogContent sx={{ p: 1, display: "grid", gridTemplateRows: "auto 1fr", gap: 1 }}>
@@ -303,14 +641,15 @@ export default function ActionManager({
                       <MonacoEditor
                         height="calc(100vh - 96px)"
                         defaultLanguage="javascript"
-                        value={selectedAction.script}
+                        value={getTemplateScriptForAction(selectedAction, scriptTemplates)}
                         onChange={(value) =>
                           onUpdateAction(selectedAction.id, { script: value ?? "" })
                         }
                         options={{
                           minimap: { enabled: false },
                           fontSize: 14,
-                          wordWrap: "on"
+                          wordWrap: "on",
+                          readOnly: !!selectedAction.templateId
                         }}
                       />
                     </Box>
@@ -341,10 +680,22 @@ export default function ActionManager({
                     cursor: "pointer"
                   }}
                 >
-                  <Typography variant="subtitle2">{template.name}</Typography>
+ 
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Typography variant="subtitle2">{template.name}</Typography>
+                    <Button
+                      size="small"
+                      color="error"
+                      variant="outlined"
+                      onClick={() => onRemoveScriptTemplate(template.id)}
+                    >
+                      Remove Template
+                    </Button>
+                  </Box>
                   <Typography variant="caption" color="text.secondary">
                     {template.description || "No description"}
                   </Typography>
+
                 </Box>
               ))}
             </Box>
@@ -373,17 +724,242 @@ export default function ActionManager({
                     onUpdateScriptTemplate(selectedTemplate.id, { description: e.target.value })
                   }
                 />
+
+                <Box sx={{ display: "grid", gap: 0.75 }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Typography variant="subtitle2">Variable Bindings</Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() =>
+                        onUpdateScriptTemplate(selectedTemplate.id, {
+                          variableBindings: [
+                            ...(selectedTemplate.variableBindings || []),
+                            {
+                              ...defaultBinding(),
+                              name: `binding_${(selectedTemplate.variableBindings || []).length + 1}`
+                            }
+                          ]
+                        })
+                      }
+                    >
+                      Add Binding
+                    </Button>
+                  </Box>
+                  <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, overflowX: "auto" }}>
+                    <Table size="small" sx={{ minWidth: 1120 }} stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ minWidth: 180 }}>Name</TableCell>
+                          <TableCell sx={{ minWidth: 150 }}>Source</TableCell>
+                          <TableCell sx={{ minWidth: 380 }}>Value</TableCell>
+                          <TableCell sx={{ minWidth: 140 }}>Allow Override</TableCell>
+                          <TableCell sx={{ minWidth: 100 }}>Action</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(selectedTemplate.variableBindings || []).map((binding, index) => (
+                          <TableRow key={`template-binding-${index}`}>
+                            <TableCell>
+                              <TextField
+                                size="small"
+                                fullWidth
+                                value={binding.name}
+                                onChange={(e) =>
+                                  onUpdateScriptTemplate(selectedTemplate.id, {
+                                    variableBindings: (selectedTemplate.variableBindings || []).map((item, itemIdx) =>
+                                      itemIdx === index ? { ...item, name: e.target.value } : item
+                                    )
+                                  })
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <FormControl size="small" sx={{ minWidth: 130 }}>
+                                <Select
+                                  value={binding.source}
+                                  onChange={(e: SelectChangeEvent<ScriptBindingSource>) =>
+                                    onUpdateScriptTemplate(selectedTemplate.id, {
+                                      variableBindings: (selectedTemplate.variableBindings || []).map((item, itemIdx) =>
+                                        itemIdx === index
+                                          ? {
+                                              ...item,
+                                              source: e.target.value as ScriptBindingSource,
+                                              attributePath:
+                                                e.target.value === "attribute"
+                                                  ? resolveAttributePath(item.attributePath ?? "", attributeOptions)
+                                                  : item.attributePath
+                                            }
+                                          : item
+                                      )
+                                    })
+                                  }
+                                >
+                                  <MenuItem value="static_string">static_string</MenuItem>
+                                  <MenuItem value="static_number">static_number</MenuItem>
+                                  <MenuItem value="static_boolean">static_boolean</MenuItem>
+                                  <MenuItem value="static_array">static_array</MenuItem>
+                                  <MenuItem value="static_object">static_object</MenuItem>
+                                  <MenuItem value="attribute">attribute</MenuItem>
+                                </Select>
+                              </FormControl>
+                            </TableCell>
+                            <TableCell>
+                              {binding.source === "attribute" && (
+                                <Autocomplete
+                                  freeSolo
+                                  options={assetAttributePaths}
+                                  value={binding.attributePath ?? ""}
+                                  onInputChange={(_e, value) =>
+                                    onUpdateScriptTemplate(selectedTemplate.id, {
+                                      variableBindings: (selectedTemplate.variableBindings || []).map((item, itemIdx) =>
+                                        itemIdx === index
+                                          ? { ...item, attributePath: resolveAttributePath(value, attributeOptions) }
+                                          : item
+                                      )
+                                    })
+                                  }
+                                  renderInput={(params) => (
+                                    <TextField {...params} size="small" placeholder="Jasuindo.Taiyo1.Operator" />
+                                  )}
+                                />
+                              )}
+                              {binding.source === "static_boolean" && (
+                                <FormControl size="small" sx={{ minWidth: 120 }}>
+                                  <Select
+                                    value={String(binding.staticValue === true)}
+                                    onChange={(e: SelectChangeEvent<string>) =>
+                                      onUpdateScriptTemplate(selectedTemplate.id, {
+                                        variableBindings: (selectedTemplate.variableBindings || []).map((item, itemIdx) =>
+                                          itemIdx === index ? { ...item, staticValue: e.target.value === "true" } : item
+                                        )
+                                      })
+                                    }
+                                  >
+                                    <MenuItem value="true">true</MenuItem>
+                                    <MenuItem value="false">false</MenuItem>
+                                  </Select>
+                                </FormControl>
+                              )}
+                              {binding.source === "static_number" && (
+                                <TextField
+                                  size="small"
+                                  fullWidth
+                                  type="number"
+                                  value={Number(binding.staticValue ?? 0)}
+                                  onChange={(e) =>
+                                    onUpdateScriptTemplate(selectedTemplate.id, {
+                                      variableBindings: (selectedTemplate.variableBindings || []).map((item, itemIdx) =>
+                                        itemIdx === index ? { ...item, staticValue: Number(e.target.value) } : item
+                                      )
+                                    })
+                                  }
+                                />
+                              )}
+                              {(binding.source === "static_array" || binding.source === "static_object") && (
+                                <Box sx={{ display: "grid", gap: 0.5 }}>
+                                  <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
+                                    <MonacoEditor
+                                      height="80px"
+                                      defaultLanguage="json"
+                                      value={serializeValue(binding.staticValue ?? (binding.source === "static_array" ? [] : {}))}
+                                      onChange={(value) =>
+                                        onUpdateScriptTemplate(selectedTemplate.id, {
+                                          variableBindings: (selectedTemplate.variableBindings || []).map((item, itemIdx) =>
+                                            itemIdx === index
+                                              ? { ...item, staticValue: parseMaybeJson(value ?? "") }
+                                              : item
+                                          )
+                                        })
+                                      }
+                                      options={{
+                                        minimap: { enabled: false },
+                                        fontSize: 12,
+                                        lineNumbers: "off",
+                                        wordWrap: "on",
+                                        scrollBeyondLastLine: false
+                                      }}
+                                    />
+                                  </Box>
+                                </Box>
+                              )}
+                              {binding.source === "static_string" && (
+                                <TextField
+                                  size="small"
+                                  fullWidth
+                                  value={String(binding.staticValue ?? "")}
+                                  onChange={(e) =>
+                                    onUpdateScriptTemplate(selectedTemplate.id, {
+                                      variableBindings: (selectedTemplate.variableBindings || []).map((item, itemIdx) =>
+                                        itemIdx === index ? { ...item, staticValue: e.target.value } : item
+                                      )
+                                    })
+                                  }
+                                />
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ minWidth: 110 }}>
+                              <FormControlLabel
+                                sx={{ m: 0 }}
+                                control={
+                                  <Switch
+                                    size="small"
+                                    checked={binding.allowOverride === true}
+                                    onChange={(_event, checked) =>
+                                      onUpdateScriptTemplate(selectedTemplate.id, {
+                                        variableBindings: (selectedTemplate.variableBindings || []).map((item, itemIdx) =>
+                                          itemIdx === index ? { ...item, allowOverride: checked } : item
+                                        )
+                                      })
+                                    }
+                                  />
+                                }
+                                label=""
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="small"
+                                color="error"
+                                onClick={() =>
+                                  onUpdateScriptTemplate(selectedTemplate.id, {
+                                    variableBindings: (selectedTemplate.variableBindings || []).filter(
+                                      (_item, itemIdx) => itemIdx !== index
+                                    )
+                                  })
+                                }
+                              >
+                                Remove
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {(selectedTemplate.variableBindings || []).length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5}>
+                              <Typography variant="caption" color="text.secondary">
+                                Belum ada binding variable.
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <Typography variant="subtitle2">Template Script</Typography>
                   <Button
                     size="small"
                     color="error"
                     variant="outlined"
-                    onClick={() => onRemoveScriptTemplate(selectedTemplate.id)}
+                    onClick={() => setMaxTemplateEditor(true)}
                   >
-                    Remove Template
+                    Maximise Editor
                   </Button>
                 </Box>
+
                 <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
                   <MonacoEditor
                     height="calc(100vh - 420px)"
@@ -399,6 +975,34 @@ export default function ActionManager({
                     }}
                   />
                 </Box>
+                <Dialog fullScreen open={maxTemplateEditor} onClose={() => setMaxTemplateEditor(false)}>
+                <DialogContent sx={{ p: 1, display: "grid", gridTemplateRows: "auto 1fr", gap: 1 }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Typography variant="subtitle1">
+                      Template Script Editor: {selectedTemplate.name}
+                    </Typography>
+                    <Button variant="outlined" onClick={() => setMaxTemplateEditor(false)}>
+                      Close
+                    </Button>
+                  </Box>
+
+                  <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
+                    <MonacoEditor
+                      height="calc(100vh - 96px)"
+                      defaultLanguage="javascript"
+                      value={selectedTemplate.script}
+                      onChange={(value) =>
+                        onUpdateScriptTemplate(selectedTemplate.id, { script: value ?? "" })
+                      }
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 14,
+                        wordWrap: "on"
+                      }}
+                    />
+                  </Box>
+                </DialogContent>
+              </Dialog>
               </Box>
             )}
           </Paper>

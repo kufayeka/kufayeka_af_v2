@@ -1,3 +1,5 @@
+const { randomUUID } = require("node:crypto");
+
 class Runtime {
   constructor(options = {}) {
     this.wires = new Map();
@@ -139,11 +141,27 @@ class Runtime {
     }
   }
 
+  normalizeMessage(msg) {
+    const source =
+      msg && typeof msg === "object" && !Array.isArray(msg)
+        ? msg
+        : { payload: msg };
+    const normalized = { ...source };
+    if (typeof normalized.id !== "string" || !normalized.id.trim()) {
+      normalized.id = randomUUID();
+    }
+    if (typeof normalized.ts !== "string" || !normalized.ts.trim()) {
+      normalized.ts = new Date().toISOString();
+    }
+    return normalized;
+  }
+
   send(fromId, msg) {
+    const normalized = this.normalizeMessage(msg);
     const nexts = this.wires.get(fromId) || [];
 
     for (const nextId of nexts) {
-      const msgClone = structuredClone(msg);
+      const msgClone = structuredClone(normalized);
       this.enqueueNodeMessage(nextId, msgClone);
     }
   }

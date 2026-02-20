@@ -21,6 +21,14 @@ const theme = createTheme({
         }
       }
     },
+    MuiTableCell: {
+      styleOverrides: {
+        root: {
+          paddingTop: 2,
+          paddingBottom: 2
+        }
+      }
+    },
     MuiButton: {
       defaultProps: {
         size: "small"

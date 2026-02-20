@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { DragEvent as ReactDragEvent } from "react";
 import { Box, Button, Typography } from "@mui/material";
 import type { FlowLink, NodePosition } from "../../types/program";
 
@@ -14,10 +15,15 @@ interface NodePoint {
 interface FlowDiagramProps {
   triggerIds: string[];
   actionIds: string[];
+  nodeLabels?: Record<string, string>;
   links: FlowLink[];
   nodePositions: Record<string, NodePosition>;
+  zoom?: number;
+  onZoomChange?: (zoom: number) => void;
   selectedLinkIndex: number;
+  selectedNodeId?: string;
   onSelectLink: (index: number) => void;
+  onSelectNode?: (nodeId: string) => void;
   onNodeDoubleClick?: (nodeId: string, kind: NodeKind) => void;
   onNodeDragStart?: () => void;
   onNodePositionChange?: (nodeId: string, position: NodePosition) => void;
@@ -26,158 +32,117 @@ interface FlowDiagramProps {
 
 const NODE_WIDTH = 250;
 const NODE_HALF_WIDTH = NODE_WIDTH / 2;
+const NODE_HEIGHT = 52;
 const GRID_SIZE = 10;
+const LINE_CURVE_SCALE = 0.75;
 
-function buildSideLayout(triggerIds: string[], actionIds: string[], links: FlowLink[]): NodePoint[] {
-  const nodeKindMap = new Map<string, NodeKind>();
-  for (const id of triggerIds) nodeKindMap.set(id, "trigger");
-  for (const id of actionIds) nodeKindMap.set(id, "action");
-
-  const outgoing = new Map<string, string[]>();
-  const incoming = new Map<string, string[]>();
-  const allNodeIds = new Set<string>([...triggerIds, ...actionIds]);
-
-  for (const link of links) {
-    allNodeIds.add(link.from);
-    allNodeIds.add(link.to);
-    if (!outgoing.has(link.from)) outgoing.set(link.from, []);
-    if (!incoming.has(link.to)) incoming.set(link.to, []);
-    outgoing.get(link.from)?.push(link.to);
-    incoming.get(link.to)?.push(link.from);
+function generateLinkPath(origX: number, origY: number, destX: number, destY: number, sc = 1): string {
+  const dy = destY - origY;
+  const dx = destX - origX;
+  const delta = Math.sqrt(dy * dy + dx * dx);
+  let scale = LINE_CURVE_SCALE;
+  if (dx * sc > 0) {
+    if (delta < NODE_WIDTH) {
+      scale = 0.75 - 0.75 * ((NODE_WIDTH - delta) / NODE_WIDTH);
+    }
+    const cp1x = origX + sc * (NODE_WIDTH * scale);
+    const cp1y = origY;
+    const cp2x = destX - sc * (NODE_WIDTH * scale);
+    const cp2y = destY;
+    return `M ${origX} ${origY} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${destX} ${destY}`;
   }
 
-  const orderedIds = [
-    ...triggerIds,
-    ...actionIds.filter((id) => !triggerIds.includes(id)),
-    ...Array.from(allNodeIds).filter((id) => !triggerIds.includes(id) && !actionIds.includes(id))
+  scale = 0.4 - 0.2 * (Math.max(0, (NODE_WIDTH - Math.min(Math.abs(dx), Math.abs(dy))) / NODE_WIDTH));
+  const cpHeight = NODE_HEIGHT / 2;
+  const midX = Math.floor(destX - dx / 2);
+  const midY = Math.floor(destY - dy / 2);
+  const y1 = (destY + midY) / 2;
+  const topX = origX + sc * NODE_WIDTH * scale;
+  const topY = dy > 0 ? Math.min(y1 - dy / 2, origY + cpHeight) : Math.max(y1 - dy / 2, origY - cpHeight);
+  const bottomX = destX - sc * NODE_WIDTH * scale;
+  const bottomY = dy > 0 ? Math.max(y1, destY - cpHeight) : Math.min(y1, destY + cpHeight);
+  const x1 = (origX + topX) / 2;
+  const scy = dy > 0 ? 1 : -1;
+  const cp = [
+    [x1, origY],
+    [topX, dy > 0 ? Math.max(origY, topY - cpHeight) : Math.min(origY, topY + cpHeight)],
+    [x1, dy > 0 ? Math.min(midY, topY + cpHeight) : Math.max(midY, topY - cpHeight)],
+    [bottomX, dy > 0 ? Math.max(midY, bottomY - cpHeight) : Math.min(midY, bottomY + cpHeight)],
+    [(destX + bottomX) / 2, destY]
   ];
 
-  const depthMap = new Map<string, number>();
-  for (const id of orderedIds) depthMap.set(id, 0);
-  const roots = orderedIds.filter((id) => (incoming.get(id)?.length || 0) === 0);
-
-  const queue = [...roots];
-  const visitedCount = new Map<string, number>();
-  while (queue.length > 0) {
-    const current = queue.shift() as string;
-    const currentDepth = depthMap.get(current) || 0;
-    const nexts = outgoing.get(current) || [];
-    for (const nextId of nexts) {
-      const candidateDepth = currentDepth + 1;
-      if ((depthMap.get(nextId) || 0) < candidateDepth) depthMap.set(nextId, candidateDepth);
-      visitedCount.set(nextId, (visitedCount.get(nextId) || 0) + 1);
-      const needed = incoming.get(nextId)?.length || 0;
-      if ((visitedCount.get(nextId) || 0) >= needed) queue.push(nextId);
+  if (cp[2][1] === topY + scy * cpHeight) {
+    if (Math.abs(dy) < cpHeight * 10) {
+      cp[1][1] = topY - scy * cpHeight / 2;
+      cp[3][1] = bottomY - scy * cpHeight / 2;
     }
+    cp[2][0] = topX;
   }
 
-  const nodesByDepth = new Map<number, string[]>();
-  for (const id of orderedIds) {
-    const depth = depthMap.get(id) || 0;
-    if (!nodesByDepth.has(depth)) nodesByDepth.set(depth, []);
-    nodesByDepth.get(depth)?.push(id);
-  }
-
-  const H_GAP = 320;
-  const V_GAP = 100;
-  const MIN_GAP = 88;
-  const LEFT = 170;
-  const BASE_Y = 90;
-  const yMap = new Map<string, number>();
-
-  const allDepths = Array.from(nodesByDepth.keys()).sort((a, b) => a - b);
-  for (const depth of allDepths) {
-    const ids = nodesByDepth.get(depth) || [];
-    ids.forEach((id, index) => yMap.set(id, BASE_Y + index * V_GAP));
-  }
-
-  const relaxLayer = (depth: number, useParents: boolean) => {
-    const ids = nodesByDepth.get(depth) || [];
-    const scored = ids.map((id) => {
-      const refs = useParents ? incoming.get(id) || [] : outgoing.get(id) || [];
-      if (refs.length === 0) return { id, score: yMap.get(id) || BASE_Y };
-      const avg = refs.reduce((acc, refId) => acc + (yMap.get(refId) || BASE_Y), 0) / refs.length;
-      const current = yMap.get(id) || BASE_Y;
-      return { id, score: current * 0.35 + avg * 0.65 };
-    });
-
-    scored.sort((a, b) => a.score - b.score);
-    let prevY = BASE_Y - MIN_GAP;
-    for (const item of scored) {
-      const nextY = Math.max(item.score, prevY + MIN_GAP);
-      yMap.set(item.id, nextY);
-      prevY = nextY;
-    }
-  };
-
-  for (let i = 0; i < 3; i += 1) {
-    for (const depth of allDepths) if (depth > 0) relaxLayer(depth, true);
-    for (const depth of [...allDepths].reverse()) if (depth < allDepths[allDepths.length - 1]) relaxLayer(depth, false);
-  }
-
-  for (const [targetId, parents] of incoming.entries()) {
-    if (parents.length < 2) continue;
-    const targetY = yMap.get(targetId) || BASE_Y;
-    for (const parentId of parents) {
-      const parentOut = outgoing.get(parentId) || [];
-      if (parentOut.length === 1) {
-        const currentY = yMap.get(parentId) || BASE_Y;
-        yMap.set(parentId, currentY * 0.25 + targetY * 0.75);
-      }
-    }
-  }
-
-  for (const depth of allDepths) {
-    const ids = nodesByDepth.get(depth) || [];
-    ids.sort((a, b) => (yMap.get(a) || BASE_Y) - (yMap.get(b) || BASE_Y));
-    let prevY = BASE_Y - MIN_GAP;
-    for (const id of ids) {
-      const y = Math.max(yMap.get(id) || BASE_Y, prevY + MIN_GAP);
-      yMap.set(id, y);
-      prevY = y;
-    }
-  }
-
-  return orderedIds.map((id) => ({
-    id,
-    x: LEFT + (depthMap.get(id) || 0) * H_GAP,
-    y: yMap.get(id) || BASE_Y,
-    kind: nodeKindMap.get(id) || "action"
-  }));
+  return (
+    `M ${origX} ${origY} ` +
+    `C ${cp[0][0]} ${cp[0][1]} ${cp[1][0]} ${cp[1][1]} ${topX} ${topY} ` +
+    `S ${cp[2][0]} ${cp[2][1]} ${midX} ${midY} ` +
+    `S ${cp[3][0]} ${cp[3][1]} ${bottomX} ${bottomY} ` +
+    `S ${cp[4][0]} ${cp[4][1]} ${destX} ${destY}`
+  );
 }
 
 export default function FlowDiagram({
   triggerIds,
   actionIds,
+  nodeLabels = {},
   links,
   nodePositions,
+  zoom: controlledZoom,
+  onZoomChange,
   selectedLinkIndex,
+  selectedNodeId,
   onSelectLink,
+  onSelectNode,
   onNodeDoubleClick,
   onNodeDragStart,
   onNodePositionChange,
   onConnectNodes
 }: FlowDiagramProps) {
-  const autoNodes = useMemo(
-    () => buildSideLayout(triggerIds, actionIds, links),
-    [triggerIds, actionIds, links]
-  );
+  const allIds = useMemo(() => [...triggerIds, ...actionIds], [triggerIds, actionIds]);
+  const kindMap = useMemo(() => {
+    const map = new Map<string, NodeKind>();
+    for (const id of triggerIds) map.set(id, "trigger");
+    for (const id of actionIds) map.set(id, "action");
+    return map;
+  }, [triggerIds, actionIds]);
 
-  const nodes = useMemo(() => {
-    return autoNodes.map((node) => {
-      const manual = nodePositions[node.id];
-      if (!manual) return node;
-      return { ...node, x: manual.x, y: manual.y };
-    });
-  }, [autoNodes, nodePositions]);
+  const [liveNodePositions, setLiveNodePositions] = useState<Record<string, NodePosition>>({});
+  useEffect(() => {
+    setLiveNodePositions({});
+  }, [nodePositions]);
 
-  const nodeMap = new Map(nodes.map((node) => [node.id, node] as const));
+  const nodes = useMemo<NodePoint[]>(() => {
+    const result: NodePoint[] = [];
+    for (const id of allIds) {
+      const live = liveNodePositions[id];
+      const fixed = nodePositions[id];
+      const pos = live || fixed;
+      if (!pos) continue;
+      result.push({
+        id,
+        x: pos.x,
+        y: pos.y,
+        kind: kindMap.get(id) || "action"
+      });
+    }
+    return result;
+  }, [allIds, kindMap, liveNodePositions, nodePositions]);
+
+  const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node] as const)), [nodes]);
   const maxX = nodes.reduce((acc, node) => Math.max(acc, node.x), 0);
   const maxY = nodes.reduce((acc, node) => Math.max(acc, node.y), 0);
-  const diagramWidth = Math.max(1200, maxX + 260);
-  const diagramHeight = Math.max(420, maxY + 140);
+  const diagramWidth = Math.max(1400, maxX + 280);
+  const diagramHeight = Math.max(760, maxY + 160);
 
-  const [zoom, setZoom] = useState(0.45);
+  const [internalZoom, setInternalZoom] = useState(1);
+  const zoom = controlledZoom ?? internalZoom;
   const [connectFromId, setConnectFromId] = useState("");
   const [connectCursor, setConnectCursor] = useState<{ x: number; y: number } | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -192,18 +157,50 @@ export default function FlowDiagram({
   const dragNodeRef = useRef<{
     active: boolean;
     nodeId: string;
-    dx: number;
-    dy: number;
+    startMouseX: number;
+    startMouseY: number;
+    startNodeX: number;
+    startNodeY: number;
+    latestX: number;
+    latestY: number;
   }>({
     active: false,
     nodeId: "",
-    dx: 0,
-    dy: 0
+    startMouseX: 0,
+    startMouseY: 0,
+    startNodeX: 0,
+    startNodeY: 0,
+    latestX: 0,
+    latestY: 0
   });
+  const dragRafRef = useRef<number | null>(null);
 
-  const zoomIn = () => setZoom((prev) => Math.min(2, Number((prev + 0.1).toFixed(2))));
-  const zoomOut = () => setZoom((prev) => Math.max(0.2, Number((prev - 0.1).toFixed(2))));
-  const zoomReset = () => setZoom(0.45);
+  const zoomView = (factor: number) => {
+    const nextZoom = Math.max(0.3, Math.min(2, Number(factor.toFixed(2))));
+    const el = scrollerRef.current;
+    if (!el) {
+      if (controlledZoom === undefined) setInternalZoom(nextZoom);
+      onZoomChange?.(nextZoom);
+      return;
+    }
+    const screenW = el.clientWidth;
+    const screenH = el.clientHeight;
+    const scrollLeft = el.scrollLeft;
+    const scrollTop = el.scrollTop;
+    const centerX = (scrollLeft + screenW / 2) / zoom;
+    const centerY = (scrollTop + screenH / 2) / zoom;
+    if (controlledZoom === undefined) setInternalZoom(nextZoom);
+    onZoomChange?.(nextZoom);
+    requestAnimationFrame(() => {
+      const updated = scrollerRef.current;
+      if (!updated) return;
+      updated.scrollLeft = centerX * nextZoom - screenW / 2;
+      updated.scrollTop = centerY * nextZoom - screenH / 2;
+    });
+  };
+  const zoomIn = () => zoomView(zoom + 0.1);
+  const zoomOut = () => zoomView(zoom - 0.1);
+  const zoomReset = () => zoomView(1);
 
   const getSvgPointFromMouse = (clientX: number, clientY: number): { x: number; y: number } | null => {
     const svg = svgRef.current;
@@ -215,6 +212,50 @@ export default function FlowDiagram({
       x: (clientX - rect.left) * scaleX,
       y: (clientY - rect.top) * scaleY
     };
+  };
+
+  const commitDragNode = () => {
+    if (!dragNodeRef.current.active || !dragNodeRef.current.nodeId) return;
+    const nodeId = dragNodeRef.current.nodeId;
+    onNodePositionChange?.(nodeId, {
+      x: dragNodeRef.current.latestX || dragNodeRef.current.startNodeX,
+      y: dragNodeRef.current.latestY || dragNodeRef.current.startNodeY
+    });
+    dragNodeRef.current.active = false;
+  };
+
+  const hasFlowNodePayload = (event: ReactDragEvent): boolean => {
+    const types = Array.from(event.dataTransfer.types || []);
+    return types.includes("application/x-flow-node") || types.includes("text/plain");
+  };
+
+  const getDraggedNodeId = (event: ReactDragEvent): string => {
+    const raw =
+      event.dataTransfer.getData("application/x-flow-node") ||
+      event.dataTransfer.getData("text/plain");
+    return String(raw || "").trim();
+  };
+
+  const handleDragOver = (event: ReactDragEvent) => {
+    if (!hasFlowNodePayload(event)) return;
+    event.dataTransfer.dropEffect = "move";
+    event.preventDefault();
+  };
+
+  const handleDrop = (event: ReactDragEvent) => {
+    const nodeId = getDraggedNodeId(event);
+    if (!nodeId) return;
+    const point = getSvgPointFromMouse(event.clientX, event.clientY);
+    if (!point) return;
+    const snappedX = Math.round(point.x / GRID_SIZE) * GRID_SIZE;
+    const snappedY = Math.round(point.y / GRID_SIZE) * GRID_SIZE;
+    onNodeDragStart?.();
+    onNodePositionChange?.(nodeId, {
+      x: Math.max(130, snappedX),
+      y: Math.max(60, snappedY)
+    });
+    event.preventDefault();
+    event.stopPropagation();
   };
 
   return (
@@ -235,11 +276,12 @@ export default function FlowDiagram({
           "100%": { opacity: 1 }
         }
       }}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
       <Box
         sx={{
           p: 0.5,
-          
           borderBottom: "1px solid #e2e8f0",
           display: "flex",
           alignItems: "center",
@@ -248,18 +290,12 @@ export default function FlowDiagram({
         }}
       >
         <Typography variant="body2" color="text.secondary">
-          Zoom: {Math.round(zoom * 100)}% | Drag canvas to pan | Drag node move handle to reposition (snap grid) | Connect: click OUT then IN
+          Zoom: {Math.round(zoom * 100)}% | Middle-click drag to pan | Alt+Wheel zoom | Drag node to move (snap grid) | Click wire + Delete
         </Typography>
         <Box sx={{ display: "flex", gap: 0.75 }}>
-          <Button size="small" onClick={zoomOut}>
-            -
-          </Button>
-          <Button size="small" onClick={zoomReset}>
-            Reset
-          </Button>
-          <Button size="small" onClick={zoomIn}>
-            +
-          </Button>
+          <Button size="small" onClick={zoomOut}>-</Button>
+          <Button size="small" onClick={zoomReset}>Reset</Button>
+          <Button size="small" onClick={zoomIn}>+</Button>
         </Box>
       </Box>
 
@@ -272,26 +308,37 @@ export default function FlowDiagram({
           overflowY: "auto",
           cursor: dragPanRef.current.active ? "grabbing" : "grab",
           background: "#f8fafc",
-          userSelect: "none",
-          WebkitUserSelect: "none",
           position: "relative"
         }}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
         onMouseDown={(event) => {
           const target = event.target as Element;
+          if (event.button === 1) {
+            const el = scrollerRef.current;
+            if (!el) return;
+            dragPanRef.current = {
+              active: true,
+              x: event.clientX,
+              y: event.clientY,
+              scrollLeft: el.scrollLeft,
+              scrollTop: el.scrollTop
+            };
+            event.preventDefault();
+            return;
+          }
           if (target.closest("[data-diagram-interactive='true']")) return;
+          if (event.button !== 0) return;
+          onSelectNode?.("");
           setConnectFromId("");
           setConnectCursor(null);
-
-          const el = scrollerRef.current;
-          if (!el) return;
-          dragPanRef.current = {
-            active: true,
-            x: event.clientX,
-            y: event.clientY,
-            scrollLeft: el.scrollLeft,
-            scrollTop: el.scrollTop
-          };
+        }}
+        onWheel={(event) => {
+          if (!event.altKey) return;
           event.preventDefault();
+          event.stopPropagation();
+          if (event.deltaY > 0) zoomOut();
+          else zoomIn();
         }}
         onMouseMove={(event) => {
           const el = scrollerRef.current;
@@ -300,13 +347,26 @@ export default function FlowDiagram({
           if (dragNodeRef.current.active) {
             const point = getSvgPointFromMouse(event.clientX, event.clientY);
             if (!point) return;
-            const snappedX = Math.round((point.x - dragNodeRef.current.dx) / GRID_SIZE) * GRID_SIZE;
-            const snappedY = Math.round((point.y - dragNodeRef.current.dy) / GRID_SIZE) * GRID_SIZE;
+            const dx = point.x - dragNodeRef.current.startMouseX;
+            const dy = point.y - dragNodeRef.current.startMouseY;
+            const snappedX = Math.round((dragNodeRef.current.startNodeX + dx) / GRID_SIZE) * GRID_SIZE;
+            const snappedY = Math.round((dragNodeRef.current.startNodeY + dy) / GRID_SIZE) * GRID_SIZE;
+            dragNodeRef.current.latestX = Math.max(130, snappedX);
+            dragNodeRef.current.latestY = Math.max(60, snappedY);
 
-            onNodePositionChange?.(dragNodeRef.current.nodeId, {
-              x: Math.max(130, snappedX),
-              y: Math.max(60, snappedY)
-            });
+            if (dragRafRef.current === null) {
+              dragRafRef.current = requestAnimationFrame(() => {
+                dragRafRef.current = null;
+                if (!dragNodeRef.current.nodeId) return;
+                setLiveNodePositions((prev) => ({
+                  ...prev,
+                  [dragNodeRef.current.nodeId]: {
+                    x: dragNodeRef.current.latestX,
+                    y: dragNodeRef.current.latestY
+                  }
+                }));
+              });
+            }
             return;
           }
 
@@ -323,197 +383,120 @@ export default function FlowDiagram({
         }}
         onMouseUp={() => {
           dragPanRef.current.active = false;
-          dragNodeRef.current.active = false;
+          if (dragRafRef.current !== null) {
+            cancelAnimationFrame(dragRafRef.current);
+            dragRafRef.current = null;
+          }
+          commitDragNode();
         }}
         onMouseLeave={() => {
           dragPanRef.current.active = false;
-          dragNodeRef.current.active = false;
+          if (dragRafRef.current !== null) {
+            cancelAnimationFrame(dragRafRef.current);
+            dragRafRef.current = null;
+          }
+          commitDragNode();
         }}
       >
         <Box
-          sx={{
-            width: Math.max(1, diagramWidth * zoom),
-            height: Math.max(1, diagramHeight * zoom),
-            display: "inline-block"
-          }}
+          sx={{ width: Math.max(1, diagramWidth * zoom), height: Math.max(1, diagramHeight * zoom), display: "inline-block" }}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
         >
-        <svg
-          ref={svgRef}
-          width="100%"
-          height="100%"
-          viewBox={`0 0 ${diagramWidth} ${diagramHeight}`}
-        >
-          <defs>
-            <pattern id="gridPattern" width={GRID_SIZE} height={GRID_SIZE} patternUnits="userSpaceOnUse">
-              <path d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`} fill="none" stroke="#e2e8f0" strokeWidth="1" />
-            </pattern>
-            <marker
-              id="flowArrow"
-              viewBox="0 0 10 10"
-              refX="10"
-              refY="5"
-              markerWidth="5"
-              markerHeight="5"
-              orient="auto-start-reverse"
-            >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f172a" />
-            </marker>
-          </defs>
+          <svg
+            ref={svgRef}
+            width="100%"
+            height="100%"
+            viewBox={`0 0 ${diagramWidth} ${diagramHeight}`}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            <defs>
+              <pattern id="gridPattern" width={GRID_SIZE} height={GRID_SIZE} patternUnits="userSpaceOnUse">
+                <path d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`} fill="none" stroke="#e2e8f0" strokeWidth="1" />
+              </pattern>
+              <marker id="flowArrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="3" markerHeight="3" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#565656" />
+              </marker>
+            </defs>
 
-          <rect x="0" y="0" width={diagramWidth} height={diagramHeight} fill="#f8fafc" />
-          <rect x="0" y="0" width={diagramWidth} height={diagramHeight} fill="url(#gridPattern)" />
+            <rect x="0" y="0" width={diagramWidth} height={diagramHeight} fill="#f8fafc" />
+            <rect x="0" y="0" width={diagramWidth} height={diagramHeight} fill="url(#gridPattern)" />
 
-          {links.map((link, index) => {
-            const from = nodeMap.get(link.from);
-            const to = nodeMap.get(link.to);
-            if (!from || !to) return null;
+            {links.map((link, index) => {
+              const from = nodeMap.get(link.from);
+              const to = nodeMap.get(link.to);
+              if (!from || !to) return null;
+              const startX = from.x + NODE_HALF_WIDTH;
+              const startY = from.y;
+              const endX = to.x - NODE_HALF_WIDTH;
+              const endY = to.y;
+              const d = generateLinkPath(startX, startY, endX, endY, 1);
+              const isSelected = selectedLinkIndex === index;
+              const isEnabled = link.enabled !== false;
+              const edgeLabelX = (startX + endX) / 2;
+              const edgeLabelY = (startY + endY) / 2 - 8;
 
-            const startX = from.x + NODE_HALF_WIDTH;
-            const startY = from.y;
-            const endX = to.x - NODE_HALF_WIDTH;
-            const endY = to.y;
-            const midX = (startX + endX) / 2;
-            const d = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
-            const isSelected = selectedLinkIndex === index;
-            const isEnabled = link.enabled !== false;
-            const edgeLabelX = midX;
-            const edgeLabelY = (startY + endY) / 2 - 8;
-
-            return (
-              <g key={`${link.from}-${link.to}-${index}`}>
-                <path
-                  d={d}
-                  fill="none"
-                  stroke={isSelected ? "#dc2626" : isEnabled ? "#1e293b" : "#94a3b8"}
-                  strokeWidth={3}
-                  strokeDasharray={isEnabled ? undefined : "7 5"}
-                  markerEnd="url(#flowArrow)"
-                  pointerEvents="none"
-                  style={isSelected ? { animation: "wireBlink 0.8s linear infinite" } : undefined}
-                />
-                <path
-                  d={d}
-                  fill="none"
-                  stroke="transparent"
-                  strokeWidth={20}
-                  data-diagram-interactive="true"
-                  onClick={() => onSelectLink(index)}
-                  style={{ cursor: "pointer" }}
-                />
-                <circle cx={edgeLabelX} cy={edgeLabelY+5} r={10} fill="#fff" stroke="#94a3b8" strokeWidth={1} onClick={() => onSelectLink(index)} style={{ cursor: "pointer" }}/>
-                <text
-                  x={edgeLabelX}
-                  y={edgeLabelY + 8}
-                  textAnchor="middle"
-                  fontFamily="Ubuntu, 'Segoe UI', Arial, sans-serif"
-                  fontSize="11"
-                  fontWeight="700"
-                  fill="#0f172a"
-                  onClick={() => onSelectLink(index)}
-                  style={{ cursor: "pointer" }}
-                >
-                  {index + 1}
-                </text>
-              </g>
-            );
-          })}
-
-          {connectFromId && connectCursor && (() => {
-            const from = nodeMap.get(connectFromId);
-            if (!from) return null;
-            const startX = from.x + NODE_HALF_WIDTH;
-            const startY = from.y;
-            const endX = connectCursor.x;
-            const endY = connectCursor.y;
-            const midX = (startX + endX) / 2;
-            const d = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
-            return (
-              <path
-                d={d}
-                fill="none"
-                stroke="#0f766e"
-                strokeWidth={3}
-                strokeDasharray="6 4"
-                markerEnd="url(#flowArrow)"
-                pointerEvents="none"
-              />
-            );
-          })()}
-
-          {nodes.map((node) => {
-            const moveIconX = node.x + 106;
-            const moveIconY = node.y - 20;
-
-            return (
-              <g
-                key={node.id}
-                onDoubleClick={() => onNodeDoubleClick?.(node.id, node.kind)}
-                data-diagram-interactive="true"
-                style={{ cursor: "pointer" }}
-              >
-                <rect
-                  x={node.x - NODE_HALF_WIDTH}
-                  y={node.y - 26}
-                  width={NODE_WIDTH}
-                  height={52}
-                  rx={4}
-                  fill={node.kind === "action" ? "#dbeafe" : "#ccfbf1"}
-                  stroke={node.kind === "action" ? "#2563eb" : "#0f766e"}
-                  strokeWidth={0.7}
-                />
-                <text
-                  x={node.x}
-                  y={node.y + 5}
-                  textAnchor="middle"
-                  fontFamily="Ubuntu, 'Segoe UI', Arial, sans-serif"
-                  fontSize={node.kind === "action" ? "18" : "16"}
-                  fontWeight={node.kind === "action" ? "700" : "600"}
-                  fill="#0f172a"
-                >
-                  {node.id}
-                </text>
-
-                <g
-                  data-diagram-interactive="true"
-                  onMouseDown={(event) => {
-                    onNodeDragStart?.();
-                    const point = getSvgPointFromMouse(event.clientX, event.clientY);
-                    if (!point) return;
-
-                    dragNodeRef.current = {
-                      active: true,
-                      nodeId: node.id,
-                      dx: point.x - node.x,
-                      dy: point.y - node.y
-                    };
-                    setConnectFromId("");
-                    setConnectCursor(null);
-                    event.stopPropagation();
-                    event.preventDefault();
-                  }}
-                >
-                  <rect
-                    x={moveIconX - 20}
-                    y={moveIconY - 10}
-                    width={40}
-                    height={20}
-                    rx={2}
-                    fill="#ffffff"
-                    stroke="#64748b"
-                    strokeWidth={1}
-                  />
-                  <text
-                    x={moveIconX}
-                    y={moveIconY + 4}
-                    textAnchor="middle"
-                    fontFamily="Ubuntu, 'Segoe UI', Arial, sans-serif"
-                    fontSize="12"
-                    fontWeight="700"
-                    fill="#334155"
-                  >
-                    move
+              return (
+                <g key={`${link.from}-${link.to}-${index}`}>
+                  <path d={d} fill="none" stroke={isSelected ? "#dc2626" : isEnabled ? "#707070" : "#94a3b8"} strokeWidth={4} strokeDasharray={isEnabled ? undefined : "7 5"} markerEnd="url(#flowArrow)" pointerEvents="none" style={isSelected ? { animation: "wireBlink 0.8s linear infinite" } : undefined} />
+                  <path d={d} fill="none" stroke="transparent" strokeWidth={20} data-diagram-interactive="true" onClick={() => onSelectLink(index)} style={{ cursor: "pointer" }} />
+                  <circle cx={edgeLabelX} cy={edgeLabelY + 5} r={10} fill="#fff" stroke="#94a3b8" strokeWidth={1} onClick={() => onSelectLink(index)} style={{ cursor: "pointer" }} />
+                  <text x={edgeLabelX} y={edgeLabelY + 8} textAnchor="middle" fontFamily="Ubuntu, 'Segoe UI', Arial, sans-serif" fontSize="11" fontWeight="700" fill="#0f172a" onClick={() => onSelectLink(index)} style={{ cursor: "pointer" }}>
+                    {index + 1}
                   </text>
                 </g>
+              );
+            })}
+
+            {connectFromId && connectCursor && (() => {
+              const from = nodeMap.get(connectFromId);
+              if (!from) return null;
+              const d = generateLinkPath(from.x + NODE_HALF_WIDTH, from.y, connectCursor.x, connectCursor.y, 1);
+              return <path d={d} fill="none" stroke="#0f766e" strokeWidth={3} strokeDasharray="6 4" markerEnd="url(#flowArrow)" pointerEvents="none" />;
+            })()}
+
+            {nodes.map((node) => (
+              <g
+                key={node.id}
+                onClick={(event) => {
+                  onSelectLink(-1);
+                  onSelectNode?.(node.id);
+                  event.stopPropagation();
+                }}
+                onDoubleClick={() => onNodeDoubleClick?.(node.id, node.kind)}
+                onMouseDown={(event) => {
+                  const target = event.target as Element;
+                  if (target.closest("[data-node-port='true']")) return;
+                  onNodeDragStart?.();
+                  const point = getSvgPointFromMouse(event.clientX, event.clientY);
+                  if (!point) return;
+                  dragNodeRef.current = { active: true, nodeId: node.id, startMouseX: point.x, startMouseY: point.y, startNodeX: node.x, startNodeY: node.y, latestX: node.x, latestY: node.y };
+                  setConnectFromId("");
+                  setConnectCursor(null);
+                  event.stopPropagation();
+                  event.preventDefault();
+                }}
+                data-diagram-interactive="true"
+                style={{ cursor: dragNodeRef.current.active && dragNodeRef.current.nodeId === node.id ? "grabbing" : "grab" }}
+              >
+                <rect x={node.x - NODE_HALF_WIDTH} y={node.y - 26} width={NODE_WIDTH} height={52} rx={20} fill={node.kind === "action" ? "#01806b" : "#676e6c"} stroke={node.kind === "action" ? "#14f4b4" : "#0f766e"} strokeWidth={0.7} />
+                {selectedNodeId === node.id && (
+                  <rect
+                    x={node.x - NODE_HALF_WIDTH - 4}
+                    y={node.y - 30}
+                    width={NODE_WIDTH + 8}
+                    height={60}
+                    rx={24}
+                    fill="none"
+                    stroke="#dc2626"
+                    strokeWidth={2}
+                  />
+                )}
+                <title>{node.id}</title>
+                <text x={node.x} y={node.y + 5} textAnchor="middle" fontSize="18" fontWeight="700" fill="#ffffff">
+                  {(nodeLabels[node.id] || node.id).trim() || node.id}
+                </text>
 
                 <circle
                   cx={node.x - NODE_HALF_WIDTH}
@@ -523,6 +506,7 @@ export default function FlowDiagram({
                   stroke={connectFromId ? "#0f766e" : "#64748b"}
                   strokeWidth={1.5}
                   data-diagram-interactive="true"
+                  data-node-port="true"
                   onClick={(event) => {
                     if (!connectFromId || connectFromId === node.id) {
                       event.stopPropagation();
@@ -543,6 +527,7 @@ export default function FlowDiagram({
                   stroke={connectFromId === node.id ? "#0f766e" : "#64748b"}
                   strokeWidth={1.5}
                   data-diagram-interactive="true"
+                  data-node-port="true"
                   onClick={(event) => {
                     if (connectFromId === node.id) {
                       setConnectFromId("");
@@ -556,9 +541,8 @@ export default function FlowDiagram({
                   style={{ cursor: "crosshair" }}
                 />
               </g>
-            );
-          })}
-        </svg>
+            ))}
+          </svg>
         </Box>
       </Box>
     </Box>
