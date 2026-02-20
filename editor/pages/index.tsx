@@ -26,6 +26,7 @@ import type {
   AssetFrameworkDefinition,
   FlowLink,
   Program,
+  ScriptTemplateDefinition,
   TriggerDefinition
 } from "../types/program";
 
@@ -33,6 +34,7 @@ const EMPTY_PROGRAM: Program = {
   meta: { name: "Kufayeka AF Program", version: 1 },
   triggers: [],
   actions: [],
+  scriptTemplates: [],
   flows: { links: [] },
   assets: { assets: [], attributeTemplates: [] }
 };
@@ -269,8 +271,13 @@ export default function HomePage() {
     setSelectedTriggerId(id);
   };
 
-  const addAction = (): void => {
-    const id = `action.script_${Date.now()}`;
+  const addAction = (parentPath?: string): void => {
+    const safeParent = (parentPath || "scripts.group")
+      .split(".")
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .join(".");
+    const id = `${safeParent}.action_${Date.now()}`;
     const next: ActionDefinition = {
       id,
       type: "script",
@@ -339,6 +346,37 @@ export default function HomePage() {
     applyProgramUpdate((prev) => ({
       ...prev,
       actions: upsertById(prev.actions, id, patch)
+    }));
+  };
+
+  const addScriptTemplate = (): void => {
+    const id = `template.script_${Date.now()}`;
+    const next: ScriptTemplateDefinition = {
+      id,
+      name: `Script Template ${program.scriptTemplates.length + 1}`,
+      description: "",
+      script: "send(msg);"
+    };
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      scriptTemplates: [...prev.scriptTemplates, next]
+    }));
+  };
+
+  const removeScriptTemplate = (id: string): void => {
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      scriptTemplates: prev.scriptTemplates.filter((item) => item.id !== id)
+    }));
+  };
+
+  const updateScriptTemplate = (
+    id: string,
+    patch: Partial<ScriptTemplateDefinition>
+  ): void => {
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      scriptTemplates: upsertById(prev.scriptTemplates, id, patch)
     }));
   };
 
@@ -466,12 +504,16 @@ export default function HomePage() {
         {tab === 1 && (
           <ActionManager
             actions={program.actions}
+            scriptTemplates={program.scriptTemplates}
             selectedActionId={selectedActionId}
             onSelectAction={setSelectedActionId}
             onAddAction={addAction}
             onRemoveAction={removeAction}
             onRenameAction={renameAction}
             onUpdateAction={updateAction}
+            onAddScriptTemplate={addScriptTemplate}
+            onRemoveScriptTemplate={removeScriptTemplate}
+            onUpdateScriptTemplate={updateScriptTemplate}
           />
         )}
         {tab === 2 && (

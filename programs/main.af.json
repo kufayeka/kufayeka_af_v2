@@ -18,7 +18,7 @@
     {
       "id": "action.add_one",
       "type": "script",
-      "script": "msg.payload = (msg.payload ?? 0) + 1; send(msg);",
+      "script": "msg.payload = (msg.payload ?? 0) + 1; \r\n\r\nsend(msg);",
       "enabled": true,
       "description": ""
     },
@@ -32,7 +32,7 @@
     {
       "id": "action.debug",
       "type": "script",
-      "script": "console.log('payloadd:', msg.payload); ",
+      "script": "console.log(\"--------\")\r\nconsole.log('payloadd:', msg.payload);",
       "enabled": true,
       "description": ""
     },
@@ -42,6 +42,14 @@
       "script": "msg.payload = \"HALOOOO-\" + JSON.stringify(msg.payload);\r\n\r\nsend(msg);",
       "enabled": true,
       "description": ""
+    },
+    {
+      "id": "test.coba",
+      "type": "script",
+      "enabled": true,
+      "description": "",
+      "script": "// ini adalah template script",
+      "templateId": "template.script_1771563203022"
     }
   ],
   "flows": {
@@ -77,8 +85,8 @@
         "enabled": true
       },
       {
-        "from": "action.multiply_ten",
-        "to": "action.halooo",
+        "from": "trigger.tick_1s",
+        "to": "test.coba",
         "enabled": true
       }
     ],
@@ -88,66 +96,101 @@
         "y": 160
       },
       "action.multiply_ten": {
-        "x": 1000,
-        "y": 120
+        "x": 1080,
+        "y": 100
       },
       "action.add_one": {
         "x": 580,
-        "y": 120
+        "y": 100
       },
       "action.script_1771507062991": {
         "x": 1400,
         "y": 280
       },
       "trigger.tick_1s": {
-        "x": 180,
-        "y": 240
+        "x": 220,
+        "y": 200
       },
       "action.halooo": {
-        "x": 1640,
-        "y": 580
+        "x": 1460,
+        "y": 300
+      },
+      "test.coba": {
+        "x": 600,
+        "y": 310
       }
     }
   },
   "assets": {
     "assets": [
       {
-        "id": "asset_1771522872455_780",
-        "name": "Jasuindo",
+        "id": "asset_1771556941262_201",
+        "name": "Djabesmen",
         "parentId": null,
-        "templateIds": [
-          "template_1771522392767_162"
-        ],
-        "attributes": {
-          "Timestamp": {
-            "value": "-"
-          }
-        }
-      },
-      {
-        "id": "asset_1771523526532_41",
-        "name": "OffsetPrinter",
-        "parentId": "asset_1771522872455_780",
         "templateIds": [],
         "attributes": {}
       },
       {
-        "id": "asset_1771523555133_418",
-        "name": "Taiyo1",
-        "parentId": "asset_1771523526532_41",
+        "id": "asset_1771556947618_159",
+        "name": "GrahaPacific",
+        "parentId": "asset_1771556941262_201",
+        "templateIds": [],
+        "attributes": {}
+      },
+      {
+        "id": "asset_1771557149844_918",
+        "name": "Lantai1",
+        "parentId": "asset_1771556947618_159",
         "templateIds": [
-          "template_1771523720677_855"
+          "template_1771557163569_471"
         ],
         "attributes": {}
       },
       {
-        "id": "asset_1771523561675_86",
-        "name": "Taiyo2",
-        "parentId": "asset_1771523526532_41",
+        "id": "asset_1771557339150_394",
+        "name": "Lantai2",
+        "parentId": "asset_1771556947618_159",
+        "templateIds": [
+          "template_1771557163569_471"
+        ],
+        "attributes": {
+          "InletTemperature": {
+            "value": 20
+          }
+        }
+      },
+      {
+        "id": "asset_1771561990565_180",
+        "name": "Jasuindo",
+        "parentId": null,
+        "templateIds": [],
+        "attributes": {}
+      },
+      {
+        "id": "asset_1771561995737_511",
+        "name": "Taiyo1",
+        "parentId": "asset_1771561990565_180",
         "templateIds": [
           "template_1771523720677_855"
         ],
-        "attributes": {}
+        "attributes": {
+          "Operator": {
+            "value": "plenger, S.T."
+          }
+        }
+      },
+      {
+        "id": "asset_1771562520927_537",
+        "name": "Taiyo2",
+        "parentId": "asset_1771561990565_180",
+        "templateIds": [
+          "template_1771523720677_855"
+        ],
+        "attributes": {
+          "Operator": {
+            "value": "budi"
+          }
+        }
       }
     ],
     "attributeTemplates": [
@@ -159,7 +202,8 @@
             "name": "Timestamp",
             "type": "string",
             "defaultValue": 0,
-            "unit": ""
+            "unit": "",
+            "dashboardVisible": false
           }
         ]
       },
@@ -171,16 +215,74 @@
             "name": "MachineSpeed",
             "type": "number",
             "defaultValue": 0,
-            "unit": "meter/minute"
+            "unit": "meter/minute",
+            "dashboardVisible": false
           },
           {
             "name": "PaperLength",
             "type": "number",
             "defaultValue": 0,
-            "unit": "meter"
+            "unit": "meter",
+            "dashboardVisible": false
+          },
+          {
+            "name": "Operator",
+            "type": "string",
+            "defaultValue": 0,
+            "unit": "",
+            "dashboardVisible": true
+          }
+        ]
+      },
+      {
+        "id": "template_1771557163569_471",
+        "name": "DataLoggerSuhu",
+        "attributes": [
+          {
+            "name": "CorridorTemperature",
+            "type": "number",
+            "defaultValue": 0,
+            "unit": "Celcius",
+            "dashboardVisible": false
+          },
+          {
+            "name": "AHUTemperature",
+            "type": "number",
+            "defaultValue": 0,
+            "unit": "Celcius",
+            "dashboardVisible": false
+          },
+          {
+            "name": "CorridorHumidity",
+            "type": "number",
+            "defaultValue": 0,
+            "unit": "% RH",
+            "dashboardVisible": false
+          },
+          {
+            "name": "AHUHumidity",
+            "type": "number",
+            "defaultValue": 0,
+            "unit": "% RH",
+            "dashboardVisible": false
+          },
+          {
+            "name": "InletTemperature",
+            "type": "number",
+            "defaultValue": 10,
+            "unit": "Celcius",
+            "dashboardVisible": false
           }
         ]
       }
     ]
-  }
+  },
+  "scriptTemplates": [
+    {
+      "id": "template.script_1771563203022",
+      "name": "Script Template 1",
+      "description": "",
+      "script": "// ini adalah template script"
+    }
+  ]
 }

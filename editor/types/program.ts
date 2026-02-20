@@ -7,6 +7,7 @@ export interface AssetTemplateAttributeDefinition {
   type: AssetAttributeType;
   defaultValue: unknown;
   unit?: string;
+  dashboardVisible?: boolean;
 }
 
 export interface AssetAttributeTemplateDefinition {
@@ -50,6 +51,14 @@ export interface ActionDefinition {
   type: ActionType;
   enabled: boolean;
   description?: string;
+  templateId?: string;
+  script: string;
+}
+
+export interface ScriptTemplateDefinition {
+  id: string;
+  name: string;
+  description?: string;
   script: string;
 }
 
@@ -71,6 +80,7 @@ export interface Program {
   };
   triggers: TriggerDefinition[];
   actions: ActionDefinition[];
+  scriptTemplates: ScriptTemplateDefinition[];
   flows: {
     links: FlowLink[];
     nodePositions?: Record<string, NodePosition>;

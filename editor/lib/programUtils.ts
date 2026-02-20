@@ -3,6 +3,7 @@ import type {
   AssetFrameworkDefinition,
   FlowLink,
   Program,
+  ScriptTemplateDefinition,
   TriggerDefinition
 } from "../types/program";
 
@@ -46,7 +47,8 @@ export function normalizeProgram(program: Program): Program {
       ...template,
       attributes: (template.attributes || []).map((attribute) => ({
         ...attribute,
-        unit: attribute.unit ?? ""
+        unit: attribute.unit ?? "",
+        dashboardVisible: attribute.dashboardVisible === true
       }))
     }))
   };
@@ -64,6 +66,13 @@ export function normalizeProgram(program: Program): Program {
         ...action,
         enabled: action.enabled !== false,
         description: action.description ?? ""
+      })
+    ),
+    scriptTemplates: (program.scriptTemplates || []).map(
+      (template): ScriptTemplateDefinition => ({
+        ...template,
+        description: template.description ?? "",
+        script: template.script ?? "send(msg);"
       })
     ),
     flows: {

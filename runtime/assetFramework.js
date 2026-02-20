@@ -21,6 +21,7 @@ function normalizeAssetSection(input = {}) {
             type: attribute.type,
             defaultValue: attribute.defaultValue,
             unit: attribute.unit ?? "",
+            dashboardVisible: attribute.dashboardVisible === true,
           }))
         : [],
     })),

@@ -8,6 +8,7 @@ import {
   MenuItem,
   Paper,
   Select,
+  Switch,
   Tab,
   Tabs,
   Table,
@@ -108,6 +109,7 @@ function getEffectiveAttributes(
       value: unknown;
       source: string;
       overridden: boolean;
+      dashboardVisible: boolean;
     }
   >();
 
@@ -122,8 +124,14 @@ function getEffectiveAttributes(
           unit: attr.unit ?? "",
           value: attr.defaultValue,
           source: template.name,
-          overridden: false
+          overridden: false,
+          dashboardVisible: attr.dashboardVisible === true
         });
+      } else {
+        const prev = rows.get(attr.name);
+        if (prev && attr.dashboardVisible === true) {
+          rows.set(attr.name, { ...prev, dashboardVisible: true });
+        }
       }
     }
   }
@@ -139,7 +147,8 @@ function getEffectiveAttributes(
         unit: "",
         value: val.value,
         source: "Custom",
-        overridden: true
+        overridden: true,
+        dashboardVisible: false
       });
     }
   }
@@ -330,6 +339,10 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     if (!selectedAsset) return [];
     return getEffectiveAttributes(selectedAsset, templateById);
   }, [selectedAsset, templateById]);
+  const selectedAssetDashboardAttributes = useMemo(
+    () => selectedAssetEffectiveAttributes.filter((attribute) => attribute.dashboardVisible),
+    [selectedAssetEffectiveAttributes]
+  );
 
   return (
     <Box sx={{ p: 1.25, display: "grid", gap: 1.25 }}>
@@ -337,6 +350,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         <Tabs value={mainTab} onChange={(_e, v: number) => setMainTab(v)}>
           <Tab label="Asset Explorer" />
           <Tab label="Attribute Template" />
+          <Tab label="Asset Dashboard Setting" />
         </Tabs>
       </Paper>
 
@@ -542,6 +556,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                       <TableCell>Type</TableCell>
                       <TableCell>Default Value</TableCell>
                       <TableCell>Unit</TableCell>
+                      <TableCell>Dashboard</TableCell>
                       <TableCell>Action</TableCell>
                     </TableRow>
                   </TableHead>
@@ -616,6 +631,20 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           />
                         </TableCell>
                         <TableCell>
+                          <Switch
+                            size="small"
+                            checked={attribute.dashboardVisible === true}
+                            onChange={(_e, checked) => {
+                              updateTemplateWith(selectedTemplate.id, (template) => ({
+                                ...template,
+                                attributes: template.attributes.map((item, itemIdx) =>
+                                  itemIdx === idx ? { ...item, dashboardVisible: checked } : item
+                                )
+                              }));
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell>
                           <Button
                             color="error"
                             size="small"
@@ -646,7 +675,8 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           name: `attribute_${template.attributes.length + 1}`,
                           type: "number",
                           defaultValue: 0,
-                          unit: ""
+                          unit: "",
+                          dashboardVisible: false
                         }
                       ]
                     }))
@@ -654,6 +684,90 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                 >
                   Add Attribute
                 </Button>
+              </Box>
+            )}
+          </Paper>
+        </Box>
+      )}
+
+      {mainTab === 2 && (
+        <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
+          <Paper variant="outlined" sx={{ p: 1, display: "grid", gridTemplateRows: "auto 1fr", gap: 0.75 }}>
+            <Typography variant="subtitle2">Asset Tree Selector</Typography>
+            <Box sx={{ overflow: "auto", maxHeight: "calc(100vh - 260px)", border: "1px solid #e2e8f0", borderRadius: 0.5, p: 0.5 }}>
+              <Tree
+                treeData={treeData}
+                expandedKeys={expandedKeys}
+                selectedKeys={selectedAssetId ? [`asset:${selectedAssetId}`] : []}
+                onExpand={(keys) => setExpandedKeys(keys)}
+                onSelect={(keys) => {
+                  const key = String(keys[0] || "");
+                  if (!key) return;
+                  if (key.startsWith("asset:")) {
+                    setSelectedAssetId(key.slice("asset:".length));
+                    return;
+                  }
+                  if (key.startsWith("attr:")) {
+                    const segments = key.split(":");
+                    if (segments.length >= 2) setSelectedAssetId(segments[1]);
+                  }
+                }}
+              />
+            </Box>
+          </Paper>
+
+          <Paper variant="outlined" sx={{ p: 1.25, minHeight: "calc(100vh - 220px)" }}>
+            {!selectedAsset && (
+              <Typography variant="body2" color="text.secondary">
+                Pilih asset di tree selector.
+              </Typography>
+            )}
+            {selectedAsset && (
+              <Box sx={{ display: "grid", gap: 0.75 }}>
+                <Typography variant="h6">Dashboard Attribute Editor</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Hanya attribute template dengan flag Dashboard aktif yang muncul di sini.
+                </Typography>
+                <Table size="small" sx={{ border: "1px solid #e2e8f0" }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Value</TableCell>
+                      <TableCell>Unit</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {selectedAssetDashboardAttributes.map((attribute) => (
+                      <TableRow key={`dashboard-${attribute.name}`}>
+                        <TableCell>{attribute.name}</TableCell>
+                        <TableCell sx={{ minWidth: 220 }}>
+                          <TextField
+                            size="small"
+                            fullWidth
+                            value={serializeValue(attribute.value)}
+                            onChange={(e) => {
+                              const patch: AssetAttributeValue = { value: parseMaybeJson(e.target.value) };
+                              updateAssetWith(selectedAsset.id, (asset) => ({
+                                ...asset,
+                                attributes: { ...asset.attributes, [attribute.name]: patch }
+                              }));
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell>{attribute.unit || "-"}</TableCell>
+                      </TableRow>
+                    ))}
+                    {selectedAssetDashboardAttributes.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={3}>
+                          <Typography variant="caption" color="text.secondary">
+                            Tidak ada attribute yang di-expose ke dashboard.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </Box>
             )}
           </Paper>

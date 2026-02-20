@@ -26,7 +26,7 @@ interface FlowDiagramProps {
 
 const NODE_WIDTH = 250;
 const NODE_HALF_WIDTH = NODE_WIDTH / 2;
-const GRID_SIZE = 20;
+const GRID_SIZE = 10;
 
 function buildSideLayout(triggerIds: string[], actionIds: string[], links: FlowLink[]): NodePoint[] {
   const nodeKindMap = new Map<string, NodeKind>();

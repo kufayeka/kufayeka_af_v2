@@ -69,6 +69,7 @@ function ensureProgramFile(programPath: string) {
     meta: { name: "Kufayeka AF Program", version: 1 },
     triggers: [],
     actions: [],
+    scriptTemplates: [],
     flows: { links: [] },
     assets: { assets: [], attributeTemplates: [] }
   };
