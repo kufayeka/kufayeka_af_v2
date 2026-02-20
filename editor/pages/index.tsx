@@ -123,7 +123,7 @@ export default function HomePage() {
   });
   const [selectedTriggerId, setSelectedTriggerId] = useState("");
   const [selectedActionId, setSelectedActionId] = useState("");
-  const [flowZoom, setFlowZoom] = useState(1);
+  const [flowZoom, setFlowZoom] = useState(0.5);
   const [status, setStatus] = useState("Loading...");
   const latestActionScriptsRef = useRef<Record<string, string>>({});
 

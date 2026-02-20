@@ -19,7 +19,7 @@
     {
       "id": "action.add_one",
       "type": "script",
-      "script": "// ini adalah template script\r\n\r\nmsg.payload = msg.payload + 1;",
+      "script": "// ini adalah template script\r\n\r\nmsg.payload = msg.payload + 1;\r\n\r\n\r\nsend(msg)",
       "enabled": true,
       "description": "",
       "label": "",
@@ -28,7 +28,7 @@
     {
       "id": "action.multiply_ten",
       "type": "script",
-      "script": "// ini adalah template script\r\n\r\nmsg.payload = msg.payload * 10;",
+      "script": "// ini adalah template script\r\n\r\nmsg.payload = msg.payload * 10\r\n\r\nsend(msg)",
       "enabled": true,
       "description": "",
       "label": "",
@@ -37,7 +37,7 @@
     {
       "id": "action.debug",
       "type": "script",
-      "script": "console.log(\"--------\")\r\nconsole.log('payloadd:', msg.payload);",
+      "script": "helpers.log(\"--------\")\r\nhelpers.log('payloadd:', msg.payload);",
       "enabled": true,
       "description": "",
       "label": "",
@@ -57,12 +57,37 @@
       "type": "script",
       "enabled": true,
       "description": "",
-      "script": "// ini adalah template script\r\n\r\nconsole.log(\"----variable binding----\")\r\n\r\nconsole.log(binding_1)\r\nconsole.log(JSON.stringify(binding_2));",
+      "script": "\r\nif(MachinePresentValue.value > Threshold){\r\n    context.asset.set(MachineAlarmAttribute.path, \"woiii bahayaaa\");\r\n} else {\r\n    context.asset.set(MachineAlarmAttribute.path, \"-\");\r\n}\r\n\r\n\r\nsend(msg);",
       "label": "",
       "templateId": "template.script_1771563203022",
       "templateBindingOverrides": {
         "binding_2": {
           "name": "binding_2",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo1.MachineSpeed",
+          "allowOverride": true
+        }
+      }
+    },
+    {
+      "id": "taiyo1.alarm.machineSpeed",
+      "label": "",
+      "type": "script",
+      "enabled": true,
+      "description": "",
+      "script": "\r\nif(MachinePresentValue.value > Threshold){\r\n    context.asset.set(MachineAlarmAttribute.path, \"woiii bahayaaa\");\r\n} else {\r\n    context.asset.set(MachineAlarmAttribute.path, \"-\");\r\n}\r\n\r\nhelpers.log(\"alarm value - \"+MachinePresentValue.value);\r\n\r\nsend(msg);",
+      "templateId": "template.script_1771609498627",
+      "templateBindingOverrides": {
+        "MachineAlarmAttribute": {
+          "name": "MachineAlarmAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo1.Alarm",
+          "allowOverride": true
+        },
+        "MachinePresentValue": {
+          "name": "MachinePresentValue",
           "source": "attribute",
           "staticValue": "",
           "attributePath": "Jasuindo.Taiyo1.MachineSpeed",
@@ -105,17 +130,27 @@
       },
       {
         "from": "action.add_one",
+        "to": "action.multiply_ten",
+        "enabled": true
+      },
+      {
+        "from": "trigger.tick_1s",
+        "to": "taiyo1.alarm.machineSpeed",
+        "enabled": true
+      },
+      {
+        "from": "taiyo1.alarm.machineSpeed",
         "to": "action.debug",
         "enabled": true
       }
     ],
     "nodePositions": {
       "action.multiply_ten": {
-        "x": 1080,
-        "y": 110
+        "x": 1040,
+        "y": 80
       },
       "action.add_one": {
-        "x": 710,
+        "x": 660,
         "y": 110
       },
       "action.script_1771507062991": {
@@ -123,20 +158,24 @@
         "y": 280
       },
       "trigger.tick_1s": {
-        "x": 310,
-        "y": 200
+        "x": 230,
+        "y": 110
       },
       "action.halooo": {
-        "x": 710,
-        "y": 220
+        "x": 670,
+        "y": 180
       },
       "action.debug": {
         "x": 1080,
         "y": 220
       },
       "test.coba": {
-        "x": 700,
-        "y": 330
+        "x": 670,
+        "y": 260
+      },
+      "taiyo1.alarm.machineSpeed": {
+        "x": 680,
+        "y": 380
       }
     }
   },
@@ -164,8 +203,12 @@
             "value": "working"
           },
           "MachineSpeed": {
-            "value": 35,
-            "ts": "2026-02-20T16:54:53.509Z"
+            "value": 93,
+            "ts": "2026-02-20T17:53:05.931Z"
+          },
+          "Alarm": {
+            "value": "woiii bahayaaa",
+            "ts": "2026-02-20T17:53:05.292Z"
           }
         }
       },
@@ -184,8 +227,8 @@
             "value": "maintenance"
           },
           "MachineSpeed": {
-            "value": 25,
-            "ts": "2026-02-20T16:54:53.511Z"
+            "value": 93,
+            "ts": "2026-02-20T17:53:04.606Z"
           }
         }
       }
@@ -303,6 +346,23 @@
             "optionsTransformScript": "const rows = Array.isArray(input) ? input : [];\nreturn rows.map((r) => ({\n  value: r.id,\n  label: r.full_name\n}));",
             "optionsLabelPath": "",
             "optionsValuePath": ""
+          },
+          {
+            "enabled": true,
+            "name": "Alarm",
+            "type": "string",
+            "defaultValue": "-",
+            "unit": "",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputMode": "text",
+            "optionsSource": "static",
+            "options": [],
+            "optionsApiUrl": "",
+            "optionsTransformScript": "",
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           }
         ]
       },
@@ -404,7 +464,7 @@
       "id": "template.script_1771563203022",
       "name": "Script Template 1",
       "description": "",
-      "script": "// ini adalah template script\r\n\r\nconsole.log(\"----variable binding----\")\r\n\r\nconsole.log(binding_1)\r\nconsole.log(JSON.stringify(binding_2));",
+      "script": "// ini adalah template script\r\n\r\nhelpers.log(\"----variable binding----\")\r\n\r\nhelpers.log(binding_1)\r\nhelpers.log(JSON.stringify(binding_2.value));",
       "variableBindings": [
         {
           "name": "binding_1",
@@ -418,6 +478,35 @@
           "source": "attribute",
           "staticValue": "",
           "attributePath": "Jasuindo.Taiyo1.Operator",
+          "allowOverride": true
+        }
+      ]
+    },
+    {
+      "id": "template.script_1771609498627",
+      "name": "TaiyoMachineSpeedAlarm",
+      "description": "",
+      "script": "\r\nif(MachinePresentValue.value > Threshold){\r\n    context.asset.set(MachineAlarmAttribute.path, \"woiii bahayaaa\");\r\n} else {\r\n    context.asset.set(MachineAlarmAttribute.path, \"-\");\r\n}\r\n\r\nhelpers.log(\"alarm value - \"+MachinePresentValue.value);\r\n\r\nsend(msg);",
+      "variableBindings": [
+        {
+          "name": "MachineAlarmAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "Threshold",
+          "source": "static_number",
+          "staticValue": 50,
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "MachinePresentValue",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
           "allowOverride": true
         }
       ]

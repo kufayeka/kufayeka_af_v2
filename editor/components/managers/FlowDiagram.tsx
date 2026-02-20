@@ -141,7 +141,7 @@ export default function FlowDiagram({
   const diagramWidth = Math.max(1400, maxX + 280);
   const diagramHeight = Math.max(760, maxY + 160);
 
-  const [internalZoom, setInternalZoom] = useState(1);
+  const [internalZoom, setInternalZoom] = useState(0.5);
   const zoom = controlledZoom ?? internalZoom;
   const [connectFromId, setConnectFromId] = useState("");
   const [connectCursor, setConnectCursor] = useState<{ x: number; y: number } | null>(null);
@@ -200,7 +200,7 @@ export default function FlowDiagram({
   };
   const zoomIn = () => zoomView(zoom + 0.1);
   const zoomOut = () => zoomView(zoom - 0.1);
-  const zoomReset = () => zoomView(1);
+  const zoomReset = () => zoomView(0.5);
 
   const getSvgPointFromMouse = (clientX: number, clientY: number): { x: number; y: number } | null => {
     const svg = svgRef.current;
