@@ -1,4 +1,4 @@
-export type TriggerType = "interval";
+export type TriggerType = "interval" | "watcher";
 export type ActionType = "script";
 export type AssetAttributeType = "number" | "boolean" | "string" | "array" | "object";
 export type ScriptBindingSource =
@@ -75,6 +75,7 @@ export interface TriggerDefinition {
   type: TriggerType;
   enabled: boolean;
   intervalMs: number;
+  watchPath?: string;
   message: {
     payload?: unknown;
     [key: string]: unknown;

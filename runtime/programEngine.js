@@ -66,6 +66,55 @@ function startIntervalTrigger(runtime, trigger) {
   return () => clearInterval(timer);
 }
 
+function splitPath(path) {
+  return String(path || "")
+    .split(".")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function matchWildcardPath(pattern, value) {
+  const p = splitPath(pattern);
+  const v = splitPath(value);
+  if (p.length !== v.length) return false;
+  for (let i = 0; i < p.length; i += 1) {
+    if (p[i] !== "*" && p[i] !== v[i]) return false;
+  }
+  return true;
+}
+
+function startWatcherTrigger(runtime, trigger) {
+  const watchPath = String(trigger.watchPath || "").trim() || "*.*.*";
+  const baseMsg = trigger.message || {};
+  const store = runtime.getGlobal("assetStorage");
+  if (!store || typeof store.subscribe !== "function") {
+    throw new Error(`Trigger watcher "${trigger.id}" gagal: assetStorage belum tersedia`);
+  }
+
+  const unsubscribe = store.subscribe((_state, meta) => {
+    const changes = Array.isArray(meta?.change?.changes) ? meta.change.changes : [];
+    if (changes.length === 0) return;
+
+    for (const change of changes) {
+      if (!change || change.kind !== "attribute") continue;
+      if (!matchWildcardPath(watchPath, change.path)) continue;
+      const msg = structuredClone(baseMsg);
+      msg.payload = change;
+      msg._trigger = {
+        id: trigger.id,
+        type: "watcher",
+        watchPath,
+        ts: new Date().toISOString()
+      };
+      runtime.send(trigger.id, msg);
+    }
+  });
+
+  return () => {
+    if (typeof unsubscribe === "function") unsubscribe();
+  };
+}
+
 function startTriggers(runtime, triggers = []) {
   const stops = [];
   for (const trigger of triggers) {
@@ -78,6 +127,11 @@ function startTriggers(runtime, triggers = []) {
 
     if (trigger.type === "interval") {
       stops.push(startIntervalTrigger(runtime, trigger));
+      continue;
+    }
+
+    if (trigger.type === "watcher") {
+      stops.push(startWatcherTrigger(runtime, trigger));
       continue;
     }
 

@@ -270,14 +270,18 @@ export default function HomePage() {
     }
   };
 
-  const addTrigger = (): void => {
-    const id = `trigger.tick_${Date.now()}`;
+  const addTriggerWithType = (type: TriggerDefinition["type"]): void => {
+    const id =
+      type === "watcher"
+        ? `trigger.watch_${Date.now()}`
+        : `trigger.tick_${Date.now()}`;
     const next: TriggerDefinition = {
       id,
       label: "",
-      type: "interval",
+      type,
       enabled: true,
       intervalMs: 1000,
+      watchPath: type === "watcher" ? "*.*.*" : "",
       message: { payload: 0 }
     };
     applyProgramUpdate((prev) => ({ ...prev, triggers: [...prev.triggers, next] }));
@@ -362,6 +366,52 @@ export default function HomePage() {
       ]),
     [program.actions, program.triggers]
   );
+
+  const watchPathOptions = useMemo(() => {
+    const byId = new Map(program.assets.assets.map((asset) => [asset.id, asset]));
+    const templateById = new Map(
+      program.assets.attributeTemplates.map((template) => [template.id, template])
+    );
+
+    const getAssetPath = (assetId: string): string => {
+      const asset = byId.get(assetId);
+      if (!asset) return "";
+      const parts = [asset.name];
+      let parentId = asset.parentId;
+      while (parentId) {
+        const parent = byId.get(parentId);
+        if (!parent) break;
+        parts.unshift(parent.name);
+        parentId = parent.parentId;
+      }
+      return parts.join(".");
+    };
+
+    const paths = new Set<string>(["*.*.*"]);
+    for (const asset of program.assets.assets) {
+      const assetPath = getAssetPath(asset.id);
+      if (!assetPath) continue;
+      const attributes = new Set<string>(Object.keys(asset.attributes || {}));
+      for (const templateId of asset.templateIds || []) {
+        const template = templateById.get(templateId);
+        if (!template) continue;
+        for (const attr of template.attributes || []) {
+          if (attr.enabled === false) continue;
+          attributes.add(attr.name);
+        }
+      }
+      for (const attributeName of attributes) {
+        const full = `${assetPath}.${attributeName}`;
+        paths.add(full);
+        const segments = full.split(".");
+        if (segments.length >= 2) {
+          paths.add(`${segments.slice(0, -1).join(".")}.*`);
+          paths.add(`${segments[0]}.*.${segments[segments.length - 1]}`);
+        }
+      }
+    }
+    return Array.from(paths).sort((a, b) => a.localeCompare(b));
+  }, [program.assets]);
 
   const updateTrigger = (id: string, patch: Partial<TriggerDefinition>): void => {
     applyProgramUpdate((prev) => ({
@@ -572,9 +622,10 @@ export default function HomePage() {
         {tab === 0 && (
           <TriggerManager
             triggers={program.triggers}
+            watchPathOptions={watchPathOptions}
             selectedTriggerId={selectedTriggerId}
             onSelectTrigger={setSelectedTriggerId}
-            onAddTrigger={addTrigger}
+            onAddTrigger={addTriggerWithType}
             onRemoveTrigger={removeTrigger}
             onRenameTrigger={renameTrigger}
             onUpdateTrigger={updateTrigger}

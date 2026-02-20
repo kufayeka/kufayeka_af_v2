@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import {
+  Autocomplete,
   Box,
   Button,
   FormControlLabel,
@@ -12,9 +13,10 @@ import type { TriggerDefinition } from "../../types/program";
 
 interface TriggerManagerProps {
   triggers: TriggerDefinition[];
+  watchPathOptions?: string[];
   selectedTriggerId: string;
   onSelectTrigger: (id: string) => void;
-  onAddTrigger: () => void;
+  onAddTrigger: (type: TriggerDefinition["type"]) => void;
   onRemoveTrigger: (id: string) => void;
   onRenameTrigger: (oldId: string, newId: string) => void;
   onUpdateTrigger: (id: string, patch: Partial<TriggerDefinition>) => void;
@@ -23,6 +25,7 @@ interface TriggerManagerProps {
 
 export default function TriggerManager({
   triggers,
+  watchPathOptions = [],
   selectedTriggerId,
   onSelectTrigger,
   onAddTrigger,
@@ -46,9 +49,14 @@ export default function TriggerManager({
     <Box sx={{ p: 1.25, display: "grid", gridTemplateColumns: "320px 1fr", gap: 1.25 }}>
       <Paper variant="outlined" sx={{ p: 1, display: "grid", gridTemplateRows: "auto 1fr", gap: 1 }}>
         <Box sx={{ display: "grid", gap: 0.75 }}>
-          <Button fullWidth variant="outlined" onClick={onAddTrigger}>
-            Add Trigger
-          </Button>
+          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.75 }}>
+            <Button fullWidth variant="outlined" onClick={() => onAddTrigger("interval")}>
+              Add Interval
+            </Button>
+            <Button fullWidth variant="outlined" onClick={() => onAddTrigger("watcher")}>
+              Add Watcher
+            </Button>
+          </Box>
           <TextField
             size="small"
             label="Search Trigger"
@@ -86,7 +94,9 @@ export default function TriggerManager({
                 </Typography>
               )}
               <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                {trigger.type} / {trigger.intervalMs} ms
+                {trigger.type === "interval"
+                  ? `${trigger.type} / ${trigger.intervalMs} ms`
+                  : `${trigger.type} / ${trigger.watchPath || "*.*.*"}`}
               </Typography>
               <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <FormControlLabel
@@ -137,21 +147,45 @@ export default function TriggerManager({
               onChange={(e) => onRenameTrigger(selectedTrigger.id, e.target.value)}
             />
             <TextField
+              label="Trigger Type"
+              value={selectedTrigger.type}
+              disabled
+            />
+            <TextField
               label="Trigger Label"
               value={selectedTrigger.label ?? ""}
               onChange={(e) => onUpdateTrigger(selectedTrigger.id, { label: e.target.value })}
               helperText="Label tampilan node di flow (ID internal tetap)."
             />
-            <TextField
-              label="Interval (ms)"
-              type="number"
-              value={selectedTrigger.intervalMs}
-              onChange={(e) =>
-                onUpdateTrigger(selectedTrigger.id, {
-                  intervalMs: Number(e.target.value) || 1
-                })
-              }
-            />
+            {selectedTrigger.type === "interval" && (
+              <TextField
+                label="Interval (ms)"
+                type="number"
+                value={selectedTrigger.intervalMs}
+                onChange={(e) =>
+                  onUpdateTrigger(selectedTrigger.id, {
+                    intervalMs: Number(e.target.value) || 1
+                  })
+                }
+              />
+            )}
+            {selectedTrigger.type === "watcher" && (
+              <Autocomplete
+                freeSolo
+                options={watchPathOptions}
+                value={selectedTrigger.watchPath ?? "*.*.*"}
+                onInputChange={(_e, value) =>
+                  onUpdateTrigger(selectedTrigger.id, { watchPath: value })
+                }
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Watch Path (wildcard supported)"
+                    helperText='Contoh: "Jasuindo.*.Operator" atau "*.*.*"'
+                  />
+                )}
+              />
+            )}
             <TextField
               label="Initial Payload"
               value={JSON.stringify(selectedTrigger.message?.payload ?? 0)}

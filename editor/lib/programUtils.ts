@@ -121,6 +121,13 @@ export function normalizeProgram(program: Program): Program {
       (trigger): TriggerDefinition => ({
         ...trigger,
         label: typeof trigger.label === "string" ? trigger.label : "",
+        type: trigger.type === "watcher" ? "watcher" : "interval",
+        intervalMs: Math.max(1, Number(trigger.intervalMs) || 1000),
+        watchPath:
+          trigger.type === "watcher"
+            ? String(trigger.watchPath || "").trim() || "*.*.*"
+            : String(trigger.watchPath || ""),
+        message: trigger.message && typeof trigger.message === "object" ? trigger.message : { payload: 0 },
         enabled: trigger.enabled !== false
       })
     ),

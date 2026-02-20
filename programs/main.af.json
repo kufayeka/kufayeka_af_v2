@@ -12,7 +12,19 @@
       "message": {
         "payload": 5
       },
-      "label": ""
+      "label": "",
+      "watchPath": ""
+    },
+    {
+      "id": "trigger.watch_1771610722257",
+      "label": "",
+      "type": "watcher",
+      "enabled": true,
+      "intervalMs": 1000,
+      "watchPath": "Jasuindo.Taiyo2.MachineSpeed",
+      "message": {
+        "payload": 0
+      }
     }
   ],
   "actions": [
@@ -99,48 +111,18 @@
   "flows": {
     "links": [
       {
-        "from": "trigger.tick_1s",
-        "to": "action.halooo",
-        "enabled": true
-      },
-      {
-        "from": "trigger.tick_1s",
-        "to": "action.add_one",
-        "enabled": true
-      },
-      {
-        "from": "action.multiply_ten",
-        "to": "action.debug",
-        "enabled": true
-      },
-      {
-        "from": "action.halooo",
-        "to": "action.debug",
-        "enabled": true
-      },
-      {
-        "from": "trigger.tick_1s",
-        "to": "test.coba",
-        "enabled": true
-      },
-      {
-        "from": "test.coba",
-        "to": "action.debug",
-        "enabled": true
-      },
-      {
         "from": "action.add_one",
         "to": "action.multiply_ten",
         "enabled": true
       },
       {
-        "from": "trigger.tick_1s",
-        "to": "taiyo1.alarm.machineSpeed",
+        "from": "taiyo1.alarm.machineSpeed",
+        "to": "action.debug",
         "enabled": true
       },
       {
-        "from": "taiyo1.alarm.machineSpeed",
-        "to": "action.debug",
+        "from": "trigger.watch_1771610722257",
+        "to": "taiyo1.alarm.machineSpeed",
         "enabled": true
       }
     ],
@@ -166,8 +148,8 @@
         "y": 180
       },
       "action.debug": {
-        "x": 1080,
-        "y": 220
+        "x": 1270,
+        "y": 270
       },
       "test.coba": {
         "x": 670,
@@ -175,6 +157,10 @@
       },
       "taiyo1.alarm.machineSpeed": {
         "x": 680,
+        "y": 470
+      },
+      "trigger.watch_1771610722257": {
+        "x": 250,
         "y": 380
       }
     }
@@ -203,12 +189,12 @@
             "value": "working"
           },
           "MachineSpeed": {
-            "value": 93,
-            "ts": "2026-02-20T17:53:05.931Z"
+            "value": 82,
+            "ts": "2026-02-20T18:10:06.539Z"
           },
           "Alarm": {
             "value": "woiii bahayaaa",
-            "ts": "2026-02-20T17:53:05.292Z"
+            "ts": "2026-02-20T18:10:06.541Z"
           }
         }
       },
@@ -227,8 +213,8 @@
             "value": "maintenance"
           },
           "MachineSpeed": {
-            "value": 93,
-            "ts": "2026-02-20T17:53:04.606Z"
+            "value": 32,
+            "ts": "2026-02-20T18:10:05.210Z"
           }
         }
       }

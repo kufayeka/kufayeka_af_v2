@@ -51,13 +51,13 @@ function createAssetFrameworkStore(initialSection = {}) {
   let updatedAt = new Date().toISOString();
   const listeners = new Set();
 
-  function emitChange() {
+  function emitChange(change = { type: "state.replace", changes: [] }) {
     revision += 1;
     updatedAt = new Date().toISOString();
     const snapshot = getState();
     for (const listener of listeners) {
       try {
-        listener(snapshot, { revision, updatedAt });
+        listener(snapshot, { revision, updatedAt, change });
       } catch (error) {
         console.error("asset store listener error:", error);
       }
@@ -253,9 +253,12 @@ function createAssetFrameworkStore(initialSection = {}) {
           return { ...asset, attributes: nextAttributes };
         }),
       };
-      emitChange();
-
       matches = resolve(path).filter((item) => item.kind === "attribute");
+      emitChange({
+        type: "attribute.set",
+        pattern: path,
+        changes: matches.map((item) => ({ ...item }))
+      });
       return matches;
     }
 
@@ -279,7 +282,11 @@ function createAssetFrameworkStore(initialSection = {}) {
         return { ...asset, attributes: nextAttributes };
       }),
     };
-    emitChange();
+    emitChange({
+      type: "attribute.set",
+      pattern: path,
+      changes: matches.map((item) => ({ ...item }))
+    });
 
     return resolve(path).filter((item) => item.kind === "attribute");
   }
@@ -305,7 +312,7 @@ function createAssetFrameworkStore(initialSection = {}) {
     },
     replace(nextState) {
       state = normalizeAssetSection(nextState);
-      emitChange();
+      emitChange({ type: "state.replace", changes: [] });
       return getState();
     },
     query(path) {
