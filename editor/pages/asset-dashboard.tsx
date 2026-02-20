@@ -26,7 +26,7 @@ import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
 import { ArrowRight, Building2, RefreshCcw } from "lucide-react";
 import { normalizeProgram } from "../lib/programUtils";
-import type { AssetDefinition, Program } from "../types/program";
+import type { AssetDefinition, AssetOptionSource, Program } from "../types/program";
 
 const EMPTY_PROGRAM: Program = {
   meta: { name: "Kufayeka AF Program", version: 1 },
@@ -79,9 +79,10 @@ function getEffectiveDashboardAttributes(
       dashboardEditable: boolean;
       nullable: boolean;
       inputMode: string;
-      optionsSource: "static" | "api";
+      optionsSource: AssetOptionSource;
       options: Array<{ label: string; value: unknown }>;
       optionsApiUrl: string;
+      optionsTransformScript: string;
     }
   >();
 
@@ -102,7 +103,8 @@ function getEffectiveDashboardAttributes(
           inputMode: attr.inputMode ?? "text",
           optionsSource: attr.optionsSource ?? "static",
           options: Array.isArray(attr.options) ? attr.options : [],
-          optionsApiUrl: attr.optionsApiUrl ?? ""
+          optionsApiUrl: attr.optionsApiUrl ?? "",
+          optionsTransformScript: attr.optionsTransformScript ?? ""
         });
       } else if (attr.dashboardVisible === true) {
         rows.set(attr.name, { ...prev, dashboardVisible: true });
@@ -166,7 +168,7 @@ export default function AssetDashboardPage() {
     attribute: {
       inputMode: string;
       value: unknown;
-      optionsSource: "static" | "api";
+      optionsSource: AssetOptionSource;
       options: Array<{ label: string; value: unknown }>;
       name: string;
     }
@@ -180,7 +182,7 @@ export default function AssetDashboardPage() {
     }
 
     const options =
-      attribute.optionsSource === "api"
+      attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform"
         ? optionMap[attribute.name] || []
         : attribute.options || [];
     const lookup = new Map(options.map((opt) => [String(opt.value), opt.label]));
@@ -242,7 +244,9 @@ export default function AssetDashboardPage() {
 
   useEffect(() => {
     const apiAttributes = dashboardAttributes.filter(
-      (attribute) => attribute.optionsSource === "api" && attribute.optionsApiUrl
+      (attribute) =>
+        (attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform") &&
+        attribute.optionsApiUrl
     );
     if (apiAttributes.length === 0) return;
 
@@ -252,11 +256,22 @@ export default function AssetDashboardPage() {
       for (const attribute of apiAttributes) {
         try {
           const res = await fetch(attribute.optionsApiUrl);
-          const data = (await res.json()) as unknown;
-          const list = Array.isArray(data)
-            ? data
-            : data && typeof data === "object" && Array.isArray((data as { data?: unknown[] }).data)
-              ? (data as { data: unknown[] }).data
+          const raw = (await res.json()) as unknown;
+          const transformed = (() => {
+            if (attribute.optionsSource !== "scriptTransform" || !attribute.optionsTransformScript?.trim()) {
+              return raw;
+            }
+            try {
+              const fn = new Function("input", attribute.optionsTransformScript);
+              return fn(raw);
+            } catch {
+              return raw;
+            }
+          })();
+          const list = Array.isArray(transformed)
+            ? transformed
+            : transformed && typeof transformed === "object" && Array.isArray((transformed as { data?: unknown[] }).data)
+              ? (transformed as { data: unknown[] }).data
               : [];
           const normalized = list
             .map((item) => {
@@ -285,6 +300,18 @@ export default function AssetDashboardPage() {
     return () => {
       cancelled = true;
     };
+  }, [dashboardAttributes]);
+
+  useEffect(() => {
+    const localOptionAttrs = dashboardAttributes.filter(
+      (attribute) =>
+        attribute.optionsSource === "static"
+    );
+    if (localOptionAttrs.length === 0) return;
+    const nextMap = Object.fromEntries(
+      localOptionAttrs.map((attribute) => [attribute.name, attribute.options || []])
+    );
+    setOptionMap((prev) => ({ ...prev, ...nextMap }));
   }, [dashboardAttributes]);
 
   const updateAttributeValue = (attributeName: string, rawValue: string) => {
@@ -473,7 +500,7 @@ export default function AssetDashboardPage() {
                               value={String(attribute.value ?? "")}
                               onChange={(e) => updateAttributeUnknown(attribute.name, e.target.value)}
                             >
-                              {(attribute.optionsSource === "api"
+                              {(attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform"
                                 ? optionMap[attribute.name] || []
                                 : attribute.options || []
                               ).map((option) => (
@@ -491,7 +518,7 @@ export default function AssetDashboardPage() {
                           <FormControl fullWidth>
                             <FormLabel sx={{ mb: 0.5 }}>Multi Select</FormLabel>
                             <FormGroup row>
-                              {(attribute.optionsSource === "api"
+                              {(attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform"
                                 ? optionMap[attribute.name] || []
                                 : attribute.options || []
                               ).map((option) => {
@@ -528,7 +555,7 @@ export default function AssetDashboardPage() {
                               }
                               disabled={!attribute.dashboardEditable}
                             >
-                              {(attribute.optionsSource === "api"
+                              {(attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform"
                                 ? optionMap[attribute.name] || []
                                 : attribute.options || []
                               ).map((option) => (

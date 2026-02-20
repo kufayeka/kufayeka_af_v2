@@ -18,14 +18,16 @@ import {
   TableRow,
   TableContainer,
   TextField,
+  Tooltip,
   Typography
 } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material/Select";
 import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
-import { ArrowRight, Building2 } from "lucide-react";
+import { ArrowRight, Building2, RefreshCcw } from "lucide-react";
 import type {
   AssetDashboardInputMode,
+  AssetOptionSource,
   AssetAttributeType,
   AssetAttributeValue,
   AssetDefinition,
@@ -115,9 +117,10 @@ function getEffectiveAttributes(
       dashboardEditable: boolean;
       nullable: boolean;
       inputMode: string;
-      optionsSource: "static" | "api";
+      optionsSource: AssetOptionSource;
       options: Array<{ label: string; value: unknown }>;
       optionsApiUrl: string;
+      optionsTransformScript: string;
       optionsLabelPath: string;
       optionsValuePath: string;
     }
@@ -142,6 +145,7 @@ function getEffectiveAttributes(
           optionsSource: attr.optionsSource ?? "static",
           options: Array.isArray(attr.options) ? attr.options : [],
           optionsApiUrl: attr.optionsApiUrl ?? "",
+          optionsTransformScript: attr.optionsTransformScript ?? "",
           optionsLabelPath: attr.optionsLabelPath ?? "",
           optionsValuePath: attr.optionsValuePath ?? ""
         });
@@ -173,6 +177,7 @@ function getEffectiveAttributes(
         optionsSource: "static",
         options: [],
         optionsApiUrl: "",
+        optionsTransformScript: "",
         optionsLabelPath: "",
         optionsValuePath: ""
       });
@@ -197,6 +202,8 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
+  const [optionMap, setOptionMap] = useState<Record<string, Array<{ label: string; value: unknown }>>>({});
+  const [loadingOptions, setLoadingOptions] = useState(false);
 
   const assetById = useMemo(
     () => new Map(assets.assets.map((asset) => [asset.id, asset])),
@@ -330,7 +337,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             <ArrowRight size={14} />
             <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-              {attr.name}: {serializeValue(attr.value)} {attr.unit || ""}
+              {attr.name}: {formatTreeValue(attr, asset)} {attr.unit || ""}
             </Typography>
           </Box>
         ),
@@ -354,7 +361,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       if (node) result.push(node);
     }
     return result;
-  }, [assetById, assets.assets, search, templateById]);
+  }, [assetById, assets.assets, optionMap, search, templateById]);
 
   useEffect(() => {
     const assetKeys = assets.assets.map((asset) => `asset:${asset.id}`);
@@ -370,6 +377,117 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     [selectedAssetEffectiveAttributes]
   );
 
+  const runTransform = (script: string, input: unknown): unknown => {
+    if (!script.trim()) return input;
+    try {
+      const fn = new Function("input", script);
+      return fn(input);
+    } catch {
+      return input;
+    }
+  };
+
+  const normalizeOptions = (input: unknown): Array<{ label: string; value: unknown }> => {
+    const list = Array.isArray(input)
+      ? input
+      : input && typeof input === "object" && Array.isArray((input as { data?: unknown[] }).data)
+        ? (input as { data: unknown[] }).data
+        : [];
+    return list
+      .map((item) => {
+        if (item && typeof item === "object") {
+          const row = item as { label?: unknown; value?: unknown; name?: unknown; id?: unknown };
+          const label = String(row.label ?? row.name ?? row.value ?? row.id ?? "");
+          const value = row.value ?? row.id ?? row.label ?? row.name;
+          return label ? { label, value } : null;
+        }
+        if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+          return { label: String(item), value: item };
+        }
+        return null;
+      })
+      .filter(Boolean) as Array<{ label: string; value: unknown }>;
+  };
+
+  const loadOptionProviders = async () => {
+    setLoadingOptions(true);
+    try {
+      const providerDefs = assets.attributeTemplates.flatMap((template) =>
+        template.attributes
+          .filter((attr) =>
+            attr.inputMode === "select" || attr.inputMode === "radio" || attr.inputMode === "multiselect"
+          )
+          .map((attr) => ({
+            key: `${template.id}:${attr.name}`,
+            source: attr.optionsSource ?? "static",
+            url: attr.optionsApiUrl ?? "",
+            script: attr.optionsTransformScript ?? "",
+            staticOptions: Array.isArray(attr.options) ? attr.options : []
+          }))
+      );
+
+      const entries: Array<[string, Array<{ label: string; value: unknown }>]> = [];
+      for (const def of providerDefs) {
+        if (def.source === "static") {
+          entries.push([def.key, def.staticOptions]);
+          continue;
+        }
+        if (!def.url) {
+          entries.push([def.key, def.staticOptions]);
+          continue;
+        }
+        try {
+          const raw = await fetch(def.url).then((r) => r.json());
+          const transformed = runTransform(def.script, raw);
+          entries.push([def.key, normalizeOptions(transformed)]);
+        } catch {
+          entries.push([def.key, def.staticOptions]);
+        }
+      }
+      setOptionMap(Object.fromEntries(entries));
+    } finally {
+      setLoadingOptions(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadOptionProviders();
+  }, [assets.attributeTemplates]);
+
+  function formatTreeValue(
+    attr: ReturnType<typeof getEffectiveAttributes>[number],
+    asset: AssetDefinition
+  ): string {
+    if (attr.inputMode !== "select" && attr.inputMode !== "radio" && attr.inputMode !== "multiselect") {
+      return serializeValue(attr.value);
+    }
+    const keys = asset.templateIds.flatMap((templateId) => {
+      const template = assets.attributeTemplates.find((item) => item.id === templateId);
+      if (!template) return [];
+      return template.attributes
+        .filter((attribute) => attribute.name === attr.name)
+        .map((attribute) => `${template.id}:${attribute.name}`);
+    });
+    const options = keys.flatMap((key) => optionMap[key] || []);
+    const lookup = new Map(options.map((option) => [String(option.value), option.label]));
+
+    if (attr.inputMode === "multiselect") {
+      const values = Array.isArray(attr.value) ? attr.value : [];
+      if (values.length === 0) return "[]";
+      return values
+        .map((value) => {
+          const raw = serializeValue(value);
+          const label = lookup.get(String(value));
+          return label ? `${label} (${raw})` : raw;
+        })
+        .join(", ");
+    }
+
+    const raw = serializeValue(attr.value);
+    const label = lookup.get(String(attr.value));
+    return label ? `${label} (${raw})` : raw;
+  }
+
   return (
     <Box sx={{ p: 1.25, display: "grid", gap: 1.25 }}>
       <Paper variant="outlined" sx={{ p: 0.5 }}>
@@ -383,9 +501,23 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       {mainTab === 0 && (
         <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
           <Paper variant="outlined" sx={{ p: 1, display: "grid", gridTemplateRows: "auto auto 1fr", gap: 0.75 }}>
-            <Button variant="outlined" onClick={() => addAsset(null)}>
-              Add Root Asset
-            </Button>
+            <Box sx={{ display: "flex", gap: 0.75 }}>
+              <Button variant="outlined" onClick={() => addAsset(null)}>
+                Add Root Asset
+              </Button>
+              <Tooltip title="Reload option label providers">
+                <span>
+                  <Button
+                    variant="outlined"
+                    onClick={() => void loadOptionProviders()}
+                    disabled={loadingOptions}
+                    sx={{ minWidth: 40, px: 1 }}
+                  >
+                    <RefreshCcw size={15} />
+                  </Button>
+                </span>
+              </Tooltip>
+            </Box>
             <TextField
               size="small"
               label="Search Asset or Attribute"
@@ -749,7 +881,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                                   ...template,
                                   attributes: template.attributes.map((item, itemIdx) =>
                                     itemIdx === idx
-                                      ? { ...item, optionsSource: e.target.value as "static" | "api" }
+                                      ? { ...item, optionsSource: e.target.value as AssetOptionSource }
                                       : item
                                   )
                                 }));
@@ -757,27 +889,50 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                             >
                               <MenuItem value="static">static</MenuItem>
                               <MenuItem value="api">api</MenuItem>
+                              <MenuItem value="scriptTransform">scriptTransform</MenuItem>
                             </Select>
                           </FormControl>
                         </TableCell>
                         <TableCell sx={{ minWidth: 260 }}>
-                          {attribute.optionsSource === "api" ? (
-                            <TextField
-                              size="small"
-                              fullWidth
-                              placeholder="https://.../options"
-                              value={attribute.optionsApiUrl ?? ""}
-                              onChange={(e) => {
-                                updateTemplateWith(selectedTemplate.id, (template) => ({
-                                  ...template,
-                                  attributes: template.attributes.map((item, itemIdx) =>
-                                    itemIdx === idx
-                                      ? { ...item, optionsApiUrl: e.target.value }
-                                      : item
-                                  )
-                                }));
-                              }}
-                            />
+                          {(attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform") ? (
+                            <Box sx={{ display: "grid", gap: 0.5 }}>
+                              <TextField
+                                size="small"
+                                fullWidth
+                                placeholder="https://.../options"
+                                value={attribute.optionsApiUrl ?? ""}
+                                onChange={(e) => {
+                                  updateTemplateWith(selectedTemplate.id, (template) => ({
+                                    ...template,
+                                    attributes: template.attributes.map((item, itemIdx) =>
+                                      itemIdx === idx
+                                        ? { ...item, optionsApiUrl: e.target.value }
+                                        : item
+                                    )
+                                  }));
+                                }}
+                              />
+                              {attribute.optionsSource === "scriptTransform" && (
+                                <TextField
+                                  size="small"
+                                  fullWidth
+                                  multiline
+                                  minRows={2}
+                                  placeholder="return input.data.map(x => ({label:x.name, value:x.code}));"
+                                  value={attribute.optionsTransformScript ?? ""}
+                                  onChange={(e) => {
+                                    updateTemplateWith(selectedTemplate.id, (template) => ({
+                                      ...template,
+                                      attributes: template.attributes.map((item, itemIdx) =>
+                                        itemIdx === idx
+                                          ? { ...item, optionsTransformScript: e.target.value }
+                                          : item
+                                      )
+                                    }));
+                                  }}
+                                />
+                              )}
+                            </Box>
                           ) : (
                             <TextField
                               size="small"
@@ -841,6 +996,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           optionsSource: "static",
                           options: [],
                           optionsApiUrl: "",
+                          optionsTransformScript: "",
                           optionsLabelPath: "",
                           optionsValuePath: ""
                         }
@@ -859,7 +1015,21 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       {mainTab === 2 && (
         <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
           <Paper variant="outlined" sx={{ p: 1, display: "grid", gridTemplateRows: "auto 1fr", gap: 0.75 }}>
-            <Typography variant="subtitle2">Asset Tree Selector</Typography>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Typography variant="subtitle2">Asset Tree Selector</Typography>
+              <Tooltip title="Reload option label providers">
+                <span>
+                  <Button
+                    variant="outlined"
+                    onClick={() => void loadOptionProviders()}
+                    disabled={loadingOptions}
+                    sx={{ minWidth: 40, px: 1 }}
+                  >
+                    <RefreshCcw size={15} />
+                  </Button>
+                </span>
+              </Tooltip>
+            </Box>
             <Box sx={{ overflow: "auto", maxHeight: "calc(100vh - 260px)", border: "1px solid #e2e8f0", borderRadius: 0.5, p: 0.5 }}>
               <Tree
                 treeData={treeData}

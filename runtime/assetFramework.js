@@ -28,6 +28,7 @@ function normalizeAssetSection(input = {}) {
             optionsSource: attribute.optionsSource ?? "static",
             options: Array.isArray(attribute.options) ? attribute.options : [],
             optionsApiUrl: attribute.optionsApiUrl ?? "",
+            optionsTransformScript: attribute.optionsTransformScript ?? "",
             optionsLabelPath: attribute.optionsLabelPath ?? "",
             optionsValuePath: attribute.optionsValuePath ?? "",
           }))

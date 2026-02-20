@@ -135,15 +135,17 @@
         "name": "Taiyo1",
         "parentId": "asset_1771561990565_180",
         "templateIds": [
-          "template_1771523720677_855",
-          "template_1771522392767_162"
+          "template_1771523720677_855"
         ],
         "attributes": {
           "Operator": {
-            "value": "op_b"
+            "value": "3488ac21-aedc-49b3-8f17-c7a1dc4a1b8a"
           },
           "MachineCondition": {
             "value": "working"
+          },
+          "MachineSpeed": {
+            "value": 0
           }
         }
       },
@@ -152,15 +154,14 @@
         "name": "Taiyo2",
         "parentId": "asset_1771561990565_180",
         "templateIds": [
-          "template_1771523720677_855",
-          "template_1771522392767_162"
+          "template_1771523720677_855"
         ],
         "attributes": {
           "Operator": {
-            "value": "op_a"
+            "value": "148e6b9f-e768-48f9-a844-2defad632888"
           },
           "MachineCondition": {
-            "value": "working"
+            "value": "maintenance"
           }
         }
       }
@@ -183,7 +184,9 @@
             "options": [],
             "optionsApiUrl": "",
             "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsValuePath": "",
+            "optionsTransformScript": "",
+            "optionTableKey": ""
           },
           {
             "name": "MachineCondition",
@@ -207,7 +210,9 @@
             ],
             "optionsApiUrl": "",
             "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsValuePath": "",
+            "optionsTransformScript": "",
+            "optionTableKey": ""
           }
         ]
       },
@@ -228,7 +233,9 @@
             "options": [],
             "optionsApiUrl": "",
             "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsValuePath": "",
+            "optionsTransformScript": "",
+            "optionTableKey": ""
           },
           {
             "name": "PaperLength",
@@ -243,7 +250,9 @@
             "options": [],
             "optionsApiUrl": "",
             "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsValuePath": "",
+            "optionsTransformScript": "",
+            "optionTableKey": ""
           },
           {
             "name": "Operator",
@@ -254,7 +263,7 @@
             "dashboardEditable": true,
             "nullable": false,
             "inputMode": "select",
-            "optionsSource": "static",
+            "optionsSource": "scriptTransform",
             "options": [
               {
                 "label": "Budi",
@@ -265,9 +274,11 @@
                 "value": "op_b"
               }
             ],
-            "optionsApiUrl": "",
+            "optionsApiUrl": "http://192.168.68.99:2000/api/accounts",
             "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsValuePath": "",
+            "optionsTransformScript": "const rows = Array.isArray(input) ? input : [];\nreturn rows.map((r) => ({\n  value: r.id,\n  label: r.full_name\n}));",
+            "optionTableKey": ""
           }
         ]
       },
@@ -288,7 +299,9 @@
             "options": [],
             "optionsApiUrl": "",
             "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsValuePath": "",
+            "optionsTransformScript": "",
+            "optionTableKey": ""
           },
           {
             "name": "AHUTemperature",
@@ -303,7 +316,9 @@
             "options": [],
             "optionsApiUrl": "",
             "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsValuePath": "",
+            "optionsTransformScript": "",
+            "optionTableKey": ""
           },
           {
             "name": "CorridorHumidity",
@@ -318,7 +333,9 @@
             "options": [],
             "optionsApiUrl": "",
             "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsValuePath": "",
+            "optionsTransformScript": "",
+            "optionTableKey": ""
           },
           {
             "name": "AHUHumidity",
@@ -333,7 +350,9 @@
             "options": [],
             "optionsApiUrl": "",
             "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsValuePath": "",
+            "optionsTransformScript": "",
+            "optionTableKey": ""
           },
           {
             "name": "InletTemperature",
@@ -348,7 +367,9 @@
             "options": [],
             "optionsApiUrl": "",
             "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsValuePath": "",
+            "optionsTransformScript": "",
+            "optionTableKey": ""
           }
         ]
       }

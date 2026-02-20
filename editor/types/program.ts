@@ -9,6 +9,10 @@ export type AssetDashboardInputMode =
   | "radio"
   | "multiselect"
   | "textarea";
+export type AssetOptionSource =
+  | "static"
+  | "api"
+  | "scriptTransform";
 
 export interface AssetAttributeOption {
   label: string;
@@ -24,9 +28,10 @@ export interface AssetTemplateAttributeDefinition {
   dashboardEditable?: boolean;
   nullable?: boolean;
   inputMode?: AssetDashboardInputMode;
-  optionsSource?: "static" | "api";
+  optionsSource?: AssetOptionSource;
   options?: AssetAttributeOption[];
   optionsApiUrl?: string;
+  optionsTransformScript?: string;
   optionsLabelPath?: string;
   optionsValuePath?: string;
 }
