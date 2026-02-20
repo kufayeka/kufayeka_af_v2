@@ -48,7 +48,15 @@ export function normalizeProgram(program: Program): Program {
       attributes: (template.attributes || []).map((attribute) => ({
         ...attribute,
         unit: attribute.unit ?? "",
-        dashboardVisible: attribute.dashboardVisible === true
+        dashboardVisible: attribute.dashboardVisible === true,
+        dashboardEditable: attribute.dashboardEditable !== false,
+        nullable: attribute.nullable === true,
+        inputMode: attribute.inputMode ?? "text",
+        optionsSource: attribute.optionsSource ?? "static",
+        options: Array.isArray(attribute.options) ? attribute.options : [],
+        optionsApiUrl: attribute.optionsApiUrl ?? "",
+        optionsLabelPath: attribute.optionsLabelPath ?? "",
+        optionsValuePath: attribute.optionsValuePath ?? ""
       }))
     }))
   };

@@ -1,6 +1,19 @@
 export type TriggerType = "interval";
 export type ActionType = "script";
 export type AssetAttributeType = "number" | "boolean" | "string" | "array" | "object";
+export type AssetDashboardInputMode =
+  | "text"
+  | "number"
+  | "boolean"
+  | "select"
+  | "radio"
+  | "multiselect"
+  | "textarea";
+
+export interface AssetAttributeOption {
+  label: string;
+  value: unknown;
+}
 
 export interface AssetTemplateAttributeDefinition {
   name: string;
@@ -8,6 +21,14 @@ export interface AssetTemplateAttributeDefinition {
   defaultValue: unknown;
   unit?: string;
   dashboardVisible?: boolean;
+  dashboardEditable?: boolean;
+  nullable?: boolean;
+  inputMode?: AssetDashboardInputMode;
+  optionsSource?: "static" | "api";
+  options?: AssetAttributeOption[];
+  optionsApiUrl?: string;
+  optionsLabelPath?: string;
+  optionsValuePath?: string;
 }
 
 export interface AssetAttributeTemplateDefinition {

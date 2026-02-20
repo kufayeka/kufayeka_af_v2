@@ -124,42 +124,6 @@
   "assets": {
     "assets": [
       {
-        "id": "asset_1771556941262_201",
-        "name": "Djabesmen",
-        "parentId": null,
-        "templateIds": [],
-        "attributes": {}
-      },
-      {
-        "id": "asset_1771556947618_159",
-        "name": "GrahaPacific",
-        "parentId": "asset_1771556941262_201",
-        "templateIds": [],
-        "attributes": {}
-      },
-      {
-        "id": "asset_1771557149844_918",
-        "name": "Lantai1",
-        "parentId": "asset_1771556947618_159",
-        "templateIds": [
-          "template_1771557163569_471"
-        ],
-        "attributes": {}
-      },
-      {
-        "id": "asset_1771557339150_394",
-        "name": "Lantai2",
-        "parentId": "asset_1771556947618_159",
-        "templateIds": [
-          "template_1771557163569_471"
-        ],
-        "attributes": {
-          "InletTemperature": {
-            "value": 20
-          }
-        }
-      },
-      {
         "id": "asset_1771561990565_180",
         "name": "Jasuindo",
         "parentId": null,
@@ -171,11 +135,15 @@
         "name": "Taiyo1",
         "parentId": "asset_1771561990565_180",
         "templateIds": [
-          "template_1771523720677_855"
+          "template_1771523720677_855",
+          "template_1771522392767_162"
         ],
         "attributes": {
           "Operator": {
-            "value": "plenger, S.T."
+            "value": "op_b"
+          },
+          "MachineCondition": {
+            "value": "working"
           }
         }
       },
@@ -184,11 +152,15 @@
         "name": "Taiyo2",
         "parentId": "asset_1771561990565_180",
         "templateIds": [
-          "template_1771523720677_855"
+          "template_1771523720677_855",
+          "template_1771522392767_162"
         ],
         "attributes": {
           "Operator": {
-            "value": "budi"
+            "value": "op_a"
+          },
+          "MachineCondition": {
+            "value": "working"
           }
         }
       }
@@ -203,7 +175,39 @@
             "type": "string",
             "defaultValue": 0,
             "unit": "",
-            "dashboardVisible": false
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputMode": "text",
+            "optionsSource": "static",
+            "options": [],
+            "optionsApiUrl": "",
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
+          },
+          {
+            "name": "MachineCondition",
+            "type": "string",
+            "defaultValue": 0,
+            "unit": "",
+            "dashboardVisible": true,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputMode": "radio",
+            "optionsSource": "static",
+            "options": [
+              {
+                "label": "Working",
+                "value": "working"
+              },
+              {
+                "label": "Downtime - Trouble",
+                "value": "maintenance"
+              }
+            ],
+            "optionsApiUrl": "",
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           }
         ]
       },
@@ -216,21 +220,54 @@
             "type": "number",
             "defaultValue": 0,
             "unit": "meter/minute",
-            "dashboardVisible": false
+            "dashboardVisible": true,
+            "dashboardEditable": false,
+            "nullable": false,
+            "inputMode": "text",
+            "optionsSource": "static",
+            "options": [],
+            "optionsApiUrl": "",
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "PaperLength",
             "type": "number",
             "defaultValue": 0,
             "unit": "meter",
-            "dashboardVisible": false
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputMode": "text",
+            "optionsSource": "static",
+            "options": [],
+            "optionsApiUrl": "",
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "Operator",
             "type": "string",
             "defaultValue": 0,
             "unit": "",
-            "dashboardVisible": true
+            "dashboardVisible": true,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputMode": "select",
+            "optionsSource": "static",
+            "options": [
+              {
+                "label": "Budi",
+                "value": "op_a"
+              },
+              {
+                "label": "Plengerrr, S.T.",
+                "value": "op_b"
+              }
+            ],
+            "optionsApiUrl": "",
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           }
         ]
       },
@@ -243,35 +280,75 @@
             "type": "number",
             "defaultValue": 0,
             "unit": "Celcius",
-            "dashboardVisible": false
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputMode": "text",
+            "optionsSource": "static",
+            "options": [],
+            "optionsApiUrl": "",
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "AHUTemperature",
             "type": "number",
             "defaultValue": 0,
             "unit": "Celcius",
-            "dashboardVisible": false
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputMode": "text",
+            "optionsSource": "static",
+            "options": [],
+            "optionsApiUrl": "",
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "CorridorHumidity",
             "type": "number",
             "defaultValue": 0,
             "unit": "% RH",
-            "dashboardVisible": false
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputMode": "text",
+            "optionsSource": "static",
+            "options": [],
+            "optionsApiUrl": "",
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "AHUHumidity",
             "type": "number",
             "defaultValue": 0,
             "unit": "% RH",
-            "dashboardVisible": false
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputMode": "text",
+            "optionsSource": "static",
+            "options": [],
+            "optionsApiUrl": "",
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           },
           {
             "name": "InletTemperature",
             "type": "number",
             "defaultValue": 10,
             "unit": "Celcius",
-            "dashboardVisible": false
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputMode": "text",
+            "optionsSource": "static",
+            "options": [],
+            "optionsApiUrl": "",
+            "optionsLabelPath": "",
+            "optionsValuePath": ""
           }
         ]
       }

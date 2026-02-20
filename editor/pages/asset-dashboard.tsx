@@ -2,18 +2,29 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
+  Checkbox,
+  FormControl,
+  FormControlLabel,
+  FormGroup,
+  FormLabel,
+  MenuItem,
   Paper,
+  Radio,
+  RadioGroup,
+  Select,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
+  Tooltip,
   TextField,
   Typography
 } from "@mui/material";
+import type { SelectChangeEvent } from "@mui/material/Select";
 import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
-import { ArrowRight, Building2 } from "lucide-react";
+import { ArrowRight, Building2, RefreshCcw } from "lucide-react";
 import { normalizeProgram } from "../lib/programUtils";
 import type { AssetDefinition, Program } from "../types/program";
 
@@ -57,7 +68,22 @@ function getEffectiveDashboardAttributes(
   asset: AssetDefinition,
   templateById: Map<string, Program["assets"]["attributeTemplates"][number]>
 ) {
-  const rows = new Map<string, { name: string; value: unknown; unit: string; dashboardVisible: boolean }>();
+  const rows = new Map<
+    string,
+    {
+      name: string;
+      value: unknown;
+      defaultValue: unknown;
+      unit: string;
+      dashboardVisible: boolean;
+      dashboardEditable: boolean;
+      nullable: boolean;
+      inputMode: string;
+      optionsSource: "static" | "api";
+      options: Array<{ label: string; value: unknown }>;
+      optionsApiUrl: string;
+    }
+  >();
 
   for (const templateId of asset.templateIds) {
     const template = templateById.get(templateId);
@@ -68,8 +94,15 @@ function getEffectiveDashboardAttributes(
         rows.set(attr.name, {
           name: attr.name,
           value: attr.defaultValue,
+          defaultValue: attr.defaultValue,
           unit: attr.unit ?? "",
-          dashboardVisible: attr.dashboardVisible === true
+          dashboardVisible: attr.dashboardVisible === true,
+          dashboardEditable: attr.dashboardEditable !== false,
+          nullable: attr.nullable === true,
+          inputMode: attr.inputMode ?? "text",
+          optionsSource: attr.optionsSource ?? "static",
+          options: Array.isArray(attr.options) ? attr.options : [],
+          optionsApiUrl: attr.optionsApiUrl ?? ""
         });
       } else if (attr.dashboardVisible === true) {
         rows.set(attr.name, { ...prev, dashboardVisible: true });
@@ -94,18 +127,29 @@ export default function AssetDashboardPage() {
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
   const [status, setStatus] = useState("Loading...");
+  const [loading, setLoading] = useState(false);
+  const [optionMap, setOptionMap] = useState<Record<string, Array<{ label: string; value: unknown }>>>({});
+
+  const loadProgram = async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const res = await fetch("/api/program");
+      const data = (await res.json()) as { program?: Program };
+      const next = normalizeProgram(data.program ?? EMPTY_PROGRAM);
+      setProgram(next);
+      setSelectedAssetId((prev) => prev || next.assets.assets[0]?.id || "");
+      setExpandedKeys(next.assets.assets.map((asset) => `asset:${asset.id}`));
+      setStatus("Program loaded");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(`Load error: ${message}`);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    fetch("/api/program")
-      .then((res) => res.json())
-      .then((data: { program?: Program }) => {
-        const next = normalizeProgram(data.program ?? EMPTY_PROGRAM);
-        setProgram(next);
-        setSelectedAssetId(next.assets.assets[0]?.id ?? "");
-        setExpandedKeys(next.assets.assets.map((asset) => `asset:${asset.id}`));
-        setStatus("Program loaded");
-      })
-      .catch((error: Error) => setStatus(`Load error: ${error.message}`));
+    void loadProgram();
   }, []);
 
   const assetById = useMemo(
@@ -117,6 +161,46 @@ export default function AssetDashboardPage() {
     [program.assets.attributeTemplates]
   );
   const selectedAsset = selectedAssetId ? assetById.get(selectedAssetId) : undefined;
+
+  const formatTreeAttributeValue = (
+    attribute: {
+      inputMode: string;
+      value: unknown;
+      optionsSource: "static" | "api";
+      options: Array<{ label: string; value: unknown }>;
+      name: string;
+    }
+  ): string => {
+    if (
+      attribute.inputMode !== "select" &&
+      attribute.inputMode !== "radio" &&
+      attribute.inputMode !== "multiselect"
+    ) {
+      return serializeValue(attribute.value);
+    }
+
+    const options =
+      attribute.optionsSource === "api"
+        ? optionMap[attribute.name] || []
+        : attribute.options || [];
+    const lookup = new Map(options.map((opt) => [String(opt.value), opt.label]));
+
+    if (attribute.inputMode === "multiselect") {
+      const values = Array.isArray(attribute.value) ? attribute.value : [];
+      if (values.length === 0) return "[]";
+      return values
+        .map((value) => {
+          const raw = serializeValue(value);
+          const label = lookup.get(String(value));
+          return label ? `${label} (${raw})` : raw;
+        })
+        .join(", ");
+    }
+
+    const raw = serializeValue(attribute.value);
+    const label = lookup.get(String(attribute.value));
+    return label ? `${label} (${raw})` : raw;
+  };
 
   const treeData = useMemo(() => {
     const childrenMap = buildChildrenMap(program.assets.assets);
@@ -138,7 +222,7 @@ export default function AssetDashboardPage() {
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                 <ArrowRight size={14} />
                 <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                  {attr.name}: {serializeValue(attr.value)} {attr.unit || ""}
+                  {attr.name}: {formatTreeAttributeValue(attr)} {attr.unit || ""}
                 </Typography>
               </Box>
             ),
@@ -149,12 +233,59 @@ export default function AssetDashboardPage() {
     };
 
     return (childrenMap.get(null) || []).map(buildNode);
-  }, [program.assets.assets, templateById]);
+  }, [optionMap, program.assets.assets, templateById]);
 
   const dashboardAttributes = useMemo(() => {
     if (!selectedAsset) return [];
     return getEffectiveDashboardAttributes(selectedAsset, templateById);
   }, [selectedAsset, templateById]);
+
+  useEffect(() => {
+    const apiAttributes = dashboardAttributes.filter(
+      (attribute) => attribute.optionsSource === "api" && attribute.optionsApiUrl
+    );
+    if (apiAttributes.length === 0) return;
+
+    let cancelled = false;
+    const loadOptions = async () => {
+      const entries: Array<[string, Array<{ label: string; value: unknown }>]> = [];
+      for (const attribute of apiAttributes) {
+        try {
+          const res = await fetch(attribute.optionsApiUrl);
+          const data = (await res.json()) as unknown;
+          const list = Array.isArray(data)
+            ? data
+            : data && typeof data === "object" && Array.isArray((data as { data?: unknown[] }).data)
+              ? (data as { data: unknown[] }).data
+              : [];
+          const normalized = list
+            .map((item) => {
+              if (item && typeof item === "object") {
+                const row = item as { label?: unknown; value?: unknown; name?: unknown; id?: unknown };
+                const label = String(row.label ?? row.name ?? row.value ?? row.id ?? "");
+                const value = row.value ?? row.id ?? row.label ?? row.name;
+                return label ? { label, value } : null;
+              }
+              if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+                return { label: String(item), value: item };
+              }
+              return null;
+            })
+            .filter(Boolean) as Array<{ label: string; value: unknown }>;
+          entries.push([attribute.name, normalized]);
+        } catch {
+          entries.push([attribute.name, []]);
+        }
+      }
+      if (cancelled) return;
+      setOptionMap((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+    };
+
+    void loadOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, [dashboardAttributes]);
 
   const updateAttributeValue = (attributeName: string, rawValue: string) => {
     if (!selectedAsset) return;
@@ -177,18 +308,60 @@ export default function AssetDashboardPage() {
     }));
   };
 
+  const updateAttributeUnknown = (attributeName: string, value: unknown) => {
+    if (!selectedAsset) return;
+    setProgram((prev) => ({
+      ...prev,
+      assets: {
+        ...prev.assets,
+        assets: prev.assets.assets.map((asset) =>
+          asset.id !== selectedAsset.id
+            ? asset
+            : {
+                ...asset,
+                attributes: {
+                  ...asset.attributes,
+                  [attributeName]: { value }
+                }
+              }
+        )
+      }
+    }));
+  };
+
   const saveProgram = async () => {
     try {
+      const nextProgram: Program = {
+        ...program,
+        assets: {
+          ...program.assets,
+          assets: program.assets.assets.map((asset) => {
+            const attrs = getEffectiveDashboardAttributes(asset, templateById);
+            const removeSet = new Set(
+              attrs
+                .filter((attribute) => attribute.nullable && attribute.value === null)
+                .map((attribute) => attribute.name)
+            );
+            if (removeSet.size === 0) return asset;
+            const nextAttributes = Object.fromEntries(
+              Object.entries(asset.attributes || {}).filter(([name]) => !removeSet.has(name))
+            );
+            return { ...asset, attributes: nextAttributes };
+          })
+        }
+      };
+
       const res = await fetch("/api/program", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ program })
+        body: JSON.stringify({ program: nextProgram })
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
         setStatus(`Save error: ${data.error ?? "unknown error"}`);
         return;
       }
+      setProgram(nextProgram);
       setStatus("Saved");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -197,25 +370,44 @@ export default function AssetDashboardPage() {
   };
 
   return (
-    <Box sx={{ p: 1.25, minHeight: "100vh", background: "#f8fafc", display: "grid", gridTemplateRows: "auto 1fr", gap: 1.25 }}>
-      <Paper variant="outlined" sx={{ p: 1, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-          Asset Dashboard Setting
-        </Typography>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+    <Box
+      sx={{
+        p: 1.25,
+        height: "100vh",
+        boxSizing: "border-box",
+        background: "#f8fafc"
+      }}
+    >
+      <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25, height: "100%" }}>
+        <Paper
+          variant="outlined"
+          sx={{ height: "100%", p: 1, display: "grid", gridTemplateRows: "auto auto 1fr", gap: 0.75, minHeight: 0 }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+            <Typography variant="subtitle2">Asset Explorer</Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+              <Tooltip title="Refresh latest data">
+                <span>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    disabled={loading}
+                    onClick={() => void loadProgram()}
+                    sx={{ minWidth: 36, px: 1 }}
+                  >
+                    <RefreshCcw size={16} />
+                  </Button>
+                </span>
+              </Tooltip>
+              <Button variant="contained" size="small" onClick={saveProgram}>
+                Save
+              </Button>
+            </Box>
+          </Box>
           <Typography variant="caption" color="text.secondary">
             {status}
           </Typography>
-          <Button variant="contained" onClick={saveProgram}>
-            Save
-          </Button>
-        </Box>
-      </Paper>
-
-      <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
-        <Paper variant="outlined" sx={{ p: 1, display: "grid", gridTemplateRows: "auto 1fr", gap: 0.75 }}>
-          <Typography variant="subtitle2">Asset Explorer</Typography>
-          <Box sx={{ overflow: "auto", border: "1px solid #e2e8f0", borderRadius: 0.5, p: 0.5 }}>
+          <Box sx={{ overflow: "auto", border: "1px solid #e2e8f0", borderRadius: 0.5, p: 0.5, minHeight: 0 }}>
             <Tree
               treeData={treeData}
               expandedKeys={expandedKeys}
@@ -237,19 +429,20 @@ export default function AssetDashboardPage() {
           </Box>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: 1.25 }}>
+        <Paper
+          variant="outlined"
+          sx={{ height: "100%", p: 1.25, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr", gap: 0.75 }}
+        >
           {!selectedAsset && (
             <Typography variant="body2" color="text.secondary">
               Pilih asset di tree explorer.
             </Typography>
           )}
           {selectedAsset && (
-            <Box sx={{ display: "grid", gap: 0.75 }}>
+            <Box sx={{ display: "grid", gap: 0.75, minHeight: 0 }}>
               <Typography variant="h6">Asset Attribute Editor</Typography>
-              <Typography variant="caption" color="text.secondary">
-                Hanya attribute yang di-expose dari template dashboard yang bisa diubah.
-              </Typography>
-              <Table size="small" sx={{ border: "1px solid #e2e8f0" }}>
+              <Box sx={{ overflow: "auto", minHeight: 0, border: "1px solid #e2e8f0", borderRadius: 0.5 }}>
+                <Table size="small" sx={{ minWidth: 760 }}>
                 <TableHead>
                   <TableRow>
                     <TableCell>Name</TableCell>
@@ -262,12 +455,111 @@ export default function AssetDashboardPage() {
                     <TableRow key={`dashboard-${attribute.name}`}>
                       <TableCell>{attribute.name}</TableCell>
                       <TableCell sx={{ minWidth: 220 }}>
-                        <TextField
-                          size="small"
-                          fullWidth
-                          value={serializeValue(attribute.value)}
-                          onChange={(e) => updateAttributeValue(attribute.name, e.target.value)}
-                        />
+                        {attribute.inputMode === "boolean" ? (
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={Boolean(attribute.value)}
+                                disabled={!attribute.dashboardEditable}
+                                onChange={(_e, checked) => updateAttributeUnknown(attribute.name, checked)}
+                              />
+                            }
+                            label="Enabled"
+                          />
+                        ) : attribute.inputMode === "radio" ? (
+                          <FormControl>
+                            <RadioGroup
+                              row
+                              value={String(attribute.value ?? "")}
+                              onChange={(e) => updateAttributeUnknown(attribute.name, e.target.value)}
+                            >
+                              {(attribute.optionsSource === "api"
+                                ? optionMap[attribute.name] || []
+                                : attribute.options || []
+                              ).map((option) => (
+                                <FormControlLabel
+                                  key={`${attribute.name}-${String(option.value)}`}
+                                  value={String(option.value)}
+                                  control={<Radio />}
+                                  label={option.label}
+                                  disabled={!attribute.dashboardEditable}
+                                />
+                              ))}
+                            </RadioGroup>
+                          </FormControl>
+                        ) : attribute.inputMode === "multiselect" ? (
+                          <FormControl fullWidth>
+                            <FormLabel sx={{ mb: 0.5 }}>Multi Select</FormLabel>
+                            <FormGroup row>
+                              {(attribute.optionsSource === "api"
+                                ? optionMap[attribute.name] || []
+                                : attribute.options || []
+                              ).map((option) => {
+                                const current = Array.isArray(attribute.value) ? attribute.value : [];
+                                const checked = current.some((item) => item === option.value);
+                                return (
+                                  <FormControlLabel
+                                    key={`${attribute.name}-${String(option.value)}`}
+                                    control={
+                                      <Checkbox
+                                        checked={checked}
+                                        disabled={!attribute.dashboardEditable}
+                                        onChange={(_e, nextChecked) => {
+                                          const base = Array.isArray(attribute.value) ? [...attribute.value] : [];
+                                          const next = nextChecked
+                                            ? [...base, option.value]
+                                            : base.filter((item) => item !== option.value);
+                                          updateAttributeUnknown(attribute.name, next);
+                                        }}
+                                      />
+                                    }
+                                    label={option.label}
+                                  />
+                                );
+                              })}
+                            </FormGroup>
+                          </FormControl>
+                        ) : attribute.inputMode === "select" ? (
+                          <FormControl fullWidth size="small">
+                            <Select
+                              value={String(attribute.value ?? "")}
+                              onChange={(e: SelectChangeEvent<string>) =>
+                                updateAttributeUnknown(attribute.name, e.target.value)
+                              }
+                              disabled={!attribute.dashboardEditable}
+                            >
+                              {(attribute.optionsSource === "api"
+                                ? optionMap[attribute.name] || []
+                                : attribute.options || []
+                              ).map((option) => (
+                                <MenuItem key={`${attribute.name}-${String(option.value)}`} value={String(option.value)}>
+                                  {option.label}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        ) : (
+                          <TextField
+                            size="small"
+                            fullWidth
+                            multiline={attribute.inputMode === "textarea"}
+                            minRows={attribute.inputMode === "textarea" ? 3 : 1}
+                            type={attribute.inputMode === "number" ? "number" : "text"}
+                            value={serializeValue(attribute.value)}
+                            onChange={(e) => updateAttributeValue(attribute.name, e.target.value)}
+                            disabled={!attribute.dashboardEditable}
+                          />
+                        )}
+                        {attribute.nullable && attribute.dashboardEditable && (
+                          <Button
+                            size="small"
+                            variant="text"
+                            sx={{ mt: 0.5 }}
+                            onClick={() => updateAttributeUnknown(attribute.name, null)}
+                          >
+                            Set Null (revert to default on save)
+                          </Button>
+                        )}
                       </TableCell>
                       <TableCell>{attribute.unit || "-"}</TableCell>
                     </TableRow>
@@ -283,9 +575,11 @@ export default function AssetDashboardPage() {
                   )}
                 </TableBody>
               </Table>
+              </Box>
             </Box>
           )}
         </Paper>
+
       </Box>
     </Box>
   );

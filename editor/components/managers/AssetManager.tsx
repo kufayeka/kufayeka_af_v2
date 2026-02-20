@@ -16,6 +16,7 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TableContainer,
   TextField,
   Typography
 } from "@mui/material";
@@ -24,6 +25,7 @@ import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
 import { ArrowRight, Building2 } from "lucide-react";
 import type {
+  AssetDashboardInputMode,
   AssetAttributeType,
   AssetAttributeValue,
   AssetDefinition,
@@ -110,6 +112,14 @@ function getEffectiveAttributes(
       source: string;
       overridden: boolean;
       dashboardVisible: boolean;
+      dashboardEditable: boolean;
+      nullable: boolean;
+      inputMode: string;
+      optionsSource: "static" | "api";
+      options: Array<{ label: string; value: unknown }>;
+      optionsApiUrl: string;
+      optionsLabelPath: string;
+      optionsValuePath: string;
     }
   >();
 
@@ -125,7 +135,15 @@ function getEffectiveAttributes(
           value: attr.defaultValue,
           source: template.name,
           overridden: false,
-          dashboardVisible: attr.dashboardVisible === true
+          dashboardVisible: attr.dashboardVisible === true,
+          dashboardEditable: attr.dashboardEditable !== false,
+          nullable: attr.nullable === true,
+          inputMode: attr.inputMode ?? "text",
+          optionsSource: attr.optionsSource ?? "static",
+          options: Array.isArray(attr.options) ? attr.options : [],
+          optionsApiUrl: attr.optionsApiUrl ?? "",
+          optionsLabelPath: attr.optionsLabelPath ?? "",
+          optionsValuePath: attr.optionsValuePath ?? ""
         });
       } else {
         const prev = rows.get(attr.name);
@@ -148,7 +166,15 @@ function getEffectiveAttributes(
         value: val.value,
         source: "Custom",
         overridden: true,
-        dashboardVisible: false
+        dashboardVisible: false,
+        dashboardEditable: false,
+        nullable: false,
+        inputMode: "text",
+        optionsSource: "static",
+        options: [],
+        optionsApiUrl: "",
+        optionsLabelPath: "",
+        optionsValuePath: ""
       });
     }
   }
@@ -549,15 +575,29 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                     Remove
                   </Button>
                 </Box>
-                <Table size="small" sx={{ border: "1px solid #e2e8f0" }}>
+                <TableContainer
+                  sx={{
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 0.5,
+                    overflowX: "auto",
+                    overflowY: "auto",
+                    maxHeight: "calc(100vh - 360px)"
+                  }}
+                >
+                <Table size="small" stickyHeader sx={{ minWidth: 1780 }}>
                   <TableHead>
                     <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Default Value</TableCell>
-                      <TableCell>Unit</TableCell>
-                      <TableCell>Dashboard</TableCell>
-                      <TableCell>Action</TableCell>
+                      <TableCell sx={{ minWidth: 220 }}>Name</TableCell>
+                      <TableCell sx={{ minWidth: 130 }}>Type</TableCell>
+                      <TableCell sx={{ minWidth: 260 }}>Default Value</TableCell>
+                      <TableCell sx={{ minWidth: 180 }}>Unit</TableCell>
+                      <TableCell sx={{ minWidth: 150 }}>Show in Dashboard</TableCell>
+                      <TableCell sx={{ minWidth: 120 }}>Editable</TableCell>
+                      <TableCell sx={{ minWidth: 120 }}>Nullable</TableCell>
+                      <TableCell sx={{ minWidth: 150 }}>Input</TableCell>
+                      <TableCell sx={{ minWidth: 150 }}>Option Source</TableCell>
+                      <TableCell sx={{ minWidth: 320 }}>Options / API</TableCell>
+                      <TableCell sx={{ minWidth: 100 }}>Action</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -566,6 +606,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         <TableCell>
                           <TextField
                             size="small"
+                            sx={{ minWidth: 210 }}
                             value={attribute.name}
                             onChange={(e) => {
                               updateTemplateWith(selectedTemplate.id, (template) => ({
@@ -603,6 +644,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         <TableCell>
                           <TextField
                             size="small"
+                            sx={{ minWidth: 240 }}
                             value={serializeValue(attribute.defaultValue)}
                             onChange={(e) => {
                               updateTemplateWith(selectedTemplate.id, (template) => ({
@@ -619,6 +661,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         <TableCell>
                           <TextField
                             size="small"
+                            sx={{ minWidth: 160 }}
                             value={attribute.unit || ""}
                             onChange={(e) => {
                               updateTemplateWith(selectedTemplate.id, (template) => ({
@@ -645,6 +688,120 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           />
                         </TableCell>
                         <TableCell>
+                          <Switch
+                            size="small"
+                            checked={attribute.dashboardEditable !== false}
+                            onChange={(_e, checked) => {
+                              updateTemplateWith(selectedTemplate.id, (template) => ({
+                                ...template,
+                                attributes: template.attributes.map((item, itemIdx) =>
+                                  itemIdx === idx ? { ...item, dashboardEditable: checked } : item
+                                )
+                              }));
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            size="small"
+                            checked={attribute.nullable === true}
+                            onChange={(_e, checked) => {
+                              updateTemplateWith(selectedTemplate.id, (template) => ({
+                                ...template,
+                                attributes: template.attributes.map((item, itemIdx) =>
+                                  itemIdx === idx ? { ...item, nullable: checked } : item
+                                )
+                              }));
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <FormControl size="small" sx={{ minWidth: 120 }}>
+                            <Select
+                              value={attribute.inputMode ?? "text"}
+                              onChange={(e: SelectChangeEvent<string>) => {
+                                updateTemplateWith(selectedTemplate.id, (template) => ({
+                                  ...template,
+                                  attributes: template.attributes.map((item, itemIdx) =>
+                                    itemIdx === idx
+                                      ? { ...item, inputMode: e.target.value as AssetDashboardInputMode }
+                                      : item
+                                  )
+                                }));
+                              }}
+                            >
+                              <MenuItem value="text">text</MenuItem>
+                              <MenuItem value="number">number</MenuItem>
+                              <MenuItem value="boolean">boolean</MenuItem>
+                              <MenuItem value="select">select</MenuItem>
+                              <MenuItem value="radio">radio</MenuItem>
+                              <MenuItem value="multiselect">multiselect</MenuItem>
+                              <MenuItem value="textarea">textarea</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                        <TableCell>
+                          <FormControl size="small" sx={{ minWidth: 120 }}>
+                            <Select
+                              value={attribute.optionsSource ?? "static"}
+                              onChange={(e: SelectChangeEvent<string>) => {
+                                updateTemplateWith(selectedTemplate.id, (template) => ({
+                                  ...template,
+                                  attributes: template.attributes.map((item, itemIdx) =>
+                                    itemIdx === idx
+                                      ? { ...item, optionsSource: e.target.value as "static" | "api" }
+                                      : item
+                                  )
+                                }));
+                              }}
+                            >
+                              <MenuItem value="static">static</MenuItem>
+                              <MenuItem value="api">api</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                        <TableCell sx={{ minWidth: 260 }}>
+                          {attribute.optionsSource === "api" ? (
+                            <TextField
+                              size="small"
+                              fullWidth
+                              placeholder="https://.../options"
+                              value={attribute.optionsApiUrl ?? ""}
+                              onChange={(e) => {
+                                updateTemplateWith(selectedTemplate.id, (template) => ({
+                                  ...template,
+                                  attributes: template.attributes.map((item, itemIdx) =>
+                                    itemIdx === idx
+                                      ? { ...item, optionsApiUrl: e.target.value }
+                                      : item
+                                  )
+                                }));
+                              }}
+                            />
+                          ) : (
+                            <TextField
+                              size="small"
+                              fullWidth
+                              placeholder='[{"label":"A","value":"a"}]'
+                              value={JSON.stringify(attribute.options ?? [])}
+                              onChange={(e) => {
+                                const parsed = parseMaybeJson(e.target.value);
+                                updateTemplateWith(selectedTemplate.id, (template) => ({
+                                  ...template,
+                                  attributes: template.attributes.map((item, itemIdx) =>
+                                    itemIdx === idx
+                                      ? {
+                                          ...item,
+                                          options: Array.isArray(parsed) ? parsed : item.options ?? []
+                                        }
+                                      : item
+                                  )
+                                }));
+                              }}
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <Button
                             color="error"
                             size="small"
@@ -664,6 +821,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                     ))}
                   </TableBody>
                 </Table>
+                </TableContainer>
                 <Button
                   variant="outlined"
                   onClick={() =>
@@ -676,7 +834,15 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           type: "number",
                           defaultValue: 0,
                           unit: "",
-                          dashboardVisible: false
+                          dashboardVisible: false,
+                          dashboardEditable: true,
+                          nullable: false,
+                          inputMode: "text",
+                          optionsSource: "static",
+                          options: [],
+                          optionsApiUrl: "",
+                          optionsLabelPath: "",
+                          optionsValuePath: ""
                         }
                       ]
                     }))
