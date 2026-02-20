@@ -37,9 +37,9 @@
       "description": ""
     },
     {
-      "id": "action.script_1771507062991",
+      "id": "action.halooo",
       "type": "script",
-      "script": "msg.payload = \"HALOOOO\"\r\n\r\nsend(msg);",
+      "script": "msg.payload = \"HALOOOO-\" + JSON.stringify(msg.payload);\r\n\r\nsend(msg);",
       "enabled": true,
       "description": ""
     }
@@ -48,7 +48,7 @@
     "links": [
       {
         "from": "trigger.tick_1s",
-        "to": "action.script_1771507062991",
+        "to": "action.halooo",
         "enabled": true
       },
       {
@@ -67,7 +67,7 @@
         "enabled": true
       },
       {
-        "from": "action.script_1771507062991",
+        "from": "action.halooo",
         "to": "action.debug",
         "enabled": true
       },
@@ -75,24 +75,37 @@
         "from": "trigger.tick_1s",
         "to": "action.debug",
         "enabled": true
+      },
+      {
+        "from": "action.multiply_ten",
+        "to": "action.halooo",
+        "enabled": true
       }
     ],
     "nodePositions": {
       "action.debug": {
-        "x": 1619.7807886974408,
-        "y": 125.7319018076127
+        "x": 1960,
+        "y": 160
       },
       "action.multiply_ten": {
-        "x": 958.0008355983183,
-        "y": 71.01722028337369
+        "x": 1000,
+        "y": 120
       },
       "action.add_one": {
-        "x": 498.4444445670981,
-        "y": 87.52087765924726
+        "x": 580,
+        "y": 120
       },
       "action.script_1771507062991": {
-        "x": 1123.335491962321,
-        "y": 221.03448974225853
+        "x": 1400,
+        "y": 280
+      },
+      "trigger.tick_1s": {
+        "x": 180,
+        "y": 240
+      },
+      "action.halooo": {
+        "x": 1640,
+        "y": 580
       }
     }
   },
@@ -105,7 +118,11 @@
         "templateIds": [
           "template_1771522392767_162"
         ],
-        "attributes": {}
+        "attributes": {
+          "Timestamp": {
+            "value": "-"
+          }
+        }
       },
       {
         "id": "asset_1771523526532_41",

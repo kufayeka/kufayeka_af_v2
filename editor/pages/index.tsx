@@ -489,6 +489,7 @@ export default function HomePage() {
             }}
             onNodePositionDragStart={() => dispatch({ type: "PUSH_SNAPSHOT" })}
             onNodePositionChange={updateNodePosition}
+            onConnectNodes={(fromId, toId) => addLink({ from: fromId, to: toId, enabled: true })}
           />
         )}
         {tab === 3 && <AssetManager assets={program.assets} onChange={updateAssets} />}

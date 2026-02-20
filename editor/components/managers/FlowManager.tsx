@@ -33,6 +33,7 @@ interface FlowManagerProps {
   onActionNodeDoubleClick?: (actionId: string) => void;
   onNodePositionDragStart?: () => void;
   onNodePositionChange?: (nodeId: string, position: NodePosition) => void;
+  onConnectNodes?: (fromId: string, toId: string) => void;
 }
 
 export default function FlowManager({
@@ -45,7 +46,8 @@ export default function FlowManager({
   onRemoveLink,
   onActionNodeDoubleClick,
   onNodePositionDragStart,
-  onNodePositionChange
+  onNodePositionChange,
+  onConnectNodes
 }: FlowManagerProps) {
   const [selectedLinkIndex, setSelectedLinkIndex] = useState(-1);
   const [draft, setDraft] = useState<FlowLink>({ from: "", to: "", enabled: true });
@@ -90,6 +92,7 @@ export default function FlowManager({
           }}
           onNodeDragStart={onNodePositionDragStart}
           onNodePositionChange={onNodePositionChange}
+          onConnectNodes={onConnectNodes}
         />
         </Box>
       </Paper>

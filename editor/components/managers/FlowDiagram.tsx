@@ -21,7 +21,12 @@ interface FlowDiagramProps {
   onNodeDoubleClick?: (nodeId: string, kind: NodeKind) => void;
   onNodeDragStart?: () => void;
   onNodePositionChange?: (nodeId: string, position: NodePosition) => void;
+  onConnectNodes?: (fromId: string, toId: string) => void;
 }
+
+const NODE_WIDTH = 250;
+const NODE_HALF_WIDTH = NODE_WIDTH / 2;
+const GRID_SIZE = 20;
 
 function buildSideLayout(triggerIds: string[], actionIds: string[], links: FlowLink[]): NodePoint[] {
   const nodeKindMap = new Map<string, NodeKind>();
@@ -150,7 +155,8 @@ export default function FlowDiagram({
   onSelectLink,
   onNodeDoubleClick,
   onNodeDragStart,
-  onNodePositionChange
+  onNodePositionChange,
+  onConnectNodes
 }: FlowDiagramProps) {
   const autoNodes = useMemo(
     () => buildSideLayout(triggerIds, actionIds, links),
@@ -172,6 +178,8 @@ export default function FlowDiagram({
   const diagramHeight = Math.max(420, maxY + 140);
 
   const [zoom, setZoom] = useState(0.45);
+  const [connectFromId, setConnectFromId] = useState("");
+  const [connectCursor, setConnectCursor] = useState<{ x: number; y: number } | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragPanRef = useRef({
@@ -196,6 +204,18 @@ export default function FlowDiagram({
   const zoomIn = () => setZoom((prev) => Math.min(2, Number((prev + 0.1).toFixed(2))));
   const zoomOut = () => setZoom((prev) => Math.max(0.2, Number((prev - 0.1).toFixed(2))));
   const zoomReset = () => setZoom(0.45);
+
+  const getSvgPointFromMouse = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    const scaleX = diagramWidth / rect.width;
+    const scaleY = diagramHeight / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  };
 
   return (
     <Box
@@ -228,7 +248,7 @@ export default function FlowDiagram({
         }}
       >
         <Typography variant="body2" color="text.secondary">
-          Zoom: {Math.round(zoom * 100)}% | Drag canvas to pan | Drag move icon to reposition script node
+          Zoom: {Math.round(zoom * 100)}% | Drag canvas to pan | Drag node move handle to reposition (snap grid) | Connect: click OUT then IN
         </Typography>
         <Box sx={{ display: "flex", gap: 0.75 }}>
           <Button size="small" onClick={zoomOut}>
@@ -259,6 +279,8 @@ export default function FlowDiagram({
         onMouseDown={(event) => {
           const target = event.target as Element;
           if (target.closest("[data-diagram-interactive='true']")) return;
+          setConnectFromId("");
+          setConnectCursor(null);
 
           const el = scrollerRef.current;
           if (!el) return;
@@ -276,19 +298,21 @@ export default function FlowDiagram({
           if (!el) return;
 
           if (dragNodeRef.current.active) {
-            const svg = svgRef.current;
-            if (!svg) return;
-            const rect = svg.getBoundingClientRect();
-            const scaleX = diagramWidth / rect.width;
-            const scaleY = diagramHeight / rect.height;
-            const svgX = (event.clientX - rect.left) * scaleX;
-            const svgY = (event.clientY - rect.top) * scaleY;
+            const point = getSvgPointFromMouse(event.clientX, event.clientY);
+            if (!point) return;
+            const snappedX = Math.round((point.x - dragNodeRef.current.dx) / GRID_SIZE) * GRID_SIZE;
+            const snappedY = Math.round((point.y - dragNodeRef.current.dy) / GRID_SIZE) * GRID_SIZE;
 
             onNodePositionChange?.(dragNodeRef.current.nodeId, {
-              x: Math.max(130, svgX - dragNodeRef.current.dx),
-              y: Math.max(60, svgY - dragNodeRef.current.dy)
+              x: Math.max(130, snappedX),
+              y: Math.max(60, snappedY)
             });
             return;
+          }
+
+          if (connectFromId) {
+            const point = getSvgPointFromMouse(event.clientX, event.clientY);
+            if (point) setConnectCursor(point);
           }
 
           if (!dragPanRef.current.active) return;
@@ -320,6 +344,9 @@ export default function FlowDiagram({
           viewBox={`0 0 ${diagramWidth} ${diagramHeight}`}
         >
           <defs>
+            <pattern id="gridPattern" width={GRID_SIZE} height={GRID_SIZE} patternUnits="userSpaceOnUse">
+              <path d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`} fill="none" stroke="#e2e8f0" strokeWidth="1" />
+            </pattern>
             <marker
               id="flowArrow"
               viewBox="0 0 10 10"
@@ -334,15 +361,16 @@ export default function FlowDiagram({
           </defs>
 
           <rect x="0" y="0" width={diagramWidth} height={diagramHeight} fill="#f8fafc" />
+          <rect x="0" y="0" width={diagramWidth} height={diagramHeight} fill="url(#gridPattern)" />
 
           {links.map((link, index) => {
             const from = nodeMap.get(link.from);
             const to = nodeMap.get(link.to);
             if (!from || !to) return null;
 
-            const startX = from.x + 125;
+            const startX = from.x + NODE_HALF_WIDTH;
             const startY = from.y;
-            const endX = to.x - 125;
+            const endX = to.x - NODE_HALF_WIDTH;
             const endY = to.y;
             const midX = (startX + endX) / 2;
             const d = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
@@ -390,8 +418,29 @@ export default function FlowDiagram({
             );
           })}
 
+          {connectFromId && connectCursor && (() => {
+            const from = nodeMap.get(connectFromId);
+            if (!from) return null;
+            const startX = from.x + NODE_HALF_WIDTH;
+            const startY = from.y;
+            const endX = connectCursor.x;
+            const endY = connectCursor.y;
+            const midX = (startX + endX) / 2;
+            const d = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
+            return (
+              <path
+                d={d}
+                fill="none"
+                stroke="#0f766e"
+                strokeWidth={3}
+                strokeDasharray="6 4"
+                markerEnd="url(#flowArrow)"
+                pointerEvents="none"
+              />
+            );
+          })()}
+
           {nodes.map((node) => {
-            const isAction = node.kind === "action";
             const moveIconX = node.x + 106;
             const moveIconY = node.y - 20;
 
@@ -400,16 +449,16 @@ export default function FlowDiagram({
                 key={node.id}
                 onDoubleClick={() => onNodeDoubleClick?.(node.id, node.kind)}
                 data-diagram-interactive="true"
-                style={{ cursor: isAction ? "pointer" : "default" }}
+                style={{ cursor: "pointer" }}
               >
                 <rect
-                  x={node.x - 125}
+                  x={node.x - NODE_HALF_WIDTH}
                   y={node.y - 26}
-                  width={250}
+                  width={NODE_WIDTH}
                   height={52}
                   rx={4}
-                  fill={isAction ? "#dbeafe" : "#ccfbf1"}
-                  stroke={isAction ? "#2563eb" : "#0f766e"}
+                  fill={node.kind === "action" ? "#dbeafe" : "#ccfbf1"}
+                  stroke={node.kind === "action" ? "#2563eb" : "#0f766e"}
                   strokeWidth={0.7}
                 />
                 <text
@@ -417,59 +466,95 @@ export default function FlowDiagram({
                   y={node.y + 5}
                   textAnchor="middle"
                   fontFamily="Ubuntu, 'Segoe UI', Arial, sans-serif"
-                  fontSize={isAction ? "18" : "16"}
-                  fontWeight={isAction ? "700" : "600"}
+                  fontSize={node.kind === "action" ? "18" : "16"}
+                  fontWeight={node.kind === "action" ? "700" : "600"}
                   fill="#0f172a"
                 >
                   {node.id}
                 </text>
 
-                {isAction && (
-                  <g
-                    data-diagram-interactive="true"
-                    onMouseDown={(event) => {
-                      const svg = svgRef.current;
-                      if (!svg) return;
-                      onNodeDragStart?.();
-                      const rect = svg.getBoundingClientRect();
-                      const scaleX = diagramWidth / rect.width;
-                      const scaleY = diagramHeight / rect.height;
-                      const svgX = (event.clientX - rect.left) * scaleX;
-                      const svgY = (event.clientY - rect.top) * scaleY;
+                <g
+                  data-diagram-interactive="true"
+                  onMouseDown={(event) => {
+                    onNodeDragStart?.();
+                    const point = getSvgPointFromMouse(event.clientX, event.clientY);
+                    if (!point) return;
 
-                      dragNodeRef.current = {
-                        active: true,
-                        nodeId: node.id,
-                        dx: svgX - node.x,
-                        dy: svgY - node.y
-                      };
-                      event.stopPropagation();
-                      event.preventDefault();
-                    }}
+                    dragNodeRef.current = {
+                      active: true,
+                      nodeId: node.id,
+                      dx: point.x - node.x,
+                      dy: point.y - node.y
+                    };
+                    setConnectFromId("");
+                    setConnectCursor(null);
+                    event.stopPropagation();
+                    event.preventDefault();
+                  }}
+                >
+                  <rect
+                    x={moveIconX - 20}
+                    y={moveIconY - 10}
+                    width={40}
+                    height={20}
+                    rx={2}
+                    fill="#ffffff"
+                    stroke="#64748b"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={moveIconX}
+                    y={moveIconY + 4}
+                    textAnchor="middle"
+                    fontFamily="Ubuntu, 'Segoe UI', Arial, sans-serif"
+                    fontSize="12"
+                    fontWeight="700"
+                    fill="#334155"
                   >
-                    <rect
-                      x={moveIconX - 20}
-                      y={moveIconY - 10}
-                      width={40}
-                      height={20}
-                      rx={2}
-                      fill="#ffffff"
-                      stroke="#64748b"
-                      strokeWidth={1}
-                    />
-                    <text
-                      x={moveIconX}
-                      y={moveIconY + 4}
-                      textAnchor="middle"
-                      fontFamily="Ubuntu, 'Segoe UI', Arial, sans-serif"
-                      fontSize="12"
-                      fontWeight="700"
-                      fill="#334155"
-                    >
-                      move
-                    </text>
-                  </g>
-                )}
+                    move
+                  </text>
+                </g>
+
+                <circle
+                  cx={node.x - NODE_HALF_WIDTH}
+                  cy={node.y}
+                  r={8}
+                  fill={connectFromId ? "#f8fafc" : "#ffffff"}
+                  stroke={connectFromId ? "#0f766e" : "#64748b"}
+                  strokeWidth={1.5}
+                  data-diagram-interactive="true"
+                  onClick={(event) => {
+                    if (!connectFromId || connectFromId === node.id) {
+                      event.stopPropagation();
+                      return;
+                    }
+                    onConnectNodes?.(connectFromId, node.id);
+                    setConnectFromId("");
+                    setConnectCursor(null);
+                    event.stopPropagation();
+                  }}
+                  style={{ cursor: connectFromId && connectFromId !== node.id ? "crosshair" : "default" }}
+                />
+                <circle
+                  cx={node.x + NODE_HALF_WIDTH}
+                  cy={node.y}
+                  r={8}
+                  fill={connectFromId === node.id ? "#ccfbf1" : "#ffffff"}
+                  stroke={connectFromId === node.id ? "#0f766e" : "#64748b"}
+                  strokeWidth={1.5}
+                  data-diagram-interactive="true"
+                  onClick={(event) => {
+                    if (connectFromId === node.id) {
+                      setConnectFromId("");
+                      setConnectCursor(null);
+                    } else {
+                      setConnectFromId(node.id);
+                      setConnectCursor({ x: node.x + NODE_HALF_WIDTH, y: node.y });
+                    }
+                    event.stopPropagation();
+                  }}
+                  style={{ cursor: "crosshair" }}
+                />
               </g>
             );
           })}
