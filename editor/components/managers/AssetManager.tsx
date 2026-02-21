@@ -1,25 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
-  Chip,
+  Checkbox,
   FormControl,
   FormControlLabel,
   InputLabel,
   MenuItem,
   Paper,
   Select,
-  Switch,
   Tab,
   Tabs,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
-  TableContainer,
   TextField,
-  Tooltip,
   Typography
 } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material/Select";
@@ -27,23 +25,27 @@ import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
 import { ArrowRight, Building2, RefreshCcw } from "lucide-react";
 import { normalizeProgram } from "../../lib/programUtils";
-import StableMonaco from "../common/StableMonaco";
-import type {
-  AssetDashboardInputMode,
-  AssetAttributeType,
-  AssetAttributeValue,
-  AssetDefinition,
-  AssetFrameworkDefinition,
-  Program
-} from "../../types/program";
+import type { AssetAttributeType, AssetDefinition, AssetFrameworkDefinition, Program } from "../../types/program";
 
-const ATTRIBUTE_TYPES: AssetAttributeType[] = [
-  "number",
-  "boolean",
-  "string",
-  "array",
-  "object"
-];
+const ATTRIBUTE_TYPES: AssetAttributeType[] = ["number", "boolean", "string", "array", "object"];
+
+interface EffectiveAttributeRow {
+  name: string;
+  valueType: AssetAttributeType | "custom";
+  unit: string;
+  value: unknown;
+  source: string;
+  overridden: boolean;
+}
+
+interface AssetManagerProps {
+  assets: AssetFrameworkDefinition;
+  onChange: (
+    updater:
+      | AssetFrameworkDefinition
+      | ((assets: AssetFrameworkDefinition) => AssetFrameworkDefinition)
+  ) => void;
+}
 
 function makeId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -57,33 +59,23 @@ function parseMaybeJson(raw: string): unknown {
   }
 }
 
-function parseDefaultByInputType(inputType: string, raw: string): unknown {
-  if (inputType === "text" || inputType === "textarea") return raw;
-  if (inputType === "number") {
-    if (raw.trim() === "") return "";
+function parseByType(type: AssetAttributeType, raw: string): unknown {
+  if (type === "number") {
     const n = Number(raw);
     return Number.isFinite(n) ? n : raw;
   }
+  if (type === "boolean") {
+    if (raw.trim().toLowerCase() === "true") return true;
+    if (raw.trim().toLowerCase() === "false") return false;
+    return raw;
+  }
+  if (type === "string") return raw;
   return parseMaybeJson(raw);
 }
 
 function serializeValue(value: unknown): string {
   if (typeof value === "string") return value;
   return JSON.stringify(value);
-}
-
-function isLabeledValue(value: unknown): value is { label: string; value: unknown } {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    Object.prototype.hasOwnProperty.call(value, "label") &&
-    Object.prototype.hasOwnProperty.call(value, "value")
-  );
-}
-
-function rawComparable(value: unknown): string {
-  if (isLabeledValue(value)) return String(value.value);
-  return String(value);
 }
 
 function buildChildrenMap(assets: AssetDefinition[]): Map<string | null, AssetDefinition[]> {
@@ -130,32 +122,8 @@ function getAssetPath(asset: AssetDefinition, byId: Map<string, AssetDefinition>
 function getEffectiveAttributes(
   asset: AssetDefinition,
   templateById: Map<string, AssetFrameworkDefinition["attributeTemplates"][number]>
-) {
-  const rows = new Map<
-    string,
-    {
-      name: string;
-      valueType: AssetAttributeType | "custom";
-      unit: string;
-      value: unknown;
-      source: string;
-      overridden: boolean;
-      dashboardVisible: boolean;
-      dashboardEditable: boolean;
-      nullable: boolean;
-      inputType: string;
-      options: Array<{ label: string; value: unknown }>;
-      optionsScript: string;
-      numberMin: number | null;
-      numberMax: number | null;
-      numberAllowNegative: boolean;
-      numberUseThousandSeparator: boolean;
-      numberPrefix: string;
-      numberSuffix: string;
-      numberAllowDecimal: boolean;
-      numberPrecision: number;
-    }
-  >();
+): EffectiveAttributeRow[] {
+  const rows = new Map<string, EffectiveAttributeRow>();
 
   for (const templateId of asset.templateIds) {
     const template = templateById.get(templateId);
@@ -165,31 +133,12 @@ function getEffectiveAttributes(
       if (!rows.has(attr.name)) {
         rows.set(attr.name, {
           name: attr.name,
-          valueType: attr.valueType ?? "string",
+          valueType: attr.valueType,
           unit: attr.unit ?? "",
           value: attr.default,
           source: template.name,
-          overridden: false,
-          dashboardVisible: attr.dashboardVisible === true,
-          dashboardEditable: attr.dashboardEditable !== false,
-          nullable: attr.nullable === true,
-          inputType: attr.inputType ?? "text",
-          options: Array.isArray(attr.options) ? attr.options : [],
-          optionsScript: attr.optionsScript ?? "",
-          numberMin: typeof attr.numberMin === "number" ? attr.numberMin : null,
-          numberMax: typeof attr.numberMax === "number" ? attr.numberMax : null,
-          numberAllowNegative: attr.numberAllowNegative !== false,
-          numberUseThousandSeparator: attr.numberUseThousandSeparator === true,
-          numberPrefix: attr.numberPrefix ?? "",
-          numberSuffix: attr.numberSuffix ?? "",
-          numberAllowDecimal: attr.numberAllowDecimal !== false,
-          numberPrecision: Number(attr.numberPrecision ?? 2) || 0
+          overridden: false
         });
-      } else {
-        const prev = rows.get(attr.name);
-        if (prev && attr.dashboardVisible === true) {
-          rows.set(attr.name, { ...prev, dashboardVisible: true });
-        }
       }
     }
   }
@@ -205,35 +154,12 @@ function getEffectiveAttributes(
         unit: "",
         value: val.value,
         source: "Custom",
-        overridden: true,
-        dashboardVisible: false,
-        dashboardEditable: false,
-        nullable: false,
-        inputType: "text",
-        options: [],
-        optionsScript: "",
-        numberMin: null,
-        numberMax: null,
-        numberAllowNegative: true,
-        numberUseThousandSeparator: false,
-        numberPrefix: "",
-        numberSuffix: "",
-        numberAllowDecimal: true,
-        numberPrecision: 2
+        overridden: true
       });
     }
   }
 
   return Array.from(rows.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-interface AssetManagerProps {
-  assets: AssetFrameworkDefinition;
-  onChange: (
-    updater:
-      | AssetFrameworkDefinition
-      | ((assets: AssetFrameworkDefinition) => AssetFrameworkDefinition)
-  ) => void;
 }
 
 export default function AssetManager({ assets, onChange }: AssetManagerProps) {
@@ -242,34 +168,15 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
-  const [optionMap, setOptionMap] = useState<Record<string, Array<{ label: string; value: unknown }>>>({});
   const [loadingRuntime, setLoadingRuntime] = useState(false);
-  const [loadingOptions, setLoadingOptions] = useState(false);
-  const [monacoFieldDrafts, setMonacoFieldDrafts] = useState<Record<string, string>>({});
-  const monacoFieldTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const jsonMiniOptions = useMemo(
-    () => ({
-      minimap: { enabled: false },
-      fontSize: 12,
-      lineNumbers: "off" as const,
-      wordWrap: "on" as const,
-      scrollBeyondLastLine: false
-    }),
-    []
-  );
 
-  const assetById = useMemo(
-    () => new Map(assets.assets.map((asset) => [asset.id, asset])),
-    [assets.assets]
-  );
+  const assetById = useMemo(() => new Map(assets.assets.map((asset) => [asset.id, asset])), [assets.assets]);
   const templateById = useMemo(
     () => new Map(assets.attributeTemplates.map((template) => [template.id, template])),
     [assets.attributeTemplates]
   );
   const selectedAsset = selectedAssetId ? assetById.get(selectedAssetId) : undefined;
-  const selectedTemplate = assets.attributeTemplates.find(
-    (template) => template.id === selectedTemplateId
-  );
+  const selectedTemplate = assets.attributeTemplates.find((template) => template.id === selectedTemplateId);
 
   const updateAssets = (nextAssets: AssetDefinition[]) => {
     onChange((prev) => ({ ...prev, assets: nextAssets }));
@@ -279,13 +186,24 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     onChange((prev) => ({ ...prev, attributeTemplates: nextTemplates }));
   };
 
-  const updateAssetWith = (
-    assetId: string,
-    updater: (asset: AssetDefinition) => AssetDefinition
-  ) => {
+  const updateAssetWith = (assetId: string, updater: (asset: AssetDefinition) => AssetDefinition) => {
     onChange((prev) => ({
       ...prev,
       assets: prev.assets.map((asset) => (asset.id === assetId ? updater(asset) : asset))
+    }));
+  };
+
+  const updateTemplateWith = (
+    templateId: string,
+    updater: (
+      template: AssetFrameworkDefinition["attributeTemplates"][number]
+    ) => AssetFrameworkDefinition["attributeTemplates"][number]
+  ) => {
+    onChange((prev) => ({
+      ...prev,
+      attributeTemplates: prev.attributeTemplates.map((template) =>
+        template.id === templateId ? updater(template) : template
+      )
     }));
   };
 
@@ -312,10 +230,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     if (selectedAssetId && blocked.has(selectedAssetId)) setSelectedAssetId("");
   };
 
-  const updateAssetPatch = (assetId: string, patch: Partial<AssetDefinition>) => {
-    updateAssetWith(assetId, (asset) => ({ ...asset, ...patch }));
-  };
-
   const refreshAssetTemplateAttributes = (assetId: string) => {
     updateAssetWith(assetId, (asset) => {
       const allowedNames = new Set<string>();
@@ -339,7 +253,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     const next = {
       id,
       name: `Template_${assets.attributeTemplates.length + 1}`,
-      enabled: true,
       attributes: []
     };
     updateTemplates([...assets.attributeTemplates, next]);
@@ -357,65 +270,22 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     if (selectedTemplateId === templateId) setSelectedTemplateId("");
   };
 
-  const updateTemplate = (
-    templateId: string,
-    patch: Partial<AssetFrameworkDefinition["attributeTemplates"][number]>
-  ) => {
-    onChange((prev) => ({
-      ...prev,
-      attributeTemplates: prev.attributeTemplates.map((template) =>
-        template.id === templateId ? { ...template, ...patch } : template
-      )
-    }));
-  };
-
-  const updateTemplateWith = (
-    templateId: string,
-    updater: (
-      template: AssetFrameworkDefinition["attributeTemplates"][number]
-    ) => AssetFrameworkDefinition["attributeTemplates"][number]
-  ) => {
-    onChange((prev) => ({
-      ...prev,
-      attributeTemplates: prev.attributeTemplates.map((template) =>
-        template.id === templateId ? updater(template) : template
-      )
-    }));
-  };
-
   useEffect(() => {
-    return () => {
-      for (const timer of Object.values(monacoFieldTimersRef.current)) {
-        clearTimeout(timer);
-      }
-    };
-  }, []);
+    const assetKeys = assets.assets.map((asset) => `asset:${asset.id}`);
+    setExpandedKeys(assetKeys);
+  }, [assets.assets.length]);
 
-  const getMonacoFieldDraft = (fieldKey: string, source: string): string =>
-    Object.prototype.hasOwnProperty.call(monacoFieldDrafts, fieldKey)
-      ? monacoFieldDrafts[fieldKey]
-      : source;
-
-  const scheduleMonacoFieldSave = (
-    fieldKey: string,
-    next: string,
-    commit: (value: string) => void
-  ) => {
-    setMonacoFieldDrafts((prev) => ({ ...prev, [fieldKey]: next }));
-    const existing = monacoFieldTimersRef.current[fieldKey];
-    if (existing) clearTimeout(existing);
-    monacoFieldTimersRef.current[fieldKey] = setTimeout(() => {
-      commit(next);
-      delete monacoFieldTimersRef.current[fieldKey];
-    }, 600);
-  };
+  const selectedAssetEffectiveAttributes = useMemo(() => {
+    if (!selectedAsset) return [];
+    return getEffectiveAttributes(selectedAsset, templateById);
+  }, [selectedAsset, templateById]);
 
   const treeData = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     const childrenMap = buildChildrenMap(assets.assets);
     const result: DataNode[] = [];
 
-    const includeAsset = (asset: AssetDefinition, attrs: ReturnType<typeof getEffectiveAttributes>) => {
+    const includeAsset = (asset: AssetDefinition, attrs: EffectiveAttributeRow[]) => {
       if (!keyword) return true;
       const path = getAssetPath(asset, assetById).toLowerCase();
       const attrHit = attrs.some((attr) => `${attr.name} ${serializeValue(attr.value)}`.toLowerCase().includes(keyword));
@@ -424,9 +294,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
 
     const buildNode = (asset: AssetDefinition): DataNode | null => {
       const attrs = getEffectiveAttributes(asset, templateById);
-      const childAssets = (childrenMap.get(asset.id) || [])
-        .map(buildNode)
-        .filter(Boolean) as DataNode[];
+      const childAssets = (childrenMap.get(asset.id) || []).map(buildNode).filter(Boolean) as DataNode[];
       const selfIncluded = includeAsset(asset, attrs);
       if (!selfIncluded && childAssets.length === 0) return null;
 
@@ -439,7 +307,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
               {attr.name}:
             </Typography>
             <Typography variant="body2" sx={{ fontFamily: "monospace", fontWeight: "bold" }}>
-              {formatTreeValue(attr, asset)} {attr.unit || ""}
+              {serializeValue(attr.value)} {attr.unit || ""}
             </Typography>
           </Box>
         ),
@@ -462,93 +330,9 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       const node = buildNode(root);
       if (node) result.push(node);
     }
+
     return result;
-  }, [assetById, assets.assets, optionMap, search, templateById]);
-
-  useEffect(() => {
-    const assetKeys = assets.assets.map((asset) => `asset:${asset.id}`);
-    setExpandedKeys(assetKeys);
-  }, [assets.assets.length]);
-
-  const selectedAssetEffectiveAttributes = useMemo(() => {
-    if (!selectedAsset) return [];
-    return getEffectiveAttributes(selectedAsset, templateById);
-  }, [selectedAsset, templateById]);
-  const runOptionsScript = async (script: string, context: Record<string, unknown>): Promise<unknown> => {
-    if (!script.trim()) return [];
-    try {
-      const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
-        ...args: string[]
-      ) => (...fnArgs: unknown[]) => Promise<unknown>;
-      const fn = new AsyncFunction("context", "fetch", `"use strict";\n${script}`);
-      return await fn(context, fetch);
-    } catch {
-      return [];
-    }
-  };
-
-  const normalizeOptions = (input: unknown): Array<{ label: string; value: unknown }> => {
-    const list = Array.isArray(input)
-      ? input
-      : input && typeof input === "object" && Array.isArray((input as { data?: unknown[] }).data)
-        ? (input as { data: unknown[] }).data
-        : [];
-    return list
-      .map((item) => {
-        if (item && typeof item === "object") {
-          const row = item as { label?: unknown; value?: unknown; name?: unknown; id?: unknown };
-          const label = String(row.label ?? row.name ?? row.value ?? row.id ?? "");
-          const value = row.value ?? row.id ?? row.label ?? row.name;
-          return label ? { label, value } : null;
-        }
-        if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
-          return { label: String(item), value: item };
-        }
-        return null;
-      })
-      .filter(Boolean) as Array<{ label: string; value: unknown }>;
-  };
-
-  const loadOptionProviders = async (
-    templates: AssetFrameworkDefinition["attributeTemplates"] = assets.attributeTemplates
-  ) => {
-    setLoadingOptions(true);
-    try {
-      const providerDefs = templates
-        .flatMap((template) =>
-        template.attributes
-          .filter((attr) =>
-            attr.enabled !== false &&
-            (attr.inputType === "select" || attr.inputType === "radio" || attr.inputType === "multiselect")
-          )
-          .map((attr) => ({
-            key: `${template.id}:${attr.name}`,
-            script: attr.optionsScript ?? "",
-            defaultValue: attr.default
-          }))
-      );
-
-      const results = await Promise.all(
-        providerDefs.map(async (def): Promise<[string, Array<{ label: string; value: unknown }>]> => {
-          try {
-            const transformed = await runOptionsScript(def.script, {
-              defaultValue: def.defaultValue
-            });
-            return [def.key, normalizeOptions(transformed)];
-          } catch {
-            return [def.key, []];
-          }
-        })
-      );
-      setOptionMap(Object.fromEntries(results));
-    } finally {
-      setLoadingOptions(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadOptionProviders(assets.attributeTemplates);
-  }, [assets.attributeTemplates]);
+  }, [assetById, assets.assets, search, templateById]);
 
   const reloadFromRuntime = async () => {
     setLoadingRuntime(true);
@@ -567,232 +351,210 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       );
       onChange(normalized.assets);
       setSelectedAssetId((prev) => {
-        if (prev && normalized.assets.assets.some((asset) => asset.id === prev)) {
-          return prev;
-        }
+        if (prev && normalized.assets.assets.some((asset) => asset.id === prev)) return prev;
         return normalized.assets.assets[0]?.id || "";
       });
       setExpandedKeys(normalized.assets.assets.map((asset) => `asset:${asset.id}`));
-      void loadOptionProviders(normalized.assets.attributeTemplates);
-    } catch {
-      // keep previous state when reload fails
     } finally {
       setLoadingRuntime(false);
     }
   };
 
-  function formatTreeValue(
-    attr: ReturnType<typeof getEffectiveAttributes>[number],
-    asset: AssetDefinition
-  ): string {
-    if (attr.inputType !== "select" && attr.inputType !== "radio" && attr.inputType !== "multiselect") {
-      return serializeValue(attr.value);
-    }
-    if (attr.inputType === "multiselect") {
-      const values = Array.isArray(attr.value) ? attr.value : [];
-      if (values.length === 0) return "[]";
-      return values
-        .map((item) => {
-          if (isLabeledValue(item)) {
-            return `${item.label} (${serializeValue(item.value)})`;
-          }
-          return serializeValue(item);
-        })
-        .join(", ");
-    }
-    if (isLabeledValue(attr.value)) {
-      return `${attr.value.label} (${serializeValue(attr.value.value)})`;
-    }
-
-    // Fallback for legacy primitive value that hasn't been migrated yet.
-    const keys = asset.templateIds.flatMap((templateId) => {
-      const template = assets.attributeTemplates.find((item) => item.id === templateId);
-      if (!template) return [];
-      return template.attributes
-        .filter((attribute) => attribute.name === attr.name)
-        .map((attribute) => `${template.id}:${attribute.name}`);
-    });
-    const options = keys.flatMap((key) => optionMap[key] || []);
-    const lookup = new Map(options.map((option) => [rawComparable(option.value), option.label]));
-
-    const raw = serializeValue(attr.value);
-    const label = lookup.get(rawComparable(attr.value));
-    return label ? `${label} (${raw})` : raw;
-  }
-
   return (
-    <Box sx={{ p: 1.25, display: "grid", gap: 1.25 }}>
-      <Paper variant="outlined" sx={{ p: 0.5 }}>
-        <Tabs value={mainTab} onChange={(_e, v: number) => setMainTab(v)}>
-          <Tab label="Asset Explorer" />
-          <Tab label="Attribute Template" />
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+      {/* <Paper sx={{ p: 1.25, display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+
+        <Typography variant="caption" color="text.secondary">
+          Struktur template disederhanakan: hanya enabled, name, type, default, unit.
+        </Typography>
+      </Paper> */}
+
+      <Paper sx={{ p: 1 }}>
+        <Tabs value={mainTab} onChange={(_e, value: number) => setMainTab(value)}>
+          <Tab label="Assets" />
+          <Tab label="Attribute Templates" />
         </Tabs>
       </Paper>
 
       {mainTab === 0 && (
         <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
-          <Paper variant="outlined" sx={{ p: 1, display: "grid", gridTemplateRows: "auto auto 1fr", gap: 0.75 }}>
-            <Box sx={{ display: "flex", gap: 0.75 }}>
-              <Button variant="outlined" onClick={() => addAsset(null)}>
-                Add Root Asset
+          <Paper sx={{ p: 1.25, maxHeight: "74vh", overflow: "auto" }}>
+            <Box sx={{ display: "flex", gap: 0.75, mb: 1 }}>
+              <Button size="small" variant="contained" onClick={() => addAsset(null)}>
+                Add Root
               </Button>
-              <Tooltip title="Reload latest assets + option labels">
-                <span>
-                  <Button
-                    variant="outlined"
-                    onClick={() => void reloadFromRuntime()}
-                    disabled={loadingRuntime}
-                    sx={{ minWidth: 40, px: 1 }}
-                  >
-                    <RefreshCcw size={15} />
-                  </Button>
-                </span>
-              </Tooltip>
+              <Button size="small" variant="outlined" onClick={() => selectedAsset && addAsset(selectedAsset.id)} disabled={!selectedAsset}>
+                Add Child
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<RefreshCcw size={16} />}
+                disabled={loadingRuntime}
+                onClick={() => void reloadFromRuntime()}
+              >
+                {loadingRuntime ? "loading..." : ""}
+              </Button>
             </Box>
             <TextField
               size="small"
-              label="Search Asset or Attribute"
+              fullWidth
+              placeholder="Search asset/attribute"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              sx={{ mb: 1 }}
             />
-            <Box sx={{ overflow: "auto", maxHeight: "calc(100vh - 260px)", border: "1px solid #e2e8f0", borderRadius: 0.5, p: 0.5 }}>
-              <Tree
-                treeData={treeData}
-                expandedKeys={expandedKeys}
-                selectedKeys={selectedAssetId ? [`asset:${selectedAssetId}`] : []}
-                onExpand={(keys) => setExpandedKeys(keys)}
-                onSelect={(keys) => {
-                  const key = String(keys[0] || "");
-                  if (!key) return;
-                  if (key.startsWith("asset:")) {
-                    setSelectedAssetId(key.slice("asset:".length));
-                    return;
-                  }
-                  if (key.startsWith("attr:")) {
-                    const segments = key.split(":");
-                    if (segments.length >= 2) setSelectedAssetId(segments[1]);
-                  }
-                }}
-              />
-            </Box>
+            <Tree
+              treeData={treeData}
+              expandedKeys={expandedKeys}
+              onExpand={(keys) => setExpandedKeys(keys)}
+              selectedKeys={selectedAssetId ? [`asset:${selectedAssetId}`] : []}
+              onSelect={(keys) => {
+                const key = String(keys[0] ?? "");
+                if (!key.startsWith("asset:")) return;
+                setSelectedAssetId(key.slice("asset:".length));
+              }}
+            />
           </Paper>
 
-          <Paper variant="outlined" sx={{ p: 1.25, minHeight: "calc(100vh - 220px)" }}>
-            {!selectedAsset && (
+          <Paper sx={{ p: 1.25, minHeight: "74vh", overflow: "auto" }}>
+            {!selectedAsset ? (
               <Typography variant="body2" color="text.secondary">
-                Pilih asset di tree explorer.
+                Pilih asset di panel kiri.
               </Typography>
-            )}
-            {selectedAsset && (
-              <Box sx={{ display: "grid", gap: 1 }}>
-                <Typography variant="h6">Asset Detail</Typography>
-                <Box sx={{ display: "flex", gap: 0.75 }}>
-                  <Button variant="outlined" onClick={() => addAsset(selectedAsset.id)}>
-                    Add Child
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    onClick={() => refreshAssetTemplateAttributes(selectedAsset.id)}
-                  >
-                    Refresh Template Attr
-                  </Button>
-                  <Button color="error" variant="outlined" onClick={() => removeAsset(selectedAsset.id)}>
-                    Remove Asset + Descendants
-                  </Button>
+            ) : (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+
+                <Box sx={{ display: "flex", justifyContent: "space-between", gap: 0.75, mb: 1 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                    Asset Detail
+                  </Typography>
+                    
+                    <Button variant="contained" size="small" color="error" onClick={() => selectedAsset && removeAsset(selectedAsset.id)} disabled={!selectedAsset}>
+                      Remove
+                    </Button>
                 </Box>
+
+                <Box sx={{ display: "flex", gap: 0.75, mb: 1 }}>
                 <TextField
+                  size="small"
                   label="Asset Name"
                   value={selectedAsset.name}
-                  onChange={(e) => updateAssetPatch(selectedAsset.id, { name: e.target.value })}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    updateAssetWith(selectedAsset.id, (asset) => ({ ...asset, name }));
+                  }}
+                  sx={{ minWidth: 460, maxWidth: 460 }}
                 />
-                <FormControl fullWidth>
-                  <InputLabel>Parent</InputLabel>
+
+                <FormControl size="small" sx={{ minWidth: 460,  maxWidth: 460 }}>
+                  <InputLabel id="asset-parent-label">Parent Asset</InputLabel>
                   <Select
-                    label="Parent"
+                    labelId="asset-parent-label"
+                    label="Parent Asset"
                     value={selectedAsset.parentId ?? ""}
-                    onChange={(e: SelectChangeEvent<string>) =>
-                      updateAssetPatch(selectedAsset.id, { parentId: e.target.value || null })
-                    }
+                    onChange={(e: SelectChangeEvent<string>) => {
+                      const nextParent = e.target.value || null;
+                      if (nextParent === selectedAsset.id) return;
+                      const descendants = getDescendantIds(assets.assets, selectedAsset.id);
+                      if (nextParent && descendants.has(nextParent)) return;
+                      updateAssetWith(selectedAsset.id, (asset) => ({ ...asset, parentId: nextParent }));
+                    }}
                   >
-                    <MenuItem value="">(Root)</MenuItem>
+                    <MenuItem value="">No parent</MenuItem>
                     {assets.assets
-                      .filter((candidate) => {
-                        if (candidate.id === selectedAsset.id) return false;
-                        const descendants = getDescendantIds(assets.assets, selectedAsset.id);
-                        return !descendants.has(candidate.id);
-                      })
-                      .map((candidate) => (
-                        <MenuItem key={candidate.id} value={candidate.id}>
-                          {candidate.name}
+                      .filter((asset) => asset.id !== selectedAsset.id)
+                      .map((asset) => (
+                        <MenuItem key={asset.id} value={asset.id}>
+                          {asset.name}
                         </MenuItem>
                       ))}
                   </Select>
                 </FormControl>
-                <FormControl fullWidth>
-                  <InputLabel>Attribute Templates</InputLabel>
-                  <Select<string[]>
+                </Box>
+
+                <FormControl size="small" sx={{ maxWidth: 720 }}>
+                  <InputLabel id="asset-template-label">Template IDs</InputLabel>
+                  <Select
+                    labelId="asset-template-label"
+                    label="Template IDs"
                     multiple
-                    label="Attribute Templates"
-                    value={selectedAsset.templateIds as string[]}
-                    onChange={(e: SelectChangeEvent<string[]>) =>
-                      updateAssetPatch(selectedAsset.id, { templateIds: e.target.value as string[] })
-                    }
-                    renderValue={(selected) => (
-                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                        {(selected as string[]).map((id) => (
-                          <Chip key={id} size="small" label={templateById.get(id)?.name || id} />
-                        ))}
-                      </Box>
-                    )}
+                    value={selectedAsset.templateIds as unknown as string}
+                    onChange={(e: SelectChangeEvent<string>) => {
+                      const raw = e.target.value;
+                      const nextTemplateIds = typeof raw === "string" ? raw.split(",").filter(Boolean) : [];
+                      updateAssetWith(selectedAsset.id, (asset) => ({ ...asset, templateIds: nextTemplateIds }));
+                    }}
+                    renderValue={(selected) => String(selected).split(",").filter(Boolean).join(", ")}
                   >
                     {assets.attributeTemplates.map((template) => (
                       <MenuItem key={template.id} value={template.id}>
-                        {template.name}
+                        <Checkbox checked={selectedAsset.templateIds.includes(template.id)} />
+                        <Typography variant="body2">{template.name}</Typography>
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
-                <Typography variant="subtitle2">
-                  Resolved Path: {getAssetPath(selectedAsset, assetById)}
+
+                <Box sx={{ display: "flex", gap: 0.75, mb: 1 }}>
+                  
+                </Box>
+          
+              <Box sx={{ display: "flex", flexDirection: "row", gap: 1.25 }}>
+                <Typography variant="subtitle2" sx={{ mt: 1 }}>
+                  Effective Attributes ({selectedAssetEffectiveAttributes.length})
                 </Typography>
-                <Typography variant="subtitle2">Attributes</Typography>
-                <Table size="small" sx={{ border: "1px solid #e2e8f0" }}>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Value</TableCell>
-                      <TableCell>Unit</TableCell>
-                      <TableCell>Source</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {selectedAssetEffectiveAttributes.map((attribute) => (
-                      <TableRow key={attribute.name}>
-                        <TableCell>{attribute.name}</TableCell>
-                        <TableCell>{attribute.valueType}</TableCell>
-                        <TableCell sx={{ minWidth: 220 }}>
-                          <TextField
-                            size="small"
-                            fullWidth
-                            value={serializeValue(attribute.value)}
-                            onChange={(e) => {
-                              const patch: AssetAttributeValue = {
-                                value: parseDefaultByInputType(attribute.inputType, e.target.value)
-                              };
-                              updateAssetWith(selectedAsset.id, (asset) => ({
-                                ...asset,
-                                attributes: { ...asset.attributes, [attribute.name]: patch }
-                              }));
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>{attribute.unit || "-"}</TableCell>
-                        <TableCell>{attribute.overridden ? "Override" : attribute.source}</TableCell>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    sx={{ alignSelf: "flex-start" }}
+                    onClick={() => refreshAssetTemplateAttributes(selectedAsset.id)}
+                  >
+                    Refresh Attributes from Templates
+                  </Button>
+              </Box>
+
+                <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Name</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Value</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Type</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Unit</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Source</TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHead>
+                    <TableBody>
+                      {selectedAssetEffectiveAttributes.map((row) => (
+                        <TableRow key={row.name}>
+                          <TableCell sx={{ fontFamily: "monospace" }}>{row.name}</TableCell>
+                          <TableCell sx={{ minWidth: 280 }}>
+                            <TextField
+                              size="small"
+                              fullWidth
+                              value={serializeValue(row.value)}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                const nextValue = row.valueType === "custom" ? parseMaybeJson(raw) : parseByType(row.valueType, raw);
+                                updateAssetWith(selectedAsset.id, (asset) => ({
+                                  ...asset,
+                                  attributes: {
+                                    ...asset.attributes,
+                                    [row.name]: { value: nextValue }
+                                  }
+                                }));
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>{row.valueType}</TableCell>
+                          <TableCell>{row.unit || "-"}</TableCell>
+                          <TableCell>{row.source}{row.overridden ? " (override)" : ""}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               </Box>
             )}
           </Paper>
@@ -800,478 +562,174 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       )}
 
       {mainTab === 1 && (
-        <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
-          <Paper variant="outlined" sx={{ p: 1, display: "grid", gridTemplateRows: "auto 1fr", gap: 0.75 }}>
-            <Button variant="outlined" onClick={addTemplate}>
-              Add Template
-            </Button>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, overflow: "auto", maxHeight: "calc(100vh - 260px)" }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 1.25 }}>
+          <Paper sx={{ p: 1.25, maxHeight: "74vh", overflow: "auto" }}>
+            <Box sx={{ display: "flex", gap: 0.75, mb: 1 }}>
+              <Button size="small" variant="contained" onClick={addTemplate}>
+                Add Template
+              </Button>
+              <Button size="small" color="error" onClick={() => selectedTemplate && removeTemplate(selectedTemplate.id)} disabled={!selectedTemplate}>
+                Remove
+              </Button>
+            </Box>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
               {assets.attributeTemplates.map((template) => (
-                <Box
+                <Button
                   key={template.id}
+                  variant={selectedTemplateId === template.id ? "contained" : "outlined"}
+                  size="small"
                   onClick={() => setSelectedTemplateId(template.id)}
-                  sx={{
-                    p: 0.75,
-                    border: "1px solid #cbd5e1",
-                    borderRadius: "3px",
-                    borderColor: selectedTemplateId === template.id ? "#0f766e" : undefined,
-                    cursor: "pointer"
-                  }}
+                  sx={{ justifyContent: "flex-start" }}
                 >
-                  <Typography variant="subtitle2">{template.name}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {template.attributes.length} attributes
-                  </Typography>
-                </Box>
+                  {template.name}
+                </Button>
               ))}
             </Box>
           </Paper>
 
-          <Paper variant="outlined" sx={{ p: 1.25, minHeight: "calc(100vh - 220px)" }}>
-            {!selectedTemplate && (
+          <Paper sx={{ p: 1.25, minHeight: "74vh", overflow: "auto" }}>
+            {!selectedTemplate ? (
               <Typography variant="body2" color="text.secondary">
                 Pilih template di panel kiri.
               </Typography>
-            )}
-            {selectedTemplate && (
-              <Box sx={{ display: "grid", gap: 0.75 }}>
-                <Box sx={{ display: "flex", gap: 0.75 }}>
-                  <TextField
-                    fullWidth
-                    label="Template Name"
-                    value={selectedTemplate.name}
-                    onChange={(e) => updateTemplate(selectedTemplate.id, { name: e.target.value })}
-                  />
-                  <Button color="error" variant="outlined" onClick={() => removeTemplate(selectedTemplate.id)}>
-                    Remove
-                  </Button>
-                </Box>
-                <TableContainer
-                  sx={{
-                    border: "1px solid #e2e8f0",
-                    borderRadius: 0.5,
-                    overflowX: "auto",
-                    overflowY: "auto",
-                    maxHeight: "calc(100vh - 360px)"
+            ) : (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+                <TextField
+                  size="small"
+                  label="Template Name"
+                  value={selectedTemplate.name}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    updateTemplateWith(selectedTemplate.id, (template) => ({ ...template, name }));
                   }}
-                >
-                <Table size="small" stickyHeader sx={{ minWidth: 2300 }}>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ minWidth: 220 }}>Name</TableCell>
-                      <TableCell sx={{ minWidth: 110 }}>Enabled</TableCell>
-                      <TableCell sx={{ minWidth: 130 }}>Type</TableCell>
-                      <TableCell sx={{ minWidth: 260 }}>Default Value</TableCell>
-                      <TableCell sx={{ minWidth: 180 }}>Unit</TableCell>
-                      <TableCell sx={{ minWidth: 150 }}>Show in Dashboard</TableCell>
-                      <TableCell sx={{ minWidth: 120 }}>Dashboard Editable</TableCell>
-                      <TableCell sx={{ minWidth: 120 }}>Dashboard Nullable</TableCell>
-                      <TableCell sx={{ minWidth: 150 }}>Field/Form Type</TableCell>
-                      <TableCell sx={{ minWidth: 420 }}>Number Rules</TableCell>
-                      <TableCell sx={{ minWidth: 540 }}>Options Script (supports await fetch)</TableCell>
-                      <TableCell sx={{ minWidth: 100 }}>Action</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {selectedTemplate.attributes.map((attribute, idx) => (
-                      <TableRow key={`template-attr-${idx}`}>
-                        <TableCell>
-                          <TextField
-                            size="small"
-                            sx={{ minWidth: 210 }}
-                            value={attribute.name}
-                            onChange={(e) => {
-                              updateTemplateWith(selectedTemplate.id, (template) => ({
-                                ...template,
-                                attributes: template.attributes.map((item, itemIdx) =>
-                                  itemIdx === idx ? { ...item, name: e.target.value } : item
-                                )
-                              }));
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Switch
-                            size="small"
-                            checked={attribute.enabled !== false}
-                            onChange={(_e, checked) => {
-                              updateTemplateWith(selectedTemplate.id, (template) => ({
-                                ...template,
-                                attributes: template.attributes.map((item, itemIdx) =>
-                                  itemIdx === idx ? { ...item, enabled: checked } : item
-                                )
-                              }));
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <FormControl size="small" sx={{ minWidth: 120 }}>
-                            <Select
-                              value={attribute.valueType}
-                              onChange={(e: SelectChangeEvent<AssetAttributeType>) => {
+                  sx={{ maxWidth: 460 }}
+                />
+
+                <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Enabled</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Name</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Type</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Default</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Unit</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Action</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {selectedTemplate.attributes.map((attribute, idx) => (
+                        <TableRow key={`${attribute.name}-${idx}`}>
+                          <TableCell>
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  checked={attribute.enabled !== false}
+                                  onChange={(_e, checked) => {
+                                    updateTemplateWith(selectedTemplate.id, (template) => ({
+                                      ...template,
+                                      attributes: template.attributes.map((item, itemIdx) =>
+                                        itemIdx === idx ? { ...item, enabled: checked } : item
+                                      )
+                                    }));
+                                  }}
+                                />
+                              }
+                              label=""
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                              size="small"
+                              value={attribute.name}
+                              onChange={(e) => {
+                                const name = e.target.value;
                                 updateTemplateWith(selectedTemplate.id, (template) => ({
                                   ...template,
                                   attributes: template.attributes.map((item, itemIdx) =>
-                                    itemIdx === idx
-                                      ? {
-                                          ...item,
-                                          valueType: e.target.value as AssetAttributeType,
-                                          inputType:
-                                            e.target.value === "number"
-                                              ? "number"
-                                              : item.inputType ?? "text"
-                                        }
-                                      : item
-                                  )
-                                }));
-                              }}
-                            >
-                              {ATTRIBUTE_TYPES.map((type) => (
-                                <MenuItem key={type} value={type}>
-                                  {type}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </TableCell>
-                        <TableCell>
-                          {attribute.inputType === "json" ||
-                          attribute.inputType === "multiselect" ||
-                          attribute.inputType === "select" ||
-                          attribute.inputType === "radio" ? (
-                            <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden", minWidth: 240 }}>
-                              <StableMonaco
-                                path={`template-default-json:${selectedTemplate.id}:${idx}`}
-                                height="84px"
-                                language="json"
-                                value={getMonacoFieldDraft(
-                                  `template-default-json:${selectedTemplate.id}:${idx}`,
-                                  serializeValue(attribute.default)
-                                )}
-                                options={jsonMiniOptions}
-                                onChangeText={(next) => {
-                                  scheduleMonacoFieldSave(
-                                    `template-default-json:${selectedTemplate.id}:${idx}`,
-                                    next,
-                                    (committed) => {
-                                      updateTemplateWith(selectedTemplate.id, (template) => ({
-                                        ...template,
-                                        attributes: template.attributes.map((item, itemIdx) =>
-                                          itemIdx === idx
-                                            ? { ...item, default: parseMaybeJson(committed) }
-                                            : item
-                                        )
-                                      }));
-                                    }
-                                  );
-                                }}
-                              />
-                            </Box>
-                          ) : (
-                            <TextField
-                              size="small"
-                              sx={{ minWidth: 240 }}
-                              value={serializeValue(attribute.default)}
-                              onChange={(e) => {
-                                updateTemplateWith(selectedTemplate.id, (template) => ({
-                                  ...template,
-                                attributes: template.attributes.map((item, itemIdx) =>
-                                  itemIdx === idx
-                                      ? { ...item, default: parseDefaultByInputType(attribute.inputType ?? "text", e.target.value) }
-                                      : item
+                                    itemIdx === idx ? { ...item, name } : item
                                   )
                                 }));
                               }}
                             />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <TextField
-                            size="small"
-                            sx={{ minWidth: 160 }}
-                            value={attribute.unit || ""}
-                            onChange={(e) => {
-                              updateTemplateWith(selectedTemplate.id, (template) => ({
-                                ...template,
-                                attributes: template.attributes.map((item, itemIdx) =>
-                                  itemIdx === idx ? { ...item, unit: e.target.value } : item
-                                )
-                              }));
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Switch
-                            size="small"
-                            checked={attribute.dashboardVisible === true}
-                            onChange={(_e, checked) => {
-                              updateTemplateWith(selectedTemplate.id, (template) => ({
-                                ...template,
-                                attributes: template.attributes.map((item, itemIdx) =>
-                                  itemIdx === idx ? { ...item, dashboardVisible: checked } : item
-                                )
-                              }));
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Switch
-                            size="small"
-                            checked={attribute.dashboardEditable !== false}
-                            onChange={(_e, checked) => {
-                              updateTemplateWith(selectedTemplate.id, (template) => ({
-                                ...template,
-                                attributes: template.attributes.map((item, itemIdx) =>
-                                  itemIdx === idx ? { ...item, dashboardEditable: checked } : item
-                                )
-                              }));
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Switch
-                            size="small"
-                            checked={attribute.nullable === true}
-                            onChange={(_e, checked) => {
-                              updateTemplateWith(selectedTemplate.id, (template) => ({
-                                ...template,
-                                attributes: template.attributes.map((item, itemIdx) =>
-                                  itemIdx === idx ? { ...item, nullable: checked } : item
-                                )
-                              }));
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <FormControl size="small" sx={{ minWidth: 120 }}>
-                            <Select
-                              value={attribute.inputType ?? "text"}
-                              onChange={(e: SelectChangeEvent<string>) => {
+                          </TableCell>
+                          <TableCell>
+                            <FormControl size="small" sx={{ minWidth: 130 }}>
+                              <Select
+                                value={attribute.valueType}
+                                onChange={(e: SelectChangeEvent<AssetAttributeType>) => {
+                                  const valueType = e.target.value as AssetAttributeType;
+                                  updateTemplateWith(selectedTemplate.id, (template) => ({
+                                    ...template,
+                                    attributes: template.attributes.map((item, itemIdx) =>
+                                      itemIdx === idx ? { ...item, valueType } : item
+                                    )
+                                  }));
+                                }}
+                              >
+                                {ATTRIBUTE_TYPES.map((type) => (
+                                  <MenuItem key={type} value={type}>
+                                    {type}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                              size="small"
+                              value={serializeValue(attribute.default)}
+                              onChange={(e) => {
+                                const next = parseByType(attribute.valueType, e.target.value);
                                 updateTemplateWith(selectedTemplate.id, (template) => ({
                                   ...template,
                                   attributes: template.attributes.map((item, itemIdx) =>
-                                    itemIdx === idx
-                                      ? { ...item, inputType: e.target.value as AssetDashboardInputMode }
-                                      : item
+                                    itemIdx === idx ? { ...item, default: next } : item
                                   )
                                 }));
                               }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                              size="small"
+                              value={attribute.unit ?? ""}
+                              onChange={(e) => {
+                                const unit = e.target.value;
+                                updateTemplateWith(selectedTemplate.id, (template) => ({
+                                  ...template,
+                                  attributes: template.attributes.map((item, itemIdx) =>
+                                    itemIdx === idx ? { ...item, unit } : item
+                                  )
+                                }));
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="small"
+                              color="error"
+                              onClick={() => {
+                                updateTemplateWith(selectedTemplate.id, (template) => ({
+                                  ...template,
+                                  attributes: template.attributes.filter((_item, itemIdx) => itemIdx !== idx)
+                                }));
+                              }}
                             >
-                              <MenuItem value="text">text</MenuItem>
-                              <MenuItem value="number">number</MenuItem>
-                              <MenuItem value="boolean">boolean</MenuItem>
-                              <MenuItem value="json">json</MenuItem>
-                              <MenuItem value="select">select</MenuItem>
-                              <MenuItem value="radio">radio</MenuItem>
-                              <MenuItem value="multiselect">multiselect</MenuItem>
-                              <MenuItem value="textarea">textarea</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </TableCell>
-                        <TableCell sx={{ minWidth: 400 }}>
-                          {attribute.inputType === "number" ? (
-                            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.5 }}>
-                              <TextField
-                                size="small"
-                                label="Min"
-                                value={attribute.numberMin ?? ""}
-                                onChange={(e) =>
-                                  updateTemplateWith(selectedTemplate.id, (template) => ({
-                                    ...template,
-                                    attributes: template.attributes.map((item, itemIdx) =>
-                                      itemIdx === idx
-                                        ? { ...item, numberMin: e.target.value === "" ? null : Number(e.target.value) }
-                                        : item
-                                    )
-                                  }))
-                                }
-                              />
-                              <TextField
-                                size="small"
-                                label="Max"
-                                value={attribute.numberMax ?? ""}
-                                onChange={(e) =>
-                                  updateTemplateWith(selectedTemplate.id, (template) => ({
-                                    ...template,
-                                    attributes: template.attributes.map((item, itemIdx) =>
-                                      itemIdx === idx
-                                        ? { ...item, numberMax: e.target.value === "" ? null : Number(e.target.value) }
-                                        : item
-                                    )
-                                  }))
-                                }
-                              />
-                              <TextField
-                                size="small"
-                                label="Prefix"
-                                value={attribute.numberPrefix ?? ""}
-                                onChange={(e) =>
-                                  updateTemplateWith(selectedTemplate.id, (template) => ({
-                                    ...template,
-                                    attributes: template.attributes.map((item, itemIdx) =>
-                                      itemIdx === idx ? { ...item, numberPrefix: e.target.value } : item
-                                    )
-                                  }))
-                                }
-                              />
-                              <TextField
-                                size="small"
-                                label="Suffix"
-                                value={attribute.numberSuffix ?? ""}
-                                onChange={(e) =>
-                                  updateTemplateWith(selectedTemplate.id, (template) => ({
-                                    ...template,
-                                    attributes: template.attributes.map((item, itemIdx) =>
-                                      itemIdx === idx ? { ...item, numberSuffix: e.target.value } : item
-                                    )
-                                  }))
-                                }
-                              />
-                              <TextField
-                                size="small"
-                                label="Precision"
-                                type="number"
-                                value={Number(attribute.numberPrecision ?? 2)}
-                                onChange={(e) =>
-                                  updateTemplateWith(selectedTemplate.id, (template) => ({
-                                    ...template,
-                                    attributes: template.attributes.map((item, itemIdx) =>
-                                      itemIdx === idx
-                                        ? {
-                                            ...item,
-                                            numberPrecision: Math.max(
-                                              0,
-                                              Math.min(10, Number(e.target.value) || 0)
-                                            )
-                                          }
-                                        : item
-                                    )
-                                  }))
-                                }
-                              />
-                              <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
-                                <FormControlLabel
-                                  control={
-                                    <Switch
-                                      size="small"
-                                      checked={attribute.numberAllowNegative !== false}
-                                      onChange={(_e, checked) =>
-                                        updateTemplateWith(selectedTemplate.id, (template) => ({
-                                          ...template,
-                                          attributes: template.attributes.map((item, itemIdx) =>
-                                            itemIdx === idx ? { ...item, numberAllowNegative: checked } : item
-                                          )
-                                        }))
-                                      }
-                                    />
-                                  }
-                                  label="Allow -"
-                                />
-                                <FormControlLabel
-                                  control={
-                                    <Switch
-                                      size="small"
-                                      checked={attribute.numberAllowDecimal !== false}
-                                      onChange={(_e, checked) =>
-                                        updateTemplateWith(selectedTemplate.id, (template) => ({
-                                          ...template,
-                                          attributes: template.attributes.map((item, itemIdx) =>
-                                            itemIdx === idx ? { ...item, numberAllowDecimal: checked } : item
-                                          )
-                                        }))
-                                      }
-                                    />
-                                  }
-                                  label="Decimal"
-                                />
-                                <FormControlLabel
-                                  control={
-                                    <Switch
-                                      size="small"
-                                      checked={attribute.numberUseThousandSeparator === true}
-                                      onChange={(_e, checked) =>
-                                        updateTemplateWith(selectedTemplate.id, (template) => ({
-                                          ...template,
-                                          attributes: template.attributes.map((item, itemIdx) =>
-                                            itemIdx === idx ? { ...item, numberUseThousandSeparator: checked } : item
-                                          )
-                                        }))
-                                      }
-                                    />
-                                  }
-                                  label="1,000"
-                                />
-                              </Box>
-                            </Box>
-                          ) : (
-                            <Typography variant="caption" color="text.secondary">
-                              Only for number.
-                            </Typography>
-                          )}
-                        </TableCell>
-                        <TableCell sx={{ minWidth: 520 }}>
-                          {attribute.inputType === "select" ||
-                          attribute.inputType === "radio" ||
-                          attribute.inputType === "multiselect" ? (
-                            <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
-                              <StableMonaco
-                                path={`template-options-script:${selectedTemplate.id}:${idx}`}
-                                height="150px"
-                                language="javascript"
-                                value={getMonacoFieldDraft(
-                                  `template-options-script:${selectedTemplate.id}:${idx}`,
-                                  attribute.optionsScript ??
-                                    "const res = await fetch('https://example.com/api/options');\nconst rows = await res.json();\nreturn rows.map((item) => ({ label: String(item.name), value: item.id }));"
-                                )}
-                                options={jsonMiniOptions}
-                                onChangeText={(next) => {
-                                  scheduleMonacoFieldSave(
-                                    `template-options-script:${selectedTemplate.id}:${idx}`,
-                                    next,
-                                    (committed) => {
-                                      updateTemplateWith(selectedTemplate.id, (template) => ({
-                                        ...template,
-                                        attributes: template.attributes.map((item, itemIdx) =>
-                                          itemIdx === idx
-                                            ? { ...item, optionsScript: committed }
-                                            : item
-                                        )
-                                      }));
-                                    }
-                                  );
-                                }}
-                              />
-                            </Box>
-                          ) : (
-                            <Typography variant="caption" color="text.secondary">
-                              Hanya untuk select/radio/multiselect.
-                            </Typography>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            color="error"
-                            size="small"
-                            onClick={() => {
-                              updateTemplateWith(selectedTemplate.id, (template) => ({
-                                ...template,
-                                attributes: template.attributes.filter(
-                                  (_item, itemIdx) => itemIdx !== idx
-                                )
-                              }));
-                            }}
-                          >
-                            Remove
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                              Remove
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </TableContainer>
+
                 <Button
                   variant="outlined"
-                  onClick={() =>
+                  size="small"
+                  sx={{ alignSelf: "flex-start" }}
+                  onClick={() => {
                     updateTemplateWith(selectedTemplate.id, (template) => ({
                       ...template,
                       attributes: [
@@ -1281,25 +739,11 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           name: `attribute_${template.attributes.length + 1}`,
                           valueType: "number",
                           default: 0,
-                          unit: "",
-                          dashboardVisible: false,
-                          dashboardEditable: true,
-                          nullable: false,
-                          inputType: "text",
-                          options: [],
-                          optionsScript: "",
-                          numberMin: null,
-                          numberMax: null,
-                          numberAllowNegative: true,
-                          numberUseThousandSeparator: false,
-                          numberPrefix: "",
-                          numberSuffix: "",
-                          numberAllowDecimal: true,
-                          numberPrecision: 2
+                          unit: ""
                         }
                       ]
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   Add Attribute
                 </Button>
@@ -1308,7 +752,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
           </Paper>
         </Box>
       )}
-
     </Box>
   );
 }

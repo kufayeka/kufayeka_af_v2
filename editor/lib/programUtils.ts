@@ -64,25 +64,6 @@ export function normalizeProgram(program: Program): Program {
     }
     return "string";
   };
-  const normalizeAssetInputType = (
-    value: unknown
-  ): "text" | "number" | "boolean" | "json" | "select" | "radio" | "multiselect" | "textarea" => {
-    const normalized = String(value || "text");
-    if (
-      normalized === "text" ||
-      normalized === "number" ||
-      normalized === "boolean" ||
-      normalized === "json" ||
-      normalized === "select" ||
-      normalized === "radio" ||
-      normalized === "multiselect" ||
-      normalized === "textarea"
-    ) {
-      return normalized;
-    }
-    return "text";
-  };
-
   const normalizeBinding = (
     binding: Partial<ScriptVariableBindingDefinition> & {
       source?: string;
@@ -134,52 +115,18 @@ export function normalizeProgram(program: Program): Program {
           (attribute as { valueType?: unknown; type?: unknown }).valueType ??
             (attribute as { type?: unknown }).type
         );
-        const hasExplicitInputType =
-          (attribute as { inputType?: unknown; inputMode?: unknown }).inputType !== undefined ||
-          (attribute as { inputType?: unknown; inputMode?: unknown }).inputMode !== undefined;
-        const normalizedInputType = hasExplicitInputType
-          ? normalizeAssetInputType(
-              (attribute as { inputType?: unknown; inputMode?: unknown }).inputType ??
-                (attribute as { inputMode?: unknown }).inputMode
-            )
-          : normalizedValueType === "number"
-            ? "number"
-            : "text";
 
         return {
-          ...attribute,
           enabled: attribute.enabled !== false,
+          name: String(attribute.name ?? ""),
           valueType: normalizedValueType,
           default:
             (attribute as { default?: unknown }).default !== undefined
               ? (attribute as { default?: unknown }).default
               : (attribute as { defaultValue?: unknown }).defaultValue,
-          unit: attribute.unit ?? "",
-          dashboardVisible: attribute.dashboardVisible === true,
-          dashboardEditable: attribute.dashboardEditable !== false,
-          nullable: attribute.nullable === true,
-          inputType: normalizedInputType,
-          options: Array.isArray(attribute.options) ? attribute.options : [],
-          optionsScript:
-            (attribute as { optionsScript?: string; optionsTransformScript?: string }).optionsScript ??
-            (attribute as { optionsTransformScript?: string }).optionsTransformScript ??
-            "",
-          numberMin:
-            typeof (attribute as { numberMin?: unknown }).numberMin === "number"
-              ? ((attribute as { numberMin: number }).numberMin)
-              : null,
-          numberMax:
-            typeof (attribute as { numberMax?: unknown }).numberMax === "number"
-              ? ((attribute as { numberMax: number }).numberMax)
-              : null,
-          numberAllowNegative: (attribute as { numberAllowNegative?: boolean }).numberAllowNegative !== false,
-          numberUseThousandSeparator: (attribute as { numberUseThousandSeparator?: boolean }).numberUseThousandSeparator === true,
-          numberPrefix: String((attribute as { numberPrefix?: unknown }).numberPrefix ?? ""),
-          numberSuffix: String((attribute as { numberSuffix?: unknown }).numberSuffix ?? ""),
-          numberAllowDecimal: (attribute as { numberAllowDecimal?: boolean }).numberAllowDecimal !== false,
-          numberPrecision: Math.max(0, Math.min(10, Number((attribute as { numberPrecision?: unknown }).numberPrecision ?? 2) || 0))
+          unit: String(attribute.unit ?? "")
         };
-      })
+      }).filter((attribute) => attribute.name.length > 0)
     }))
   };
 

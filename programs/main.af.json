@@ -6,7 +6,7 @@
   "triggers": [
     {
       "id": "trigger.watch_1771610722257",
-      "label": "watch Jasuindo.Taiyo1.Machine Speed",
+      "label": "[watch] Jasuindo.Taiyo1.Machine Speed",
       "type": "watcher",
       "enabled": true,
       "intervalMs": 1000,
@@ -17,7 +17,7 @@
     },
     {
       "id": "trigger.watch_1771642652068",
-      "label": "watch Jasuindo.Taiyo2.Machine Speed",
+      "label": "[watch] Jasuindo.Taiyo2.Machine Speed",
       "type": "watcher",
       "enabled": true,
       "intervalMs": 1000,
@@ -91,6 +91,16 @@
           "allowOverride": true
         }
       }
+    },
+    {
+      "id": "taiyo1.alarm.test",
+      "label": "",
+      "type": "script",
+      "enabled": true,
+      "description": "",
+      "script": "helpers.log(binding_1);\r\nhelpers.log(binding_2);\r\nhelpers.log(binding_3);\r\nhelpers.log(binding_4);\r\n\r\nsend(msg);\r\n\r\n// ini test",
+      "templateBindingOverrides": {},
+      "templateId": "template.script_1771688695001"
     }
   ],
   "flows": {
@@ -103,6 +113,11 @@
       {
         "from": "trigger.watch_1771642652068",
         "to": "taiyo2.alarm.machineSpeed",
+        "enabled": true
+      },
+      {
+        "from": "trigger.watch_1771642652068",
+        "to": "taiyo1.alarm.test",
         "enabled": true
       }
     ],
@@ -132,19 +147,23 @@
         "y": 270
       },
       "taiyo1.alarm.machineSpeed": {
-        "x": 780,
-        "y": 240
+        "x": 760,
+        "y": 150
       },
       "trigger.watch_1771610722257": {
-        "x": 310,
-        "y": 240
-      },
-      "taiyo2.alarm.machineSpeed": {
-        "x": 780,
-        "y": 310
+        "x": 270,
+        "y": 170
       },
       "trigger.watch_1771642652068": {
-        "x": 310,
+        "x": 270,
+        "y": 270
+      },
+      "taiyo2.alarm.machineSpeed": {
+        "x": 760,
+        "y": 240
+      },
+      "taiyo1.alarm.test": {
+        "x": 710,
         "y": 320
       }
     }
@@ -170,6 +189,9 @@
               "label": "Budi",
               "value": "operator1"
             }
+          },
+          "Number Of Staff": {
+            "value": 100
           }
         }
       },
@@ -190,11 +212,11 @@
           },
           "Alarm": {
             "value": "No alarm.",
-            "ts": "2026-02-21T07:08:52.631Z"
+            "ts": "2026-02-21T16:01:37.723Z"
           },
           "Machine Speed": {
-            "value": 23,
-            "ts": "2026-02-21T07:08:52.630Z"
+            "value": 22,
+            "ts": "2026-02-21T16:01:37.722Z"
           },
           "Machine Condition": {
             "value": {
@@ -220,12 +242,12 @@
             }
           },
           "Alarm": {
-            "value": "Oii Budi bahaya!",
-            "ts": "2026-02-21T07:08:51.508Z"
+            "value": "No alarm.",
+            "ts": "2026-02-21T16:01:37.706Z"
           },
           "Machine Speed": {
-            "value": 64,
-            "ts": "2026-02-21T07:08:51.507Z"
+            "value": 22,
+            "ts": "2026-02-21T16:01:37.706Z"
           },
           "Machine Condition": {
             "value": {
@@ -252,7 +274,15 @@
             "nullable": false,
             "inputType": "text",
             "options": [],
-            "optionsScript": ""
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           },
           {
             "enabled": true,
@@ -260,21 +290,20 @@
             "valueType": "object",
             "default": 0,
             "unit": "",
-            "dashboardVisible": true,
+            "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputType": "radio",
-            "options": [
-              {
-                "label": "Working",
-                "value": "working"
-              },
-              {
-                "label": "Downtime - Trouble",
-                "value": "maintenance"
-              }
-            ],
-            "optionsScript": "return [\n    {label: \"Idle\", value: \"idle\"},\n    {label: \"Working\", value: \"working\"},\n    {label: \"Downtime\", value: \"downtime\"},\n]"
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           }
         ]
       },
@@ -288,12 +317,20 @@
             "valueType": "number",
             "default": 0,
             "unit": "meter/minute",
-            "dashboardVisible": true,
-            "dashboardEditable": false,
+            "dashboardVisible": false,
+            "dashboardEditable": true,
             "nullable": false,
-            "inputType": "number",
+            "inputType": "text",
             "options": [],
-            "optionsScript": ""
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           },
           {
             "enabled": true,
@@ -304,9 +341,17 @@
             "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputType": "number",
+            "inputType": "text",
             "options": [],
-            "optionsScript": ""
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           },
           {
             "enabled": true,
@@ -314,21 +359,20 @@
             "valueType": "object",
             "default": {},
             "unit": "",
-            "dashboardVisible": true,
+            "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputType": "select",
-            "options": [
-              {
-                "label": "Budi",
-                "value": "op_a"
-              },
-              {
-                "label": "Plengerrr, S.T.",
-                "value": "op_b"
-              }
-            ],
-            "optionsScript": "return [\n    {label: \"Budi\", value: \"operator1\"},\n    {label: \"Joni\", value: \"operator2\"},\n    {label: \"Plenger, S.T.\", value: \"operator3\"},\n]"
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           },
           {
             "enabled": true,
@@ -336,12 +380,20 @@
             "valueType": "string",
             "default": "-",
             "unit": "",
-            "dashboardVisible": true,
-            "dashboardEditable": false,
+            "dashboardVisible": false,
+            "dashboardEditable": true,
             "nullable": false,
             "inputType": "text",
             "options": [],
-            "optionsScript": ""
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           }
         ]
       },
@@ -360,7 +412,15 @@
             "nullable": false,
             "inputType": "text",
             "options": [],
-            "optionsScript": ""
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           },
           {
             "enabled": true,
@@ -373,7 +433,15 @@
             "nullable": false,
             "inputType": "text",
             "options": [],
-            "optionsScript": ""
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           },
           {
             "enabled": true,
@@ -386,7 +454,15 @@
             "nullable": false,
             "inputType": "text",
             "options": [],
-            "optionsScript": ""
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           },
           {
             "enabled": true,
@@ -399,7 +475,15 @@
             "nullable": false,
             "inputType": "text",
             "options": [],
-            "optionsScript": ""
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           },
           {
             "enabled": true,
@@ -412,7 +496,15 @@
             "nullable": false,
             "inputType": "text",
             "options": [],
-            "optionsScript": ""
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           }
         ]
       },
@@ -426,12 +518,20 @@
             "valueType": "object",
             "default": {},
             "unit": "",
-            "dashboardVisible": true,
+            "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputType": "radio",
+            "inputType": "text",
             "options": [],
-            "optionsScript": "// const res = await fetch('https://example.com/api/options');\n// const rows = await res.json();\n// return rows.map((item) => ({ label: String(item.name), value: item.id }));\n\nreturn [\n    {label: \"Shift 1\", value: \"shift1\"},\n    {label: \"Shift 2\", value: \"shift2\"},\n    {label: \"Shift 3\", value: \"shift3\"},\n]\n"
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           },
           {
             "enabled": true,
@@ -439,12 +539,20 @@
             "valueType": "object",
             "default": {},
             "unit": "",
-            "dashboardVisible": true,
+            "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputType": "radio",
+            "inputType": "text",
             "options": [],
-            "optionsScript": "return [\r\n    {label: \"Budi\", value: \"operator1\"},\r\n    {label: \"Joni\", value: \"operator2\"},\r\n    {label: \"Plenger, S.T.\", value: \"operator3\"},\r\n]"
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           },
           {
             "enabled": true,
@@ -452,12 +560,20 @@
             "valueType": "number",
             "default": 0,
             "unit": "",
-            "dashboardVisible": true,
+            "dashboardVisible": false,
             "dashboardEditable": true,
-            "nullable": true,
-            "inputType": "number",
+            "nullable": false,
+            "inputType": "text",
             "options": [],
-            "optionsScript": ""
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           }
         ]
       }
@@ -519,6 +635,42 @@
           "staticValue": "",
           "attributePath": "",
           "allowOverride": true
+        }
+      ]
+    },
+    {
+      "id": "template.script_1771688695001",
+      "name": "trtirjt",
+      "description": "",
+      "script": "helpers.log(binding_1);\r\nhelpers.log(binding_2);\r\nhelpers.log(binding_3);\r\nhelpers.log(binding_4);\r\n\r\nsend(msg);\r\n\r\n// ini test",
+      "variableBindings": [
+        {
+          "name": "binding_1",
+          "source": "static_string",
+          "staticValue": "halooo",
+          "attributePath": "",
+          "allowOverride": false
+        },
+        {
+          "name": "binding_2",
+          "source": "static_string",
+          "staticValue": "guten abend!",
+          "attributePath": "",
+          "allowOverride": false
+        },
+        {
+          "name": "binding_3",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo1.Alarm",
+          "allowOverride": false
+        },
+        {
+          "name": "binding_4",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo2.Alarm",
+          "allowOverride": false
         }
       ]
     }

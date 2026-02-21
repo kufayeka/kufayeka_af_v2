@@ -8,20 +8,6 @@ export type ScriptBindingSource =
   | "static_boolean"
   | "static_array"
   | "static_object";
-export type AssetDashboardInputMode =
-  | "text"
-  | "number"
-  | "boolean"
-  | "json"
-  | "select"
-  | "radio"
-  | "multiselect"
-  | "textarea";
-
-export interface AssetAttributeOption {
-  label: string;
-  value: unknown;
-}
 
 export interface AssetTemplateAttributeDefinition {
   enabled?: boolean;
@@ -29,20 +15,6 @@ export interface AssetTemplateAttributeDefinition {
   valueType: AssetAttributeType;
   default: unknown;
   unit?: string;
-  dashboardVisible?: boolean;
-  dashboardEditable?: boolean;
-  nullable?: boolean;
-  inputType?: AssetDashboardInputMode;
-  options?: AssetAttributeOption[];
-  optionsScript?: string;
-  numberMin?: number | null;
-  numberMax?: number | null;
-  numberAllowNegative?: boolean;
-  numberUseThousandSeparator?: boolean;
-  numberPrefix?: string;
-  numberSuffix?: string;
-  numberAllowDecimal?: boolean;
-  numberPrecision?: number;
 }
 
 export interface AssetAttributeTemplateDefinition {

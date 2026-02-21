@@ -464,12 +464,12 @@ export default function ActionManager({
                   helperText="Contoh: areaA.line1.printer.offset.startup"
                 />
 
-            <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, overflowX: "auto" }}>
-              <Table size="small">
+                <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, maxHeight: 260 }}>
+                  <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ minWidth: 160 }}>Field</TableCell>
-                    <TableCell>Value</TableCell>
+                    <TableCell  sx={{ minWidth: 160, backgroundColor: "#d0dfdb" }}>Field</TableCell>
+                    <TableCell sx={{ backgroundColor: "#d0dfdb" }}>Value</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -531,10 +531,10 @@ export default function ActionManager({
                       <Table size="small" stickyHeader>
                         <TableHead>
                           <TableRow>
-                            <TableCell sx={{ minWidth: 180 }}>Binding</TableCell>
-                            <TableCell sx={{ minWidth: 130 }}>Source</TableCell>
-                            <TableCell sx={{ minWidth: 320 }}>Value</TableCell>
-                            <TableCell sx={{ minWidth: 120 }}>Override</TableCell>
+                            <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 180 }}>Binding</TableCell>
+                            <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 130 }}>Source</TableCell>
+                            <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 320 }}>Value</TableCell>
+                            <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Override</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>

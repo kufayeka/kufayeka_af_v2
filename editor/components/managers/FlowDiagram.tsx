@@ -43,7 +43,7 @@ const FLOW_NODE_MAX_WIDTH = 360;
 const FLOW_NODE_MIN_HEIGHT = 52;
 const NODE_TEXT_PADDING_X = 24;
 const NODE_TEXT_PADDING_Y = 14;
-const NODE_FONT_SIZE = 16;
+const NODE_FONT_SIZE = 20;
 const NODE_LINE_HEIGHT = 18;
 const COLLISION_PADDING = 14;
 const GRID_SIZE = 10;
@@ -656,7 +656,7 @@ export default function FlowDiagram({
                   />
                 )}
                 <title>{node.id}</title>
-                <text x={node.x} y={node.y - ((displayLines.length - 1) * NODE_LINE_HEIGHT) / 2 + 6} textAnchor="middle" fontSize={NODE_FONT_SIZE} fontWeight="700" fill="#ffffff">
+                <text x={node.x} y={node.y - ((displayLines.length - 1) * NODE_LINE_HEIGHT) / 2 + 6} textAnchor="middle" fontSize={NODE_FONT_SIZE} fontWeight="500" fill="#ffffff">
                   {displayLines.map((line, index) => (
                     <tspan key={`${node.id}-line-${index}`} x={node.x} dy={index === 0 ? 0 : NODE_LINE_HEIGHT}>
                       {line}

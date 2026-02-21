@@ -1,7 +1,20 @@
 const http = require("node:http");
 const { ensureAssetStorage } = require("../runtime/assetStorage");
 
-function sendJson(res, statusCode, data) {
+/**
+ * DEV CORS: allow all origins (no credentials).
+ * Kalau butuh cookies/credentials, lihat catatan di bawah.
+ */
+function setCorsHeaders(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  // Optional caching preflight
+  res.setHeader("Access-Control-Max-Age", "86400");
+}
+
+function sendJson(req, res, statusCode, data) {
+  setCorsHeaders(req, res);
   res.writeHead(statusCode, { "content-type": "application/json" });
   res.end(JSON.stringify(data));
 }
@@ -44,17 +57,28 @@ function createApiServer(runtime, options = {}) {
   const assetStore = ensureAssetStorage(runtime, runtime.getGlobal("assetFramework", {}));
 
   const server = http.createServer(async (req, res) => {
+    // Always set CORS headers
+    setCorsHeaders(req, res);
+
     const method = req.method || "GET";
+
+    // Handle preflight request (important for PUT/POST with JSON)
+    if (method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
     const requestUrl = new URL(req.url || "/", `http://${req.headers.host}`);
     const urlPath = requestUrl.pathname;
 
     if (method === "GET" && urlPath === "/api/global") {
-      sendJson(res, 200, { data: runtime.getGlobalEntries() });
+      sendJson(req, res, 200, { data: runtime.getGlobalEntries() });
       return;
     }
 
     if (urlPath === "/api/assets" && method === "GET") {
-      sendJson(res, 200, { data: assetStore.getState() });
+      sendJson(req, res, 200, { data: assetStore.getState() });
       return;
     }
 
@@ -62,15 +86,15 @@ function createApiServer(runtime, options = {}) {
       try {
         const body = await parseJsonBody(req);
         const next = assetStore.replace(body);
-        sendJson(res, 200, { data: next });
+        sendJson(req, res, 200, { data: next });
       } catch (error) {
-        sendJson(res, 400, { error: error.message });
+        sendJson(req, res, 400, { error: error.message });
       }
       return;
     }
 
     if (urlPath === "/api/assets/system" && method === "GET") {
-      sendJson(res, 200, { data: assetStore.getState() });
+      sendJson(req, res, 200, { data: assetStore.getState() });
       return;
     }
 
@@ -78,9 +102,9 @@ function createApiServer(runtime, options = {}) {
       try {
         const body = await parseJsonBody(req);
         const next = assetStore.replace(body);
-        sendJson(res, 200, { data: next });
+        sendJson(req, res, 200, { data: next });
       } catch (error) {
-        sendJson(res, 400, { error: error.message });
+        sendJson(req, res, 400, { error: error.message });
       }
       return;
     }
@@ -94,18 +118,18 @@ function createApiServer(runtime, options = {}) {
             populatedRaw.toLowerCase() === "true" ||
             populatedRaw.toLowerCase() === "yes";
       const data = assetStore.getHierarchy({ populateAttributes: populated });
-      sendJson(res, 200, { populated, count: data.length, data });
+      sendJson(req, res, 200, { populated, count: data.length, data });
       return;
     }
 
     if (urlPath === "/api/assets/query" && method === "GET") {
       const pathQuery = requestUrl.searchParams.get("path") || "";
       if (!pathQuery) {
-        sendJson(res, 400, { error: "Query parameter 'path' wajib diisi" });
+        sendJson(req, res, 400, { error: "Query parameter 'path' wajib diisi" });
         return;
       }
       const matches = assetStore.query(pathQuery);
-      sendJson(res, 200, { path: pathQuery, count: matches.length, matches });
+      sendJson(req, res, 200, { path: pathQuery, count: matches.length, matches });
       return;
     }
 
@@ -113,7 +137,7 @@ function createApiServer(runtime, options = {}) {
       const encoded = urlPath.slice("/api/assets/value/".length);
       const pathQuery = decodeURIComponent(encoded || "");
       if (!pathQuery) {
-        sendJson(res, 400, { error: "Path asset wajib diisi" });
+        sendJson(req, res, 400, { error: "Path asset wajib diisi" });
         return;
       }
 
@@ -121,7 +145,7 @@ function createApiServer(runtime, options = {}) {
         const matches = assetStore
           .query(pathQuery)
           .filter((item) => item.kind === "attribute");
-        sendJson(res, 200, { path: pathQuery, count: matches.length, matches });
+        sendJson(req, res, 200, { path: pathQuery, count: matches.length, matches });
         return;
       }
 
@@ -129,13 +153,13 @@ function createApiServer(runtime, options = {}) {
         try {
           const body = await parseJsonBody(req);
           if (!Object.prototype.hasOwnProperty.call(body, "value")) {
-            sendJson(res, 400, { error: "Body wajib punya field 'value'" });
+            sendJson(req, res, 400, { error: "Body wajib punya field 'value'" });
             return;
           }
           const matches = assetStore.setAttribute(pathQuery, body.value);
-          sendJson(res, 200, { path: pathQuery, count: matches.length, matches });
+          sendJson(req, res, 200, { path: pathQuery, count: matches.length, matches });
         } catch (error) {
-          sendJson(res, 400, { error: error.message });
+          sendJson(req, res, 400, { error: error.message });
         }
         return;
       }
@@ -146,25 +170,25 @@ function createApiServer(runtime, options = {}) {
         const body = await parseJsonBody(req);
         const items = Array.isArray(body.items) ? body.items : [];
         const results = assetStore.setAttributes(items);
-        sendJson(res, 200, { count: results.length, results });
+        sendJson(req, res, 200, { count: results.length, results });
       } catch (error) {
-        sendJson(res, 400, { error: error.message });
+        sendJson(req, res, 400, { error: error.message });
       }
       return;
     }
 
     const key = getKeyFromPath(urlPath);
     if (!key) {
-      sendJson(res, 404, { error: "Route tidak ditemukan" });
+      sendJson(req, res, 404, { error: "Route tidak ditemukan" });
       return;
     }
 
     if (method === "GET") {
       if (!runtime.hasGlobal(key)) {
-        sendJson(res, 404, { error: `Key "${key}" tidak ditemukan` });
+        sendJson(req, res, 404, { error: `Key "${key}" tidak ditemukan` });
         return;
       }
-      sendJson(res, 200, { key, value: runtime.getGlobal(key) });
+      sendJson(req, res, 200, { key, value: runtime.getGlobal(key) });
       return;
     }
 
@@ -172,25 +196,25 @@ function createApiServer(runtime, options = {}) {
       try {
         const body = await parseJsonBody(req);
         if (!Object.prototype.hasOwnProperty.call(body, "value")) {
-          sendJson(res, 400, { error: "Body wajib punya field 'value'" });
+          sendJson(req, res, 400, { error: "Body wajib punya field 'value'" });
           return;
         }
 
         const value = runtime.setGlobal(key, body.value);
-        sendJson(res, 200, { key, value });
+        sendJson(req, res, 200, { key, value });
       } catch (error) {
-        sendJson(res, 400, { error: error.message });
+        sendJson(req, res, 400, { error: error.message });
       }
       return;
     }
 
     if (method === "DELETE") {
       const deleted = runtime.deleteGlobal(key);
-      sendJson(res, 200, { key, deleted });
+      sendJson(req, res, 200, { key, deleted });
       return;
     }
 
-    sendJson(res, 405, { error: `Method ${method} tidak didukung` });
+    sendJson(req, res, 405, { error: `Method ${method} tidak didukung` });
   });
 
   return {
