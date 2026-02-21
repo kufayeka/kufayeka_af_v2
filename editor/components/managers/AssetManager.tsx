@@ -474,18 +474,22 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                 </Box>
 
                 <FormControl size="small" sx={{ maxWidth: 720 }}>
-                  <InputLabel id="asset-template-label">Template IDs</InputLabel>
-                  <Select
+                  <InputLabel id="asset-template-label">Templates</InputLabel>
+                  <Select<string[]>
                     labelId="asset-template-label"
-                    label="Template IDs"
+                    label="Templates"
                     multiple
-                    value={selectedAsset.templateIds as unknown as string}
-                    onChange={(e: SelectChangeEvent<string>) => {
+                    value={selectedAsset.templateIds}
+                    onChange={(e: SelectChangeEvent<string[]>) => {
                       const raw = e.target.value;
-                      const nextTemplateIds = typeof raw === "string" ? raw.split(",").filter(Boolean) : [];
+                      const nextTemplateIds = Array.isArray(raw) ? raw : raw.split(",").filter(Boolean);
                       updateAssetWith(selectedAsset.id, (asset) => ({ ...asset, templateIds: nextTemplateIds }));
                     }}
-                    renderValue={(selected) => String(selected).split(",").filter(Boolean).join(", ")}
+                    renderValue={(selected) =>
+                      (selected as string[])
+                        .map((id) => templateById.get(id)?.name || id)
+                        .join(", ")
+                    }
                   >
                     {assets.attributeTemplates.map((template) => (
                       <MenuItem key={template.id} value={template.id}>
