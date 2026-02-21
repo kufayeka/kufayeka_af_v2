@@ -19,19 +19,18 @@ function normalizeAssetSection(input = {}) {
         ? template.attributes.map((attribute) => ({
             enabled: attribute.enabled !== false,
             name: attribute.name,
-            type: attribute.type,
-            defaultValue: attribute.defaultValue,
+            valueType: attribute.valueType || attribute.type || "string",
+            default:
+              Object.prototype.hasOwnProperty.call(attribute, "default")
+                ? attribute.default
+                : attribute.defaultValue,
             unit: attribute.unit ?? "",
             dashboardVisible: attribute.dashboardVisible === true,
             dashboardEditable: attribute.dashboardEditable !== false,
             nullable: attribute.nullable === true,
-            inputMode: attribute.inputMode ?? "text",
-            optionsSource: attribute.optionsSource ?? "static",
+            inputType: attribute.inputType ?? attribute.inputMode ?? "text",
             options: Array.isArray(attribute.options) ? attribute.options : [],
-            optionsApiUrl: attribute.optionsApiUrl ?? "",
-            optionsTransformScript: attribute.optionsTransformScript ?? "",
-            optionsLabelPath: attribute.optionsLabelPath ?? "",
-            optionsValuePath: attribute.optionsValuePath ?? "",
+            optionsScript: attribute.optionsScript ?? attribute.optionsTransformScript ?? "",
           }))
         : [],
     })),
@@ -96,8 +95,8 @@ function createAssetFrameworkStore(initialSection = {}) {
         if (attribute.enabled === false) continue;
         if (!map.has(attribute.name)) {
           map.set(attribute.name, {
-            value: attribute.defaultValue,
-            type: attribute.type,
+            value: attribute.default,
+            valueType: attribute.valueType,
             unit: attribute.unit ?? "",
           });
         }
@@ -158,7 +157,7 @@ function createAssetFrameworkStore(initialSection = {}) {
         return {
           name,
           value: attribute.value,
-          type: attribute.type || "custom",
+          valueType: attribute.valueType || "custom",
           unit: attribute.unit || "",
           source: isOverride ? "override" : "template",
         };
@@ -214,7 +213,7 @@ function createAssetFrameworkStore(initialSection = {}) {
           assetId: node.asset.id,
           attributeName: name,
           value: attribute.value,
-          type: attribute.type || "custom",
+          type: attribute.valueType || "custom",
           unit: attribute.unit || "",
         });
       }

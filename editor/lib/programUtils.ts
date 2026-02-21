@@ -51,6 +51,38 @@ export function parseMaybeJson(input: string): unknown {
 }
 
 export function normalizeProgram(program: Program): Program {
+  const normalizeAssetValueType = (value: unknown): "number" | "boolean" | "string" | "array" | "object" => {
+    const normalized = String(value || "string");
+    if (
+      normalized === "number" ||
+      normalized === "boolean" ||
+      normalized === "string" ||
+      normalized === "array" ||
+      normalized === "object"
+    ) {
+      return normalized;
+    }
+    return "string";
+  };
+  const normalizeAssetInputType = (
+    value: unknown
+  ): "text" | "number" | "boolean" | "json" | "select" | "radio" | "multiselect" | "textarea" => {
+    const normalized = String(value || "text");
+    if (
+      normalized === "text" ||
+      normalized === "number" ||
+      normalized === "boolean" ||
+      normalized === "json" ||
+      normalized === "select" ||
+      normalized === "radio" ||
+      normalized === "multiselect" ||
+      normalized === "textarea"
+    ) {
+      return normalized;
+    }
+    return "text";
+  };
+
   const normalizeBinding = (
     binding: Partial<ScriptVariableBindingDefinition> & {
       source?: string;
@@ -100,17 +132,27 @@ export function normalizeProgram(program: Program): Program {
       attributes: (template.attributes || []).map((attribute) => ({
         ...attribute,
         enabled: attribute.enabled !== false,
+        valueType: normalizeAssetValueType(
+          (attribute as { valueType?: unknown; type?: unknown }).valueType ??
+            (attribute as { type?: unknown }).type
+        ),
+        default:
+          (attribute as { default?: unknown }).default !== undefined
+            ? (attribute as { default?: unknown }).default
+            : (attribute as { defaultValue?: unknown }).defaultValue,
         unit: attribute.unit ?? "",
         dashboardVisible: attribute.dashboardVisible === true,
         dashboardEditable: attribute.dashboardEditable !== false,
         nullable: attribute.nullable === true,
-        inputMode: attribute.inputMode ?? "text",
-        optionsSource: attribute.optionsSource ?? "static",
+        inputType: normalizeAssetInputType(
+          (attribute as { inputType?: unknown; inputMode?: unknown }).inputType ??
+            (attribute as { inputMode?: unknown }).inputMode
+        ),
         options: Array.isArray(attribute.options) ? attribute.options : [],
-        optionsApiUrl: attribute.optionsApiUrl ?? "",
-        optionsTransformScript: attribute.optionsTransformScript ?? "",
-        optionsLabelPath: attribute.optionsLabelPath ?? "",
-        optionsValuePath: attribute.optionsValuePath ?? ""
+        optionsScript:
+          (attribute as { optionsScript?: string; optionsTransformScript?: string }).optionsScript ??
+          (attribute as { optionsTransformScript?: string }).optionsTransformScript ??
+          ""
       }))
     }))
   };

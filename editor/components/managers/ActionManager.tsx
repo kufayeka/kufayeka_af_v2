@@ -119,8 +119,10 @@ function getAssetAttributeOptions(assets: AssetFrameworkDefinition): Array<{
         if (attr.enabled === false) continue;
         if (!attrMap.has(attr.name)) {
           attrMap.set(attr.name, {
-            value: attr.defaultValue,
-            type: String(attr.type || "string"),
+            value:
+              (attr as { default?: unknown; defaultValue?: unknown }).default ??
+              (attr as { defaultValue?: unknown }).defaultValue,
+            type: String((attr as { valueType?: string; type?: string }).valueType || (attr as { type?: string }).type || "string"),
             unit: String(attr.unit || "")
           });
         }

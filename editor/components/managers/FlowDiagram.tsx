@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
-import { Box, Button, Typography } from "@mui/material";
+import { Box, Button, FormControlLabel, Switch, Typography } from "@mui/material";
 import type { FlowLink, NodePosition } from "../../types/program";
 
 type NodeKind = "trigger" | "action";
@@ -10,6 +10,12 @@ interface NodePoint {
   x: number;
   y: number;
   kind: NodeKind;
+}
+
+interface NodeMetrics {
+  width: number;
+  height: number;
+  lines: string[];
 }
 
 interface FlowDiagramProps {
@@ -31,35 +37,105 @@ interface FlowDiagramProps {
 }
 
 const NODE_WIDTH = 250;
-const NODE_HALF_WIDTH = NODE_WIDTH / 2;
 const NODE_HEIGHT = 52;
+const FLOW_NODE_MIN_WIDTH = 180;
+const FLOW_NODE_MAX_WIDTH = 360;
+const FLOW_NODE_MIN_HEIGHT = 52;
+const NODE_TEXT_PADDING_X = 24;
+const NODE_TEXT_PADDING_Y = 14;
+const NODE_FONT_SIZE = 16;
+const NODE_LINE_HEIGHT = 18;
+const COLLISION_PADDING = 14;
 const GRID_SIZE = 10;
 const LINE_CURVE_SCALE = 0.75;
 
-function generateLinkPath(origX: number, origY: number, destX: number, destY: number, sc = 1): string {
+function measureTextWidth(text: string): number {
+  return text.length * (NODE_FONT_SIZE * 0.57);
+}
+
+function splitLongToken(token: string, maxTextWidth: number): string[] {
+  if (measureTextWidth(token) <= maxTextWidth) return [token];
+  const result: string[] = [];
+  let current = "";
+  for (const char of token) {
+    const next = current + char;
+    if (measureTextWidth(next) > maxTextWidth && current) {
+      result.push(current);
+      current = char;
+    } else {
+      current = next;
+    }
+  }
+  if (current) result.push(current);
+  return result;
+}
+
+function wrapNodeText(text: string, maxTextWidth: number): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [text];
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const chunks = splitLongToken(word, maxTextWidth);
+    for (const chunk of chunks) {
+      const attempt = current ? `${current} ${chunk}` : chunk;
+      if (measureTextWidth(attempt) <= maxTextWidth) {
+        current = attempt;
+      } else {
+        if (current) lines.push(current);
+        current = chunk;
+      }
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length > 0 ? lines : [text];
+}
+
+function getNodeMetrics(kind: NodeKind, label: string): NodeMetrics {
+  const maxTextWidth = FLOW_NODE_MAX_WIDTH - NODE_TEXT_PADDING_X * 2;
+  const lines = wrapNodeText(label, maxTextWidth);
+  const widestLine = lines.reduce((max, line) => Math.max(max, measureTextWidth(line)), 0);
+  const width = Math.max(
+    FLOW_NODE_MIN_WIDTH,
+    Math.min(FLOW_NODE_MAX_WIDTH, Math.ceil(widestLine + NODE_TEXT_PADDING_X * 2))
+  );
+  const textHeight = Math.max(NODE_LINE_HEIGHT, lines.length * NODE_LINE_HEIGHT);
+  const height = Math.max(FLOW_NODE_MIN_HEIGHT, Math.ceil(textHeight + NODE_TEXT_PADDING_Y * 2));
+  return { width, height, lines };
+}
+
+function generateLinkPath(
+  origX: number,
+  origY: number,
+  destX: number,
+  destY: number,
+  laneWidth: number,
+  laneHeight: number,
+  sc = 1
+): string {
   const dy = destY - origY;
   const dx = destX - origX;
   const delta = Math.sqrt(dy * dy + dx * dx);
   let scale = LINE_CURVE_SCALE;
   if (dx * sc > 0) {
-    if (delta < NODE_WIDTH) {
-      scale = 0.75 - 0.75 * ((NODE_WIDTH - delta) / NODE_WIDTH);
+    if (delta < laneWidth) {
+      scale = 0.75 - 0.75 * ((laneWidth - delta) / laneWidth);
     }
-    const cp1x = origX + sc * (NODE_WIDTH * scale);
+    const cp1x = origX + sc * (laneWidth * scale);
     const cp1y = origY;
-    const cp2x = destX - sc * (NODE_WIDTH * scale);
+    const cp2x = destX - sc * (laneWidth * scale);
     const cp2y = destY;
     return `M ${origX} ${origY} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${destX} ${destY}`;
   }
 
-  scale = 0.4 - 0.2 * (Math.max(0, (NODE_WIDTH - Math.min(Math.abs(dx), Math.abs(dy))) / NODE_WIDTH));
-  const cpHeight = NODE_HEIGHT / 2;
+  scale = 0.4 - 0.2 * (Math.max(0, (laneWidth - Math.min(Math.abs(dx), Math.abs(dy))) / laneWidth));
+  const cpHeight = laneHeight / 2;
   const midX = Math.floor(destX - dx / 2);
   const midY = Math.floor(destY - dy / 2);
   const y1 = (destY + midY) / 2;
-  const topX = origX + sc * NODE_WIDTH * scale;
+  const topX = origX + sc * laneWidth * scale;
   const topY = dy > 0 ? Math.min(y1 - dy / 2, origY + cpHeight) : Math.max(y1 - dy / 2, origY - cpHeight);
-  const bottomX = destX - sc * NODE_WIDTH * scale;
+  const bottomX = destX - sc * laneWidth * scale;
   const bottomY = dy > 0 ? Math.max(y1, destY - cpHeight) : Math.min(y1, destY + cpHeight);
   const x1 = (origX + topX) / 2;
   const scy = dy > 0 ? 1 : -1;
@@ -136,13 +212,25 @@ export default function FlowDiagram({
   }, [allIds, kindMap, liveNodePositions, nodePositions]);
 
   const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node] as const)), [nodes]);
+  const nodeMetricsMap = useMemo(() => {
+    const map = new Map<string, NodeMetrics>();
+    for (const node of nodes) {
+      const displayText = (nodeLabels[node.id] || node.id).trim() || node.id;
+      map.set(node.id, getNodeMetrics(node.kind, displayText));
+    }
+    return map;
+  }, [nodes, nodeLabels]);
   const maxX = nodes.reduce((acc, node) => Math.max(acc, node.x), 0);
   const maxY = nodes.reduce((acc, node) => Math.max(acc, node.y), 0);
-  const diagramWidth = Math.max(1400, maxX + 280);
-  const diagramHeight = Math.max(760, maxY + 160);
+  const maxNodeWidth = Array.from(nodeMetricsMap.values()).reduce((acc, metric) => Math.max(acc, metric.width), NODE_WIDTH);
+  const maxNodeHeight = Array.from(nodeMetricsMap.values()).reduce((acc, metric) => Math.max(acc, metric.height), NODE_HEIGHT);
+  const diagramWidth = Math.max(1400, maxX + maxNodeWidth + 60);
+  const diagramHeight = Math.max(760, maxY + maxNodeHeight + 60);
 
   const [internalZoom, setInternalZoom] = useState(0.5);
   const zoom = controlledZoom ?? internalZoom;
+  const [gridSnapEnabled, setGridSnapEnabled] = useState(true);
+  const [collisionEnabled, setCollisionEnabled] = useState(true);
   const [connectFromId, setConnectFromId] = useState("");
   const [connectCursor, setConnectCursor] = useState<{ x: number; y: number } | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -174,6 +262,45 @@ export default function FlowDiagram({
     latestY: 0
   });
   const dragRafRef = useRef<number | null>(null);
+
+  const findNonOverlappingPosition = (nodeId: string, targetX: number, targetY: number): { x: number; y: number } => {
+    const metric = nodeMetricsMap.get(nodeId) || { width: NODE_WIDTH, height: NODE_HEIGHT, lines: [nodeId] };
+    const minX = Math.ceil(metric.width / 2) + 10;
+    const minY = Math.ceil(metric.height / 2) + 10;
+
+    const collidesAt = (candidateX: number, candidateY: number): boolean => {
+      const left = candidateX - metric.width / 2 - COLLISION_PADDING;
+      const right = candidateX + metric.width / 2 + COLLISION_PADDING;
+      const top = candidateY - metric.height / 2 - COLLISION_PADDING;
+      const bottom = candidateY + metric.height / 2 + COLLISION_PADDING;
+      for (const other of nodes) {
+        if (other.id === nodeId) continue;
+        const otherMetric = nodeMetricsMap.get(other.id) || { width: NODE_WIDTH, height: NODE_HEIGHT, lines: [other.id] };
+        const otherLeft = other.x - otherMetric.width / 2;
+        const otherRight = other.x + otherMetric.width / 2;
+        const otherTop = other.y - otherMetric.height / 2;
+        const otherBottom = other.y + otherMetric.height / 2;
+        const overlap = !(right < otherLeft || left > otherRight || bottom < otherTop || top > otherBottom);
+        if (overlap) return true;
+      }
+      return false;
+    };
+
+    const clamp = (x: number, y: number) => ({ x: Math.max(minX, x), y: Math.max(minY, y) });
+    const first = clamp(targetX, targetY);
+    if (!collisionEnabled || !collidesAt(first.x, first.y)) return first;
+    const step = gridSnapEnabled ? GRID_SIZE : 8;
+    for (let ring = 1; ring <= 24; ring += 1) {
+      for (let dx = -ring; dx <= ring; dx += 1) {
+        for (let dy = -ring; dy <= ring; dy += 1) {
+          if (Math.abs(dx) !== ring && Math.abs(dy) !== ring) continue;
+          const next = clamp(first.x + dx * step, first.y + dy * step);
+          if (!collidesAt(next.x, next.y)) return next;
+        }
+      }
+    }
+    return first;
+  };
 
   const zoomView = (factor: number) => {
     const nextZoom = Math.max(0.3, Math.min(2, Number(factor.toFixed(2))));
@@ -247,12 +374,13 @@ export default function FlowDiagram({
     if (!nodeId) return;
     const point = getSvgPointFromMouse(event.clientX, event.clientY);
     if (!point) return;
-    const snappedX = Math.round(point.x / GRID_SIZE) * GRID_SIZE;
-    const snappedY = Math.round(point.y / GRID_SIZE) * GRID_SIZE;
+    const nextX = gridSnapEnabled ? Math.round(point.x / GRID_SIZE) * GRID_SIZE : point.x;
+    const nextY = gridSnapEnabled ? Math.round(point.y / GRID_SIZE) * GRID_SIZE : point.y;
+    const resolved = findNonOverlappingPosition(nodeId, nextX, nextY);
     onNodeDragStart?.();
     onNodePositionChange?.(nodeId, {
-      x: Math.max(130, snappedX),
-      y: Math.max(60, snappedY)
+      x: resolved.x,
+      y: resolved.y
     });
     event.preventDefault();
     event.stopPropagation();
@@ -290,9 +418,19 @@ export default function FlowDiagram({
         }}
       >
         <Typography variant="body2" color="text.secondary">
-          Zoom: {Math.round(zoom * 100)}% | Middle-click drag to pan | Alt+Wheel zoom | Drag node to move (snap grid) | Click wire + Delete
+          Zoom: {Math.round(zoom * 100)}% | Middle-click drag to pan | Alt+Wheel zoom | Click wire + Delete
         </Typography>
-        <Box sx={{ display: "flex", gap: 0.75 }}>
+        <Box sx={{ display: "flex", gap: 0.75, alignItems: "center" }}>
+          <FormControlLabel
+            sx={{ mr: 0.5 }}
+            control={<Switch size="small" checked={gridSnapEnabled} onChange={(_e, checked) => setGridSnapEnabled(checked)} />}
+            label={<Typography variant="caption">Grid Snap</Typography>}
+          />
+          <FormControlLabel
+            sx={{ mr: 0.5 }}
+            control={<Switch size="small" checked={collisionEnabled} onChange={(_e, checked) => setCollisionEnabled(checked)} />}
+            label={<Typography variant="caption">Collision</Typography>}
+          />
           <Button size="small" onClick={zoomOut}>-</Button>
           <Button size="small" onClick={zoomReset}>Reset</Button>
           <Button size="small" onClick={zoomIn}>+</Button>
@@ -349,10 +487,13 @@ export default function FlowDiagram({
             if (!point) return;
             const dx = point.x - dragNodeRef.current.startMouseX;
             const dy = point.y - dragNodeRef.current.startMouseY;
-            const snappedX = Math.round((dragNodeRef.current.startNodeX + dx) / GRID_SIZE) * GRID_SIZE;
-            const snappedY = Math.round((dragNodeRef.current.startNodeY + dy) / GRID_SIZE) * GRID_SIZE;
-            dragNodeRef.current.latestX = Math.max(130, snappedX);
-            dragNodeRef.current.latestY = Math.max(60, snappedY);
+            const rawX = dragNodeRef.current.startNodeX + dx;
+            const rawY = dragNodeRef.current.startNodeY + dy;
+            const nextX = gridSnapEnabled ? Math.round(rawX / GRID_SIZE) * GRID_SIZE : rawX;
+            const nextY = gridSnapEnabled ? Math.round(rawY / GRID_SIZE) * GRID_SIZE : rawY;
+            const resolved = findNonOverlappingPosition(dragNodeRef.current.nodeId, nextX, nextY);
+            dragNodeRef.current.latestX = resolved.x;
+            dragNodeRef.current.latestY = resolved.y;
 
             if (dragRafRef.current === null) {
               dragRafRef.current = requestAnimationFrame(() => {
@@ -427,11 +568,17 @@ export default function FlowDiagram({
               const from = nodeMap.get(link.from);
               const to = nodeMap.get(link.to);
               if (!from || !to) return null;
-              const startX = from.x + NODE_HALF_WIDTH;
+              const fromMetric = nodeMetricsMap.get(from.id) || { width: NODE_WIDTH, height: NODE_HEIGHT, lines: [from.id] };
+              const toMetric = nodeMetricsMap.get(to.id) || { width: NODE_WIDTH, height: NODE_HEIGHT, lines: [to.id] };
+              const fromHalfWidth = fromMetric.width / 2;
+              const toHalfWidth = toMetric.width / 2;
+              const laneWidth = Math.max(fromMetric.width, toMetric.width);
+              const laneHeight = Math.max(fromMetric.height, toMetric.height);
+              const startX = from.x + fromHalfWidth;
               const startY = from.y;
-              const endX = to.x - NODE_HALF_WIDTH;
+              const endX = to.x - toHalfWidth;
               const endY = to.y;
-              const d = generateLinkPath(startX, startY, endX, endY, 1);
+              const d = generateLinkPath(startX, startY, endX, endY, laneWidth, laneHeight, 1);
               const isSelected = selectedLinkIndex === index;
               const isEnabled = link.enabled !== false;
               const edgeLabelX = (startX + endX) / 2;
@@ -439,6 +586,7 @@ export default function FlowDiagram({
 
               return (
                 <g key={`${link.from}-${link.to}-${index}`}>
+                  <path d={d} fill="none" stroke="#ffffff" strokeWidth={7} strokeDasharray={isEnabled ? undefined : "7 5"} markerEnd="url(#flowArrow)" pointerEvents="none" />
                   <path d={d} fill="none" stroke={isSelected ? "#dc2626" : isEnabled ? "#707070" : "#94a3b8"} strokeWidth={4} strokeDasharray={isEnabled ? undefined : "7 5"} markerEnd="url(#flowArrow)" pointerEvents="none" style={isSelected ? { animation: "wireBlink 0.8s linear infinite" } : undefined} />
                   <path d={d} fill="none" stroke="transparent" strokeWidth={20} data-diagram-interactive="true" onClick={() => onSelectLink(index)} style={{ cursor: "pointer" }} />
                   <circle cx={edgeLabelX} cy={edgeLabelY + 5} r={10} fill="#fff" stroke="#94a3b8" strokeWidth={1} onClick={() => onSelectLink(index)} style={{ cursor: "pointer" }} />
@@ -452,11 +600,25 @@ export default function FlowDiagram({
             {connectFromId && connectCursor && (() => {
               const from = nodeMap.get(connectFromId);
               if (!from) return null;
-              const d = generateLinkPath(from.x + NODE_HALF_WIDTH, from.y, connectCursor.x, connectCursor.y, 1);
+              const fromMetric = nodeMetricsMap.get(from.id) || { width: NODE_WIDTH, height: NODE_HEIGHT, lines: [from.id] };
+              const d = generateLinkPath(
+                from.x + fromMetric.width / 2,
+                from.y,
+                connectCursor.x,
+                connectCursor.y,
+                fromMetric.width,
+                fromMetric.height,
+                1
+              );
               return <path d={d} fill="none" stroke="#0f766e" strokeWidth={3} strokeDasharray="6 4" markerEnd="url(#flowArrow)" pointerEvents="none" />;
             })()}
 
-            {nodes.map((node) => (
+            {nodes.map((node) => {
+              const metric = nodeMetricsMap.get(node.id) || { width: NODE_WIDTH, height: NODE_HEIGHT, lines: [node.id] };
+              const halfWidth = metric.width / 2;
+              const halfHeight = metric.height / 2;
+              const displayLines = metric.lines.length > 0 ? metric.lines : [(nodeLabels[node.id] || node.id).trim() || node.id];
+              return (
               <g
                 key={node.id}
                 onClick={(event) => {
@@ -480,13 +642,13 @@ export default function FlowDiagram({
                 data-diagram-interactive="true"
                 style={{ cursor: dragNodeRef.current.active && dragNodeRef.current.nodeId === node.id ? "grabbing" : "grab" }}
               >
-                <rect x={node.x - NODE_HALF_WIDTH} y={node.y - 26} width={NODE_WIDTH} height={52} rx={20} fill={node.kind === "action" ? "#01806b" : "#676e6c"} stroke={node.kind === "action" ? "#14f4b4" : "#0f766e"} strokeWidth={0.7} />
+                <rect x={node.x - halfWidth} y={node.y - halfHeight} width={metric.width} height={metric.height} rx={20} fill={node.kind === "action" ? "#01806b" : "#676e6c"} stroke={node.kind === "action" ? "#14f4b4" : "#0f766e"} strokeWidth={0.7} />
                 {selectedNodeId === node.id && (
                   <rect
-                    x={node.x - NODE_HALF_WIDTH - 4}
-                    y={node.y - 30}
-                    width={NODE_WIDTH + 8}
-                    height={60}
+                    x={node.x - halfWidth - 4}
+                    y={node.y - halfHeight - 4}
+                    width={metric.width + 8}
+                    height={metric.height + 8}
                     rx={24}
                     fill="none"
                     stroke="#dc2626"
@@ -494,12 +656,16 @@ export default function FlowDiagram({
                   />
                 )}
                 <title>{node.id}</title>
-                <text x={node.x} y={node.y + 5} textAnchor="middle" fontSize="18" fontWeight="700" fill="#ffffff">
-                  {(nodeLabels[node.id] || node.id).trim() || node.id}
+                <text x={node.x} y={node.y - ((displayLines.length - 1) * NODE_LINE_HEIGHT) / 2 + 6} textAnchor="middle" fontSize={NODE_FONT_SIZE} fontWeight="700" fill="#ffffff">
+                  {displayLines.map((line, index) => (
+                    <tspan key={`${node.id}-line-${index}`} x={node.x} dy={index === 0 ? 0 : NODE_LINE_HEIGHT}>
+                      {line}
+                    </tspan>
+                  ))}
                 </text>
 
                 <circle
-                  cx={node.x - NODE_HALF_WIDTH}
+                  cx={node.x - halfWidth}
                   cy={node.y}
                   r={8}
                   fill={connectFromId ? "#f8fafc" : "#ffffff"}
@@ -520,7 +686,7 @@ export default function FlowDiagram({
                   style={{ cursor: connectFromId && connectFromId !== node.id ? "crosshair" : "default" }}
                 />
                 <circle
-                  cx={node.x + NODE_HALF_WIDTH}
+                  cx={node.x + halfWidth}
                   cy={node.y}
                   r={8}
                   fill={connectFromId === node.id ? "#ccfbf1" : "#ffffff"}
@@ -534,14 +700,15 @@ export default function FlowDiagram({
                       setConnectCursor(null);
                     } else {
                       setConnectFromId(node.id);
-                      setConnectCursor({ x: node.x + NODE_HALF_WIDTH, y: node.y });
+                      setConnectCursor({ x: node.x + halfWidth, y: node.y });
                     }
                     event.stopPropagation();
                   }}
                   style={{ cursor: "crosshair" }}
                 />
               </g>
-            ))}
+            );
+            })}
           </svg>
         </Box>
       </Box>

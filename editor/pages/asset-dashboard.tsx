@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Box,
   Button,
   Checkbox,
   FormControl,
   FormControlLabel,
   FormGroup,
+  FormHelperText,
   FormLabel,
   MenuItem,
   Paper,
   Radio,
   RadioGroup,
   Select,
+  Snackbar,
   Table,
   TableBody,
   TableCell,
@@ -26,7 +29,8 @@ import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
 import { ArrowRight, Building2, RefreshCcw } from "lucide-react";
 import { normalizeProgram } from "../lib/programUtils";
-import type { AssetDefinition, AssetOptionSource, Program } from "../types/program";
+import StableMonaco from "../components/common/StableMonaco";
+import type { AssetDefinition, Program } from "../types/program";
 
 const EMPTY_PROGRAM: Program = {
   meta: { name: "Kufayeka AF Program", version: 1 },
@@ -73,13 +77,16 @@ function toLabeledValue(option: { label: string; value: unknown }): { label: str
   return { label: option.label, value: option.value };
 }
 
-function runTransform(script: string, input: unknown): unknown {
-  if (!script.trim()) return input;
+async function runOptionsScript(script: string, context: Record<string, unknown>): Promise<unknown> {
+  if (!script.trim()) return [];
   try {
-    const fn = new Function("input", script);
-    return fn(input);
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
+      ...args: string[]
+    ) => (...fnArgs: unknown[]) => Promise<unknown>;
+    const fn = new AsyncFunction("context", "fetch", `"use strict";\n${script}`);
+    return await fn(context, fetch);
   } catch {
-    return input;
+    return [];
   }
 }
 
@@ -129,16 +136,14 @@ function getEffectiveDashboardAttributes(
     {
       name: string;
       value: unknown;
-      defaultValue: unknown;
+      default: unknown;
       unit: string;
       dashboardVisible: boolean;
       dashboardEditable: boolean;
       nullable: boolean;
-      inputMode: string;
-      optionsSource: AssetOptionSource;
+      inputType: string;
       options: Array<{ label: string; value: unknown }>;
-      optionsApiUrl: string;
-      optionsTransformScript: string;
+      optionsScript: string;
       optionKeys: string[];
     }
   >();
@@ -152,17 +157,15 @@ function getEffectiveDashboardAttributes(
       if (!prev) {
         rows.set(attr.name, {
           name: attr.name,
-          value: attr.defaultValue,
-          defaultValue: attr.defaultValue,
+          value: attr.default,
+          default: attr.default,
           unit: attr.unit ?? "",
           dashboardVisible: attr.dashboardVisible === true,
           dashboardEditable: attr.dashboardEditable !== false,
           nullable: attr.nullable === true,
-          inputMode: attr.inputMode ?? "text",
-          optionsSource: attr.optionsSource ?? "static",
+          inputType: attr.inputType ?? "text",
           options: Array.isArray(attr.options) ? attr.options : [],
-          optionsApiUrl: attr.optionsApiUrl ?? "",
-          optionsTransformScript: attr.optionsTransformScript ?? "",
+          optionsScript: attr.optionsScript ?? "",
           optionKeys: [`${template.id}:${attr.name}`]
         });
       } else {
@@ -197,6 +200,23 @@ export default function AssetDashboardPage() {
   const [status, setStatus] = useState("Loading...");
   const [loading, setLoading] = useState(false);
   const [optionMap, setOptionMap] = useState<Record<string, Array<{ label: string; value: unknown }>>>({});
+  const [jsonDrafts, setJsonDrafts] = useState<Record<string, string>>({});
+  const [jsonErrors, setJsonErrors] = useState<Record<string, string>>({});
+  const jsonMiniOptions = useMemo(
+    () => ({
+      minimap: { enabled: false },
+      fontSize: 12,
+      lineNumbers: "off" as const,
+      wordWrap: "on" as const,
+      scrollBeyondLastLine: false
+    }),
+    []
+  );
+  const [toast, setToast] = useState<{
+    open: boolean;
+    severity: "success" | "error";
+    message: string;
+  }>({ open: false, severity: "success", message: "" });
 
   const loadProgram = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -220,6 +240,11 @@ export default function AssetDashboardPage() {
     void loadProgram();
   }, []);
 
+  useEffect(() => {
+    setJsonDrafts({});
+    setJsonErrors({});
+  }, [selectedAssetId]);
+
   const assetById = useMemo(
     () => new Map(program.assets.assets.map((asset) => [asset.id, asset])),
     [program.assets.assets]
@@ -236,33 +261,24 @@ export default function AssetDashboardPage() {
         template.attributes
           .filter(
             (attr) =>
-              attr.inputMode === "select" || attr.inputMode === "radio" || attr.inputMode === "multiselect"
+              attr.inputType === "select" || attr.inputType === "radio" || attr.inputType === "multiselect"
           )
           .map((attr) => ({
             key: `${template.id}:${attr.name}`,
-            source: attr.optionsSource ?? "static",
-            url: attr.optionsApiUrl ?? "",
-            script: attr.optionsTransformScript ?? "",
-            staticOptions: Array.isArray(attr.options) ? attr.options : []
+            script: attr.optionsScript ?? "",
+            defaultValue: attr.default
           }))
       );
 
       const entries: Array<[string, Array<{ label: string; value: unknown }>]> = [];
       for (const def of providerDefs) {
-        if (def.source === "static") {
-          entries.push([def.key, def.staticOptions]);
-          continue;
-        }
-        if (!def.url) {
-          entries.push([def.key, def.staticOptions]);
-          continue;
-        }
         try {
-          const raw = await fetch(def.url).then((r) => r.json());
-          const transformed = runTransform(def.script, raw);
+          const transformed = await runOptionsScript(def.script, {
+            defaultValue: def.defaultValue
+          });
           entries.push([def.key, normalizeOptions(transformed)]);
         } catch {
-          entries.push([def.key, def.staticOptions]);
+          entries.push([def.key, []]);
         }
       }
       setOptionMap(Object.fromEntries(entries));
@@ -273,22 +289,17 @@ export default function AssetDashboardPage() {
 
   const getAttributeOptions = (
     attribute: {
-      inputMode: string;
-      optionsSource: AssetOptionSource;
+      inputType: string;
       options: Array<{ label: string; value: unknown }>;
       optionKeys: string[];
     }
   ): Array<{ label: string; value: unknown }> => {
     if (
-      attribute.inputMode !== "select" &&
-      attribute.inputMode !== "radio" &&
-      attribute.inputMode !== "multiselect"
+      attribute.inputType !== "select" &&
+      attribute.inputType !== "radio" &&
+      attribute.inputType !== "multiselect"
     ) {
       return [];
-    }
-
-    if (attribute.optionsSource === "static") {
-      return attribute.options || [];
     }
 
     const resolved = attribute.optionKeys.flatMap((key) => optionMap[key] || []);
@@ -298,22 +309,21 @@ export default function AssetDashboardPage() {
 
   const formatTreeAttributeValue = (
     attribute: {
-      inputMode: string;
+      inputType: string;
       value: unknown;
-      optionsSource: AssetOptionSource;
       options: Array<{ label: string; value: unknown }>;
       optionKeys: string[];
     }
   ): string => {
     if (
-      attribute.inputMode !== "select" &&
-      attribute.inputMode !== "radio" &&
-      attribute.inputMode !== "multiselect"
+      attribute.inputType !== "select" &&
+      attribute.inputType !== "radio" &&
+      attribute.inputType !== "multiselect"
     ) {
       return serializeValue(attribute.value);
     }
 
-    if (attribute.inputMode === "multiselect") {
+    if (attribute.inputType === "multiselect") {
       const values = Array.isArray(attribute.value) ? attribute.value : [];
       if (values.length === 0) return "[]";
       return values
@@ -379,7 +389,36 @@ export default function AssetDashboardPage() {
     return getEffectiveDashboardAttributes(selectedAsset, templateById);
   }, [selectedAsset, templateById]);
 
-  const updateAttributeValue = (attributeName: string, rawValue: string) => {
+  const invalidAttributeNames = useMemo(() => {
+    const invalid = new Set<string>();
+    for (const attribute of dashboardAttributes) {
+      if (!attribute.dashboardEditable || attribute.nullable) continue;
+      const raw = getRawValue(attribute.value);
+      if (raw === null || raw === undefined) {
+        invalid.add(attribute.name);
+        continue;
+      }
+      if (typeof raw === "string" && raw.trim() === "") {
+        invalid.add(attribute.name);
+      }
+    }
+    return invalid;
+  }, [dashboardAttributes]);
+  const hasValidationError = invalidAttributeNames.size > 0 || Object.keys(jsonErrors).length > 0;
+
+  const parseInputByType = (inputType: string, rawValue: string): unknown => {
+    if (inputType === "number") {
+      if (rawValue.trim() === "") return "";
+      const n = Number(rawValue);
+      return Number.isFinite(n) ? n : rawValue;
+    }
+    if (inputType === "text" || inputType === "textarea") {
+      return rawValue;
+    }
+    return parseMaybeJson(rawValue);
+  };
+
+  const updateAttributeValue = (attributeName: string, inputType: string, rawValue: string) => {
     if (!selectedAsset) return;
     setProgram((prev) => ({
       ...prev,
@@ -392,7 +431,7 @@ export default function AssetDashboardPage() {
                 ...asset,
                 attributes: {
                   ...asset.attributes,
-                  [attributeName]: { value: parseMaybeJson(rawValue) }
+                  [attributeName]: { value: parseInputByType(inputType, rawValue) }
                 }
               }
         )
@@ -422,6 +461,12 @@ export default function AssetDashboardPage() {
   };
 
   const saveProgram = async () => {
+    if (hasValidationError) {
+      const message = "Save dibatalkan: masih ada field wajib yang kosong/null.";
+      setStatus(message);
+      setToast({ open: true, severity: "error", message });
+      return;
+    }
     try {
       const nextProgram: Program = {
         ...program,
@@ -450,7 +495,9 @@ export default function AssetDashboardPage() {
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        setStatus(`Save error: ${data.error ?? "unknown error"}`);
+        const message = `Save error: ${data.error ?? "unknown error"}`;
+        setStatus(message);
+        setToast({ open: true, severity: "error", message });
         return;
       }
       const result = (await res.json()) as {
@@ -459,25 +506,32 @@ export default function AssetDashboardPage() {
       };
       setProgram(nextProgram);
       if (result.runtimeSynced === false) {
-        setStatus(`Saved file only, runtime sync failed: ${result.runtimeError ?? "unknown error"}`);
+        const message = `Saved file only, runtime sync failed: ${result.runtimeError ?? "unknown error"}`;
+        setStatus(message);
+        setToast({ open: true, severity: "error", message });
       } else {
-        setStatus("Saved (runtime synced)");
+        const message = "Saved (runtime synced)";
+        setStatus(message);
+        setToast({ open: true, severity: "success", message });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setStatus(`Save error: ${message}`);
+      const statusMessage = `Save error: ${message}`;
+      setStatus(statusMessage);
+      setToast({ open: true, severity: "error", message: statusMessage });
     }
   };
 
   return (
-    <Box
-      sx={{
-        p: 1.25,
-        height: "100vh",
-        boxSizing: "border-box",
-        background: "#f8fafc"
-      }}
-    >
+    <>
+      <Box
+        sx={{
+          p: 1.25,
+          height: "100vh",
+          boxSizing: "border-box",
+          background: "#f8fafc"
+        }}
+      >
       <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25, height: "100%" }}>
         <Paper
           variant="outlined"
@@ -499,7 +553,7 @@ export default function AssetDashboardPage() {
                   </Button>
                 </span>
               </Tooltip>
-              <Button variant="contained" size="small" onClick={saveProgram}>
+              <Button variant="contained" size="small" onClick={saveProgram} disabled={loading || hasValidationError}>
                 Save
               </Button>
             </Box>
@@ -555,7 +609,12 @@ export default function AssetDashboardPage() {
                     <TableRow key={`dashboard-${attribute.name}`}>
                       <TableCell>{attribute.name}</TableCell>
                       <TableCell sx={{ minWidth: 220 }}>
-                        {attribute.inputMode === "boolean" ? (
+                        {(() => {
+                          const isInvalid = invalidAttributeNames.has(attribute.name);
+                          const errorText = isInvalid ? "Field wajib tidak boleh kosong/null." : "";
+                          return (
+                            <>
+                        {attribute.inputType === "boolean" ? (
                           <FormControlLabel
                             control={
                               <Checkbox
@@ -566,8 +625,8 @@ export default function AssetDashboardPage() {
                             }
                             label="Enabled"
                           />
-                        ) : attribute.inputMode === "radio" ? (
-                          <FormControl>
+                        ) : attribute.inputType === "radio" ? (
+                          <FormControl error={isInvalid}>
                             <RadioGroup
                               row
                               value={rawComparable(getRawValue(attribute.value) ?? "")}
@@ -596,9 +655,10 @@ export default function AssetDashboardPage() {
                                 />
                               ))}
                             </RadioGroup>
+                            {isInvalid && <FormHelperText>{errorText}</FormHelperText>}
                           </FormControl>
-                        ) : attribute.inputMode === "multiselect" ? (
-                          <FormControl fullWidth>
+                        ) : attribute.inputType === "multiselect" ? (
+                          <FormControl fullWidth error={isInvalid}>
                             <FormLabel sx={{ mb: 0.5 }}>Multi Select</FormLabel>
                             <FormGroup row>
                               {getAttributeOptions(attribute).map((option) => {
@@ -631,9 +691,10 @@ export default function AssetDashboardPage() {
                                 );
                               })}
                             </FormGroup>
+                            {isInvalid && <FormHelperText>{errorText}</FormHelperText>}
                           </FormControl>
-                        ) : attribute.inputMode === "select" ? (
-                          <FormControl fullWidth size="small">
+                        ) : attribute.inputType === "select" ? (
+                          <FormControl fullWidth size="small" error={isInvalid}>
                             <Select
                               value={rawComparable(getRawValue(attribute.value) ?? "")}
                               onChange={(e: SelectChangeEvent<string>) => {
@@ -661,17 +722,59 @@ export default function AssetDashboardPage() {
                                 </MenuItem>
                               ))}
                             </Select>
+                            {isInvalid && <FormHelperText>{errorText}</FormHelperText>}
                           </FormControl>
+                        ) : attribute.inputType === "json" ? (
+                          <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
+                            <StableMonaco
+                              path={`dashboard-json:${selectedAsset.id}:${attribute.name}`}
+                              height="110px"
+                              language="json"
+                              value={
+                                Object.prototype.hasOwnProperty.call(jsonDrafts, attribute.name)
+                                  ? jsonDrafts[attribute.name]
+                                  : serializeValue(attribute.value)
+                              }
+                              options={jsonMiniOptions}
+                              readOnly={!attribute.dashboardEditable}
+                              onChangeText={(next) => {
+                                if (!attribute.dashboardEditable) return;
+                                setJsonDrafts((prev) => ({ ...prev, [attribute.name]: next }));
+                                try {
+                                  const parsed = JSON.parse(next || "null");
+                                  updateAttributeUnknown(attribute.name, parsed);
+                                  setJsonErrors((prev) => {
+                                    if (!Object.prototype.hasOwnProperty.call(prev, attribute.name)) return prev;
+                                    const copy = { ...prev };
+                                    delete copy[attribute.name];
+                                    return copy;
+                                  });
+                                } catch {
+                                  setJsonErrors((prev) => ({
+                                    ...prev,
+                                    [attribute.name]: "JSON tidak valid."
+                                  }));
+                                }
+                              }}
+                            />
+                            {Object.prototype.hasOwnProperty.call(jsonErrors, attribute.name) && (
+                              <FormHelperText error sx={{ px: 1 }}>
+                                {jsonErrors[attribute.name]}
+                              </FormHelperText>
+                            )}
+                          </Box>
                         ) : (
                           <TextField
                             size="small"
                             fullWidth
-                            multiline={attribute.inputMode === "textarea"}
-                            minRows={attribute.inputMode === "textarea" ? 3 : 1}
-                            type={attribute.inputMode === "number" ? "number" : "text"}
+                            multiline={attribute.inputType === "textarea"}
+                            minRows={attribute.inputType === "textarea" ? 3 : 1}
+                            type={attribute.inputType === "number" ? "number" : "text"}
                             value={serializeValue(attribute.value)}
-                            onChange={(e) => updateAttributeValue(attribute.name, e.target.value)}
+                            onChange={(e) => updateAttributeValue(attribute.name, attribute.inputType, e.target.value)}
                             disabled={!attribute.dashboardEditable}
+                            error={isInvalid}
+                            helperText={errorText}
                           />
                         )}
                         {attribute.nullable && attribute.dashboardEditable && (
@@ -684,6 +787,9 @@ export default function AssetDashboardPage() {
                             Set Null (revert to default on save)
                           </Button>
                         )}
+                            </>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>{attribute.unit || "-"}</TableCell>
                     </TableRow>
@@ -705,6 +811,23 @@ export default function AssetDashboardPage() {
         </Paper>
 
       </Box>
-    </Box>
+      </Box>
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3000}
+        onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+          severity={toast.severity}
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
+          {toast.message}
+        </Alert>
+      </Snackbar>
+    </>
   );
 }
+

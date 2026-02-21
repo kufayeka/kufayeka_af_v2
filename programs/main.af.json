@@ -5,23 +5,23 @@
   },
   "triggers": [
     {
-      "id": "trigger.tick_1s",
-      "type": "interval",
-      "enabled": true,
-      "intervalMs": 1000,
-      "message": {
-        "payload": 5
-      },
-      "label": "",
-      "watchPath": ""
-    },
-    {
       "id": "trigger.watch_1771610722257",
-      "label": "",
+      "label": "watch Jasuindo.Taiyo1.Machine Speed",
       "type": "watcher",
       "enabled": true,
       "intervalMs": 1000,
-      "watchPath": "Jasuindo.Taiyo2.MachineSpeed",
+      "watchPath": "Jasuindo.Taiyo1.Machine Speed",
+      "message": {
+        "payload": 0
+      }
+    },
+    {
+      "id": "trigger.watch_1771642652068",
+      "label": "watch Jasuindo.Taiyo2.Machine Speed",
+      "type": "watcher",
+      "enabled": true,
+      "intervalMs": 1000,
+      "watchPath": "Jasuindo.Taiyo2.Machine Speed",
       "message": {
         "payload": 0
       }
@@ -29,66 +29,12 @@
   ],
   "actions": [
     {
-      "id": "action.add_one",
-      "type": "script",
-      "script": "// ini adalah template script\r\n\r\nmsg.payload = msg.payload + 1;\r\n\r\n\r\nsend(msg)",
-      "enabled": true,
-      "description": "",
-      "label": "",
-      "templateBindingOverrides": {}
-    },
-    {
-      "id": "action.multiply_ten",
-      "type": "script",
-      "script": "// ini adalah template script\r\n\r\nmsg.payload = msg.payload * 10\r\n\r\nsend(msg)",
-      "enabled": true,
-      "description": "",
-      "label": "",
-      "templateBindingOverrides": {}
-    },
-    {
-      "id": "action.debug",
-      "type": "script",
-      "script": "helpers.log(\"--------\")\r\nhelpers.log('payloadd:', msg.payload);",
-      "enabled": true,
-      "description": "",
-      "label": "",
-      "templateBindingOverrides": {}
-    },
-    {
-      "id": "action.halooo",
-      "type": "script",
-      "script": "const data = {\r\n    1: context.asset.get(\"Jasuindo.Taiyo1.MachineSpeed\", 0),\r\n    2: context.asset.get(\"Jasuindo.Taiyo2.MachineSpeed\", 0)\r\n}\r\n\r\nmsg.payload = \"HALOOOO-\" + JSON.stringify(data) + JSON.stringify(msg.payload);\r\n\r\nsend(msg);",
-      "enabled": true,
-      "description": "",
-      "label": "",
-      "templateBindingOverrides": {}
-    },
-    {
-      "id": "test.coba",
-      "type": "script",
-      "enabled": true,
-      "description": "",
-      "script": "\r\nif(MachinePresentValue.value > Threshold){\r\n    context.asset.set(MachineAlarmAttribute.path, \"woiii bahayaaa\");\r\n} else {\r\n    context.asset.set(MachineAlarmAttribute.path, \"-\");\r\n}\r\n\r\n\r\nsend(msg);",
-      "label": "",
-      "templateId": "template.script_1771563203022",
-      "templateBindingOverrides": {
-        "binding_2": {
-          "name": "binding_2",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo1.MachineSpeed",
-          "allowOverride": true
-        }
-      }
-    },
-    {
       "id": "taiyo1.alarm.machineSpeed",
       "label": "",
       "type": "script",
       "enabled": true,
       "description": "",
-      "script": "\r\nif(MachinePresentValue.value > Threshold){\r\n    context.asset.set(MachineAlarmAttribute.path, \"woiii bahayaaa\");\r\n} else {\r\n    context.asset.set(MachineAlarmAttribute.path, \"-\");\r\n}\r\n\r\nhelpers.log(\"alarm value - \"+MachinePresentValue.value);\r\n\r\nsend(msg);",
+      "script": "if(MachinePresentValue.value > Threshold){\r\n    context.asset.set(MachineAlarmAttribute.path, `Oii ${OperatorName.value.label} bahaya!`);\r\n} else {\r\n    context.asset.set(MachineAlarmAttribute.path, \"No alarm.\");\r\n}\r\n\r\nsend(msg);",
       "templateId": "template.script_1771609498627",
       "templateBindingOverrides": {
         "MachineAlarmAttribute": {
@@ -102,7 +48,46 @@
           "name": "MachinePresentValue",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo1.MachineSpeed",
+          "attributePath": "Jasuindo.Taiyo1.Machine Speed",
+          "allowOverride": true
+        },
+        "OperatorName": {
+          "name": "OperatorName",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo1.Operator",
+          "allowOverride": true
+        }
+      }
+    },
+    {
+      "id": "taiyo2.alarm.machineSpeed",
+      "label": "",
+      "type": "script",
+      "enabled": true,
+      "description": "",
+      "script": "if(MachinePresentValue.value > Threshold){\r\n    context.asset.set(MachineAlarmAttribute.path, `Oii ${OperatorName.value.label} bahaya!`);\r\n} else {\r\n    context.asset.set(MachineAlarmAttribute.path, \"No alarm.\");\r\n}\r\n\r\nsend(msg);",
+      "templateId": "template.script_1771609498627",
+      "templateBindingOverrides": {
+        "MachineAlarmAttribute": {
+          "name": "MachineAlarmAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo2.Alarm",
+          "allowOverride": true
+        },
+        "MachinePresentValue": {
+          "name": "MachinePresentValue",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo2.Machine Speed",
+          "allowOverride": true
+        },
+        "OperatorName": {
+          "name": "OperatorName",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo2.Operator",
           "allowOverride": true
         }
       }
@@ -111,57 +96,56 @@
   "flows": {
     "links": [
       {
-        "from": "action.add_one",
-        "to": "action.multiply_ten",
-        "enabled": true
-      },
-      {
-        "from": "taiyo1.alarm.machineSpeed",
-        "to": "action.debug",
-        "enabled": true
-      },
-      {
         "from": "trigger.watch_1771610722257",
         "to": "taiyo1.alarm.machineSpeed",
+        "enabled": true
+      },
+      {
+        "from": "trigger.watch_1771642652068",
+        "to": "taiyo2.alarm.machineSpeed",
         "enabled": true
       }
     ],
     "nodePositions": {
       "action.multiply_ten": {
-        "x": 1040,
-        "y": 80
+        "x": 1280,
+        "y": 200
       },
       "action.add_one": {
-        "x": 660,
-        "y": 110
+        "x": 680,
+        "y": 80
       },
       "action.script_1771507062991": {
         "x": 1400,
         "y": 280
       },
       "trigger.tick_1s": {
-        "x": 230,
-        "y": 110
+        "x": 200,
+        "y": 430
       },
       "action.halooo": {
-        "x": 670,
-        "y": 180
+        "x": 680,
+        "y": 170
       },
       "action.debug": {
-        "x": 1270,
+        "x": 1260,
         "y": 270
       },
-      "test.coba": {
-        "x": 670,
-        "y": 260
-      },
       "taiyo1.alarm.machineSpeed": {
-        "x": 680,
-        "y": 470
+        "x": 780,
+        "y": 240
       },
       "trigger.watch_1771610722257": {
-        "x": 250,
-        "y": 380
+        "x": 310,
+        "y": 240
+      },
+      "taiyo2.alarm.machineSpeed": {
+        "x": 780,
+        "y": 310
+      },
+      "trigger.watch_1771642652068": {
+        "x": 310,
+        "y": 320
       }
     }
   },
@@ -171,30 +155,52 @@
         "id": "asset_1771561990565_180",
         "name": "Jasuindo",
         "parentId": null,
-        "templateIds": [],
-        "attributes": {}
+        "templateIds": [
+          "template_1771647476970_319"
+        ],
+        "attributes": {
+          "CurrentShift": {
+            "value": {
+              "label": "Shift 1",
+              "value": "shift1"
+            }
+          },
+          "PPIC": {
+            "value": {
+              "label": "Budi",
+              "value": "operator1"
+            }
+          }
+        }
       },
       {
         "id": "asset_1771561995737_511",
         "name": "Taiyo1",
         "parentId": "asset_1771561990565_180",
         "templateIds": [
-          "template_1771523720677_855"
+          "template_1771523720677_855",
+          "template_1771522392767_162"
         ],
         "attributes": {
           "Operator": {
-            "value": "e9550a72-b194-466a-93f9-4e75e324f6a9"
-          },
-          "MachineCondition": {
-            "value": "working"
-          },
-          "MachineSpeed": {
-            "value": 82,
-            "ts": "2026-02-20T18:10:06.539Z"
+            "value": {
+              "label": "Joni",
+              "value": "operator2"
+            }
           },
           "Alarm": {
-            "value": "woiii bahayaaa",
-            "ts": "2026-02-20T18:10:06.541Z"
+            "value": "No alarm.",
+            "ts": "2026-02-21T05:19:06.638Z"
+          },
+          "Machine Speed": {
+            "value": 5,
+            "ts": "2026-02-21T05:19:06.637Z"
+          },
+          "Machine Condition": {
+            "value": {
+              "label": "Working",
+              "value": "working"
+            }
           }
         }
       },
@@ -203,18 +209,29 @@
         "name": "Taiyo2",
         "parentId": "asset_1771561990565_180",
         "templateIds": [
-          "template_1771523720677_855"
+          "template_1771523720677_855",
+          "template_1771522392767_162"
         ],
         "attributes": {
           "Operator": {
-            "value": "148e6b9f-e768-48f9-a844-2defad632888"
+            "value": {
+              "label": "Budi",
+              "value": "operator1"
+            }
           },
-          "MachineCondition": {
-            "value": "maintenance"
+          "Alarm": {
+            "value": "Oii Budi bahaya!",
+            "ts": "2026-02-21T05:19:05.561Z"
           },
-          "MachineSpeed": {
-            "value": 32,
-            "ts": "2026-02-20T18:10:05.210Z"
+          "Machine Speed": {
+            "value": 68,
+            "ts": "2026-02-21T05:19:05.560Z"
+          },
+          "Machine Condition": {
+            "value": {
+              "label": "Working",
+              "value": "working"
+            }
           }
         }
       }
@@ -227,31 +244,26 @@
           {
             "enabled": true,
             "name": "Timestamp",
-            "type": "string",
-            "defaultValue": 0,
+            "valueType": "string",
+            "default": 0,
             "unit": "",
             "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputMode": "text",
-            "optionsSource": "static",
+            "inputType": "text",
             "options": [],
-            "optionsApiUrl": "",
-            "optionsTransformScript": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsScript": ""
           },
           {
             "enabled": true,
-            "name": "MachineCondition",
-            "type": "string",
-            "defaultValue": 0,
+            "name": "Machine Condition",
+            "valueType": "object",
+            "default": 0,
             "unit": "",
             "dashboardVisible": true,
             "dashboardEditable": true,
             "nullable": false,
-            "inputMode": "radio",
-            "optionsSource": "static",
+            "inputType": "radio",
             "options": [
               {
                 "label": "Working",
@@ -262,10 +274,7 @@
                 "value": "maintenance"
               }
             ],
-            "optionsApiUrl": "",
-            "optionsTransformScript": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsScript": "return [\n    {label: \"Idle\", value: \"idle\"},\n    {label: \"Working\", value: \"working\"},\n    {label: \"Downtime\", value: \"downtime\"},\n]"
           }
         ]
       },
@@ -275,49 +284,40 @@
         "attributes": [
           {
             "enabled": true,
-            "name": "MachineSpeed",
-            "type": "number",
-            "defaultValue": 0,
+            "name": "Machine Speed",
+            "valueType": "number",
+            "default": 0,
             "unit": "meter/minute",
             "dashboardVisible": true,
             "dashboardEditable": false,
             "nullable": false,
-            "inputMode": "text",
-            "optionsSource": "static",
+            "inputType": "text",
             "options": [],
-            "optionsApiUrl": "",
-            "optionsTransformScript": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsScript": ""
           },
           {
             "enabled": true,
-            "name": "PaperLength",
-            "type": "number",
-            "defaultValue": 0,
+            "name": "Paper Length",
+            "valueType": "number",
+            "default": 0,
             "unit": "meter",
             "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputMode": "text",
-            "optionsSource": "static",
+            "inputType": "text",
             "options": [],
-            "optionsApiUrl": "",
-            "optionsTransformScript": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsScript": ""
           },
           {
             "enabled": true,
             "name": "Operator",
-            "type": "string",
-            "defaultValue": 0,
+            "valueType": "object",
+            "default": {},
             "unit": "",
             "dashboardVisible": true,
             "dashboardEditable": true,
             "nullable": false,
-            "inputMode": "select",
-            "optionsSource": "scriptTransform",
+            "inputType": "select",
             "options": [
               {
                 "label": "Budi",
@@ -328,27 +328,20 @@
                 "value": "op_b"
               }
             ],
-            "optionsApiUrl": "http://192.168.68.99:2000/api/accounts",
-            "optionsTransformScript": "const rows = Array.isArray(input) ? input : [];\nreturn rows.map((r) => ({\n  value: r.id,\n  label: r.full_name\n}));",
-            "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsScript": "return [\n    {label: \"Budi\", value: \"operator1\"},\n    {label: \"Joni\", value: \"operator2\"},\n    {label: \"Plenger, S.T.\", value: \"operator3\"},\n]"
           },
           {
             "enabled": true,
             "name": "Alarm",
-            "type": "string",
-            "defaultValue": "-",
+            "valueType": "string",
+            "default": "-",
             "unit": "",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
+            "dashboardVisible": true,
+            "dashboardEditable": false,
             "nullable": false,
-            "inputMode": "text",
-            "optionsSource": "static",
+            "inputType": "text",
             "options": [],
-            "optionsApiUrl": "",
-            "optionsTransformScript": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsScript": ""
           }
         ]
       },
@@ -359,87 +352,99 @@
           {
             "enabled": true,
             "name": "CorridorTemperature",
-            "type": "number",
-            "defaultValue": 0,
+            "valueType": "number",
+            "default": 0,
             "unit": "Celcius",
             "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputMode": "text",
-            "optionsSource": "static",
+            "inputType": "text",
             "options": [],
-            "optionsApiUrl": "",
-            "optionsTransformScript": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsScript": ""
           },
           {
             "enabled": true,
             "name": "AHUTemperature",
-            "type": "number",
-            "defaultValue": 0,
+            "valueType": "number",
+            "default": 0,
             "unit": "Celcius",
             "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputMode": "text",
-            "optionsSource": "static",
+            "inputType": "text",
             "options": [],
-            "optionsApiUrl": "",
-            "optionsTransformScript": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsScript": ""
           },
           {
             "enabled": true,
             "name": "CorridorHumidity",
-            "type": "number",
-            "defaultValue": 0,
+            "valueType": "number",
+            "default": 0,
             "unit": "% RH",
             "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputMode": "text",
-            "optionsSource": "static",
+            "inputType": "text",
             "options": [],
-            "optionsApiUrl": "",
-            "optionsTransformScript": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsScript": ""
           },
           {
             "enabled": true,
             "name": "AHUHumidity",
-            "type": "number",
-            "defaultValue": 0,
+            "valueType": "number",
+            "default": 0,
             "unit": "% RH",
             "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputMode": "text",
-            "optionsSource": "static",
+            "inputType": "text",
             "options": [],
-            "optionsApiUrl": "",
-            "optionsTransformScript": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsScript": ""
           },
           {
             "enabled": true,
             "name": "InletTemperature",
-            "type": "number",
-            "defaultValue": 10,
+            "valueType": "number",
+            "default": 10,
             "unit": "Celcius",
             "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputMode": "text",
-            "optionsSource": "static",
+            "inputType": "text",
             "options": [],
-            "optionsApiUrl": "",
-            "optionsTransformScript": "",
-            "optionsLabelPath": "",
-            "optionsValuePath": ""
+            "optionsScript": ""
+          }
+        ]
+      },
+      {
+        "id": "template_1771647476970_319",
+        "name": "ProductionFloor",
+        "attributes": [
+          {
+            "enabled": true,
+            "name": "CurrentShift",
+            "valueType": "object",
+            "default": {},
+            "unit": "",
+            "dashboardVisible": true,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "radio",
+            "options": [],
+            "optionsScript": "// const res = await fetch('https://example.com/api/options');\n// const rows = await res.json();\n// return rows.map((item) => ({ label: String(item.name), value: item.id }));\n\nreturn [\n    {label: \"Shift 1\", value: \"shift1\"},\n    {label: \"Shift 2\", value: \"shift2\"},\n    {label: \"Shift 3\", value: \"shift3\"},\n]\n"
+          },
+          {
+            "enabled": true,
+            "name": "PPIC",
+            "valueType": "object",
+            "default": {},
+            "unit": "",
+            "dashboardVisible": true,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "radio",
+            "options": [],
+            "optionsScript": "return [\r\n    {label: \"Budi\", value: \"operator1\"},\r\n    {label: \"Joni\", value: \"operator2\"},\r\n    {label: \"Plenger, S.T.\", value: \"operator3\"},\r\n]"
           }
         ]
       }
@@ -472,7 +477,7 @@
       "id": "template.script_1771609498627",
       "name": "TaiyoMachineSpeedAlarm",
       "description": "",
-      "script": "\r\nif(MachinePresentValue.value > Threshold){\r\n    context.asset.set(MachineAlarmAttribute.path, \"woiii bahayaaa\");\r\n} else {\r\n    context.asset.set(MachineAlarmAttribute.path, \"-\");\r\n}\r\n\r\nhelpers.log(\"alarm value - \"+MachinePresentValue.value);\r\n\r\nsend(msg);",
+      "script": "if(MachinePresentValue.value > Threshold){\r\n    context.asset.set(MachineAlarmAttribute.path, `Oii ${OperatorName.value.label} bahaya!`);\r\n} else {\r\n    context.asset.set(MachineAlarmAttribute.path, \"No alarm.\");\r\n}\r\n\r\nsend(msg);",
       "variableBindings": [
         {
           "name": "MachineAlarmAttribute",
@@ -490,6 +495,13 @@
         },
         {
           "name": "MachinePresentValue",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "OperatorName",
           "source": "attribute",
           "staticValue": "",
           "attributePath": "",

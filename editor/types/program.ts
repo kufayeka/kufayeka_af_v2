@@ -12,14 +12,11 @@ export type AssetDashboardInputMode =
   | "text"
   | "number"
   | "boolean"
+  | "json"
   | "select"
   | "radio"
   | "multiselect"
   | "textarea";
-export type AssetOptionSource =
-  | "static"
-  | "api"
-  | "scriptTransform";
 
 export interface AssetAttributeOption {
   label: string;
@@ -29,19 +26,15 @@ export interface AssetAttributeOption {
 export interface AssetTemplateAttributeDefinition {
   enabled?: boolean;
   name: string;
-  type: AssetAttributeType;
-  defaultValue: unknown;
+  valueType: AssetAttributeType;
+  default: unknown;
   unit?: string;
   dashboardVisible?: boolean;
   dashboardEditable?: boolean;
   nullable?: boolean;
-  inputMode?: AssetDashboardInputMode;
-  optionsSource?: AssetOptionSource;
+  inputType?: AssetDashboardInputMode;
   options?: AssetAttributeOption[];
-  optionsApiUrl?: string;
-  optionsTransformScript?: string;
-  optionsLabelPath?: string;
-  optionsValuePath?: string;
+  optionsScript?: string;
 }
 
 export interface AssetAttributeTemplateDefinition {

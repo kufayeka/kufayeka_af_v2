@@ -1,6 +1,6 @@
 # Attribute Template README
 
-Panduan ini menjelaskan cara operasional **Attribute Template** pada editor, termasuk fitur dashboard (`show`, `editable`, `nullable`, input mode, options source).
+Panduan ini menjelaskan cara operasional **Attribute Template** pada editor, termasuk fitur dashboard (`show`, `editable`, `nullable`, input type, options script).
 
 ## Lokasi UI
 
@@ -15,8 +15,8 @@ Satu `Attribute Template` berisi daftar attribute yang dapat dipakai oleh banyak
 Setiap attribute punya properti utama:
 
 - `name`
-- `type` (`number`, `boolean`, `string`, `array`, `object`)
-- `defaultValue`
+- `valueType` (`number`, `boolean`, `string`, `array`, `object`)
+- `default`
 - `unit`
 
 Tambahan properti dashboard:
@@ -24,10 +24,9 @@ Tambahan properti dashboard:
 - `dashboardVisible`: tampil di dashboard operator
 - `dashboardEditable`: bisa diedit operator atau read-only
 - `nullable`: boleh diset `null`
-- `inputMode`: jenis komponen input di dashboard
-- `optionsSource`: sumber opsi (`static` atau `api`)
-- `options`: opsi statik untuk select/radio/multiselect
-- `optionsApiUrl`: endpoint opsi dinamis
+- `inputType`: jenis komponen input di dashboard
+- `optionsScript`: script async untuk menghasilkan opsi `label/value` (khusus select/radio/multiselect)
+- `options`: fallback legacy (opsional)
 
 ## Cara Buat Template
 
@@ -57,55 +56,51 @@ Tambahan properti dashboard:
 ### 3) Nullable
 
 - `ON`: dashboard menampilkan aksi `Set Null`.
-- Saat disimpan dengan `null`, override asset dihapus, lalu value kembali ke `defaultValue` template.
+- Saat disimpan dengan `null`, override asset dihapus, lalu value kembali ke `default` template.
 - `OFF`: tidak boleh null melalui aksi dashboard.
 
 ## Input Mode
 
-`inputMode` menentukan komponen UI di `/asset-dashboard`:
+`inputType` menentukan komponen UI di `/asset-dashboard`:
 
 - `text`: text field
 - `number`: numeric input
 - `boolean`: checkbox
+- `json`: JSON editor (Monaco mini)
 - `select`: dropdown single-value
 - `radio`: radio button single-value
 - `multiselect`: checklist multi-value (hasil array)
 - `textarea`: text area multi-line
 
-## Option Source
+## Options Script (Select/Radio/Multiselect)
 
-### Static
+Source opsi sekarang selalu dari `optionsScript` (dinamis).
 
-- Isi `options` dalam format array JSON:
-
-```json
-[
-  { "label": "Operator A", "value": "op_a" },
-  { "label": "Operator B", "value": "op_b" }
-]
-```
-
-Dipakai untuk `select`, `radio`, `multiselect`.
-
-### API
-
-- Isi `optionsApiUrl` dengan URL endpoint opsi.
-- Endpoint disarankan return array object/string, contoh:
+Script boleh `await fetch(...)` lalu `return` data. Sistem akan normalisasi hasil ke format:
 
 ```json
-[
-  { "label": "Line 1", "value": "line_1" },
-  { "label": "Line 2", "value": "line_2" }
-]
+[{ "label": "...", "value": "..." }]
 ```
 
-atau:
+Contoh:
 
-```json
-{ "data": [ { "id": "A", "name": "Alpha" } ] }
+```javascript
+const res = await fetch("https://example.com/api/operators");
+const rows = await res.json();
+return rows.map((row) => ({
+  label: String(row.full_name),
+  value: row.id
+}));
 ```
 
-`/asset-dashboard` akan normalisasi otomatis ke `label/value`.
+Normalisasi yang didukung:
+
+- Array object `{ label, value }`
+- Array object lain (`name/id` akan dipetakan otomatis)
+- Array primitive (`string/number/boolean`)
+- Object berbentuk `{ data: [...] }`
+
+Jika script gagal / return kosong, UI akan fallback ke data `options` legacy (jika ada). Default value attribute tetap memakai `default` template.
 
 ## Cara Terapkan Template ke Asset
 

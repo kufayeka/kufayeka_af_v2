@@ -29,7 +29,6 @@ import { normalizeProgram } from "../../lib/programUtils";
 import StableMonaco from "../common/StableMonaco";
 import type {
   AssetDashboardInputMode,
-  AssetOptionSource,
   AssetAttributeType,
   AssetAttributeValue,
   AssetDefinition,
@@ -55,6 +54,16 @@ function parseMaybeJson(raw: string): unknown {
   } catch {
     return raw;
   }
+}
+
+function parseDefaultByInputType(inputType: string, raw: string): unknown {
+  if (inputType === "text" || inputType === "textarea") return raw;
+  if (inputType === "number") {
+    if (raw.trim() === "") return "";
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : raw;
+  }
+  return parseMaybeJson(raw);
 }
 
 function serializeValue(value: unknown): string {
@@ -125,7 +134,7 @@ function getEffectiveAttributes(
     string,
     {
       name: string;
-      type: AssetAttributeType | "custom";
+      valueType: AssetAttributeType | "custom";
       unit: string;
       value: unknown;
       source: string;
@@ -133,13 +142,9 @@ function getEffectiveAttributes(
       dashboardVisible: boolean;
       dashboardEditable: boolean;
       nullable: boolean;
-      inputMode: string;
-      optionsSource: AssetOptionSource;
+      inputType: string;
       options: Array<{ label: string; value: unknown }>;
-      optionsApiUrl: string;
-      optionsTransformScript: string;
-      optionsLabelPath: string;
-      optionsValuePath: string;
+      optionsScript: string;
     }
   >();
 
@@ -151,21 +156,17 @@ function getEffectiveAttributes(
       if (!rows.has(attr.name)) {
         rows.set(attr.name, {
           name: attr.name,
-          type: attr.type,
+          valueType: attr.valueType ?? "string",
           unit: attr.unit ?? "",
-          value: attr.defaultValue,
+          value: attr.default,
           source: template.name,
           overridden: false,
           dashboardVisible: attr.dashboardVisible === true,
           dashboardEditable: attr.dashboardEditable !== false,
           nullable: attr.nullable === true,
-          inputMode: attr.inputMode ?? "text",
-          optionsSource: attr.optionsSource ?? "static",
+          inputType: attr.inputType ?? "text",
           options: Array.isArray(attr.options) ? attr.options : [],
-          optionsApiUrl: attr.optionsApiUrl ?? "",
-          optionsTransformScript: attr.optionsTransformScript ?? "",
-          optionsLabelPath: attr.optionsLabelPath ?? "",
-          optionsValuePath: attr.optionsValuePath ?? ""
+          optionsScript: attr.optionsScript ?? ""
         });
       } else {
         const prev = rows.get(attr.name);
@@ -183,7 +184,7 @@ function getEffectiveAttributes(
     } else {
       rows.set(name, {
         name,
-        type: "custom",
+        valueType: "custom",
         unit: "",
         value: val.value,
         source: "Custom",
@@ -191,13 +192,9 @@ function getEffectiveAttributes(
         dashboardVisible: false,
         dashboardEditable: false,
         nullable: false,
-        inputMode: "text",
-        optionsSource: "static",
+        inputType: "text",
         options: [],
-        optionsApiUrl: "",
-        optionsTransformScript: "",
-        optionsLabelPath: "",
-        optionsValuePath: ""
+        optionsScript: ""
       });
     }
   }
@@ -452,13 +449,16 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     if (!selectedAsset) return [];
     return getEffectiveAttributes(selectedAsset, templateById);
   }, [selectedAsset, templateById]);
-  const runTransform = (script: string, input: unknown): unknown => {
-    if (!script.trim()) return input;
+  const runOptionsScript = async (script: string, context: Record<string, unknown>): Promise<unknown> => {
+    if (!script.trim()) return [];
     try {
-      const fn = new Function("input", script);
-      return fn(input);
+      const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
+        ...args: string[]
+      ) => (...fnArgs: unknown[]) => Promise<unknown>;
+      const fn = new AsyncFunction("context", "fetch", `"use strict";\n${script}`);
+      return await fn(context, fetch);
     } catch {
-      return input;
+      return [];
     }
   };
 
@@ -494,35 +494,24 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         template.attributes
           .filter((attr) =>
             attr.enabled !== false &&
-            (attr.inputMode === "select" || attr.inputMode === "radio" || attr.inputMode === "multiselect")
+            (attr.inputType === "select" || attr.inputType === "radio" || attr.inputType === "multiselect")
           )
           .map((attr) => ({
             key: `${template.id}:${attr.name}`,
-            source: attr.optionsSource ?? "static",
-            url: attr.optionsApiUrl ?? "",
-            script: attr.optionsTransformScript ?? "",
-            staticOptions: Array.isArray(attr.options) ? attr.options : []
+            script: attr.optionsScript ?? "",
+            defaultValue: attr.default
           }))
       );
 
       const results = await Promise.all(
         providerDefs.map(async (def): Promise<[string, Array<{ label: string; value: unknown }>]> => {
-          if (def.source === "static" || !def.url) {
-            return [def.key, def.staticOptions];
-          }
           try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 2000);
-            let raw: unknown;
-            try {
-              raw = await fetch(def.url, { signal: controller.signal }).then((r) => r.json());
-            } finally {
-              clearTimeout(timer);
-            }
-            const transformed = runTransform(def.script, raw);
+            const transformed = await runOptionsScript(def.script, {
+              defaultValue: def.defaultValue
+            });
             return [def.key, normalizeOptions(transformed)];
           } catch {
-            return [def.key, def.staticOptions];
+            return [def.key, []];
           }
         })
       );
@@ -571,10 +560,10 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     attr: ReturnType<typeof getEffectiveAttributes>[number],
     asset: AssetDefinition
   ): string {
-    if (attr.inputMode !== "select" && attr.inputMode !== "radio" && attr.inputMode !== "multiselect") {
+    if (attr.inputType !== "select" && attr.inputType !== "radio" && attr.inputType !== "multiselect") {
       return serializeValue(attr.value);
     }
-    if (attr.inputMode === "multiselect") {
+    if (attr.inputType === "multiselect") {
       const values = Array.isArray(attr.value) ? attr.value : [];
       if (values.length === 0) return "[]";
       return values
@@ -756,14 +745,16 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                     {selectedAssetEffectiveAttributes.map((attribute) => (
                       <TableRow key={attribute.name}>
                         <TableCell>{attribute.name}</TableCell>
-                        <TableCell>{attribute.type}</TableCell>
+                        <TableCell>{attribute.valueType}</TableCell>
                         <TableCell sx={{ minWidth: 220 }}>
                           <TextField
                             size="small"
                             fullWidth
                             value={serializeValue(attribute.value)}
                             onChange={(e) => {
-                              const patch: AssetAttributeValue = { value: parseMaybeJson(e.target.value) };
+                              const patch: AssetAttributeValue = {
+                                value: parseDefaultByInputType(attribute.inputType, e.target.value)
+                              };
                               updateAssetWith(selectedAsset.id, (asset) => ({
                                 ...asset,
                                 attributes: { ...asset.attributes, [attribute.name]: patch }
@@ -839,7 +830,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                     maxHeight: "calc(100vh - 360px)"
                   }}
                 >
-                <Table size="small" stickyHeader sx={{ minWidth: 2100 }}>
+                <Table size="small" stickyHeader sx={{ minWidth: 1880 }}>
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ minWidth: 220 }}>Name</TableCell>
@@ -848,12 +839,10 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                       <TableCell sx={{ minWidth: 260 }}>Default Value</TableCell>
                       <TableCell sx={{ minWidth: 180 }}>Unit</TableCell>
                       <TableCell sx={{ minWidth: 150 }}>Show in Dashboard</TableCell>
-                      <TableCell sx={{ minWidth: 120 }}>Editable</TableCell>
-                      <TableCell sx={{ minWidth: 120 }}>Nullable</TableCell>
-                      <TableCell sx={{ minWidth: 150 }}>Input</TableCell>
-                      <TableCell sx={{ minWidth: 150 }}>Option Source</TableCell>
-                      <TableCell sx={{ minWidth: 340 }}>Options / API URL</TableCell>
-                      <TableCell sx={{ minWidth: 420 }}>Transform Script</TableCell>
+                      <TableCell sx={{ minWidth: 120 }}>Dashboard Editable</TableCell>
+                      <TableCell sx={{ minWidth: 120 }}>Dashboard Nullable</TableCell>
+                      <TableCell sx={{ minWidth: 150 }}>Field/Form Type</TableCell>
+                      <TableCell sx={{ minWidth: 540 }}>Options Script (supports await fetch)</TableCell>
                       <TableCell sx={{ minWidth: 100 }}>Action</TableCell>
                     </TableRow>
                   </TableHead>
@@ -892,13 +881,13 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         <TableCell>
                           <FormControl size="small" sx={{ minWidth: 120 }}>
                             <Select
-                              value={attribute.type}
+                              value={attribute.valueType}
                               onChange={(e: SelectChangeEvent<AssetAttributeType>) => {
                                 updateTemplateWith(selectedTemplate.id, (template) => ({
                                   ...template,
                                   attributes: template.attributes.map((item, itemIdx) =>
                                     itemIdx === idx
-                                      ? { ...item, type: e.target.value as AssetAttributeType }
+                                      ? { ...item, valueType: e.target.value as AssetAttributeType }
                                       : item
                                   )
                                 }));
@@ -913,21 +902,55 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           </FormControl>
                         </TableCell>
                         <TableCell>
-                          <TextField
-                            size="small"
-                            sx={{ minWidth: 240 }}
-                            value={serializeValue(attribute.defaultValue)}
-                            onChange={(e) => {
-                              updateTemplateWith(selectedTemplate.id, (template) => ({
-                                ...template,
+                          {attribute.inputType === "json" ||
+                          attribute.inputType === "multiselect" ||
+                          attribute.inputType === "select" ||
+                          attribute.inputType === "radio" ? (
+                            <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden", minWidth: 240 }}>
+                              <StableMonaco
+                                path={`template-default-json:${selectedTemplate.id}:${idx}`}
+                                height="84px"
+                                language="json"
+                                value={getMonacoFieldDraft(
+                                  `template-default-json:${selectedTemplate.id}:${idx}`,
+                                  serializeValue(attribute.default)
+                                )}
+                                options={jsonMiniOptions}
+                                onChangeText={(next) => {
+                                  scheduleMonacoFieldSave(
+                                    `template-default-json:${selectedTemplate.id}:${idx}`,
+                                    next,
+                                    (committed) => {
+                                      updateTemplateWith(selectedTemplate.id, (template) => ({
+                                        ...template,
+                                        attributes: template.attributes.map((item, itemIdx) =>
+                                          itemIdx === idx
+                                            ? { ...item, default: parseMaybeJson(committed) }
+                                            : item
+                                        )
+                                      }));
+                                    }
+                                  );
+                                }}
+                              />
+                            </Box>
+                          ) : (
+                            <TextField
+                              size="small"
+                              sx={{ minWidth: 240 }}
+                              value={serializeValue(attribute.default)}
+                              onChange={(e) => {
+                                updateTemplateWith(selectedTemplate.id, (template) => ({
+                                  ...template,
                                 attributes: template.attributes.map((item, itemIdx) =>
                                   itemIdx === idx
-                                    ? { ...item, defaultValue: parseMaybeJson(e.target.value) }
-                                    : item
-                                )
-                              }));
-                            }}
-                          />
+                                      ? { ...item, default: parseDefaultByInputType(attribute.inputType ?? "text", e.target.value) }
+                                      : item
+                                  )
+                                }));
+                              }}
+                            />
+                          )}
                         </TableCell>
                         <TableCell>
                           <TextField
@@ -989,13 +1012,13 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         <TableCell>
                           <FormControl size="small" sx={{ minWidth: 120 }}>
                             <Select
-                              value={attribute.inputMode ?? "text"}
+                              value={attribute.inputType ?? "text"}
                               onChange={(e: SelectChangeEvent<string>) => {
                                 updateTemplateWith(selectedTemplate.id, (template) => ({
                                   ...template,
                                   attributes: template.attributes.map((item, itemIdx) =>
                                     itemIdx === idx
-                                      ? { ...item, inputMode: e.target.value as AssetDashboardInputMode }
+                                      ? { ...item, inputType: e.target.value as AssetDashboardInputMode }
                                       : item
                                   )
                                 }));
@@ -1004,6 +1027,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                               <MenuItem value="text">text</MenuItem>
                               <MenuItem value="number">number</MenuItem>
                               <MenuItem value="boolean">boolean</MenuItem>
+                              <MenuItem value="json">json</MenuItem>
                               <MenuItem value="select">select</MenuItem>
                               <MenuItem value="radio">radio</MenuItem>
                               <MenuItem value="multiselect">multiselect</MenuItem>
@@ -1011,104 +1035,31 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                             </Select>
                           </FormControl>
                         </TableCell>
-                        <TableCell>
-                          <FormControl size="small" sx={{ minWidth: 120 }}>
-                            <Select
-                              value={attribute.optionsSource ?? "static"}
-                              onChange={(e: SelectChangeEvent<string>) => {
-                                updateTemplateWith(selectedTemplate.id, (template) => ({
-                                  ...template,
-                                  attributes: template.attributes.map((item, itemIdx) =>
-                                    itemIdx === idx
-                                      ? { ...item, optionsSource: e.target.value as AssetOptionSource }
-                                      : item
-                                  )
-                                }));
-                              }}
-                            >
-                              <MenuItem value="static">static</MenuItem>
-                              <MenuItem value="api">api</MenuItem>
-                              <MenuItem value="scriptTransform">scriptTransform</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </TableCell>
-                        <TableCell sx={{ minWidth: 320 }}>
-                          {(attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform") ? (
-                            <Box sx={{ display: "grid", gap: 0.5 }}>
-                              <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
-                                <StableMonaco
-                                  path={`template-options-url:${selectedTemplate.id}:${idx}`}
-                                  height="68px"
-                                  language="plaintext"
-                                  value={getMonacoFieldDraft(
-                                    `template-options-url:${selectedTemplate.id}:${idx}`,
-                                    attribute.optionsApiUrl ?? ""
-                                  )}
-                                  options={jsonMiniOptions}
-                                  onChangeText={(next) => {
-                                    scheduleMonacoFieldSave(
-                                      `template-options-url:${selectedTemplate.id}:${idx}`,
-                                      next,
-                                      (committed) => {
-                                        updateTemplateWith(selectedTemplate.id, (template) => ({
-                                          ...template,
-                                          attributes: template.attributes.map((item, itemIdx) =>
-                                            itemIdx === idx
-                                              ? { ...item, optionsApiUrl: committed }
-                                              : item
-                                          )
-                                        }));
-                                      }
-                                    );
-                                  }}
-                                />
-                              </Box>
-                            </Box>
-                          ) : (
-                            <TextField
-                              size="small"
-                              fullWidth
-                              placeholder='[{"label":"A","value":"a"}]'
-                              value={JSON.stringify(attribute.options ?? [])}
-                              onChange={(e) => {
-                                const parsed = parseMaybeJson(e.target.value);
-                                updateTemplateWith(selectedTemplate.id, (template) => ({
-                                  ...template,
-                                  attributes: template.attributes.map((item, itemIdx) =>
-                                    itemIdx === idx
-                                      ? {
-                                          ...item,
-                                          options: Array.isArray(parsed) ? parsed : item.options ?? []
-                                        }
-                                      : item
-                                  )
-                                }));
-                              }}
-                            />
-                          )}
-                        </TableCell>
-                        <TableCell sx={{ minWidth: 380 }}>
-                          {attribute.optionsSource === "scriptTransform" ? (
+                        <TableCell sx={{ minWidth: 520 }}>
+                          {attribute.inputType === "select" ||
+                          attribute.inputType === "radio" ||
+                          attribute.inputType === "multiselect" ? (
                             <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
                               <StableMonaco
-                                path={`template-options-transform:${selectedTemplate.id}:${idx}`}
+                                path={`template-options-script:${selectedTemplate.id}:${idx}`}
                                 height="150px"
                                 language="javascript"
                                 value={getMonacoFieldDraft(
-                                  `template-options-transform:${selectedTemplate.id}:${idx}`,
-                                  attribute.optionsTransformScript ?? ""
+                                  `template-options-script:${selectedTemplate.id}:${idx}`,
+                                  attribute.optionsScript ??
+                                    "const res = await fetch('https://example.com/api/options');\nconst rows = await res.json();\nreturn rows.map((item) => ({ label: String(item.name), value: item.id }));"
                                 )}
                                 options={jsonMiniOptions}
                                 onChangeText={(next) => {
                                   scheduleMonacoFieldSave(
-                                    `template-options-transform:${selectedTemplate.id}:${idx}`,
+                                    `template-options-script:${selectedTemplate.id}:${idx}`,
                                     next,
                                     (committed) => {
                                       updateTemplateWith(selectedTemplate.id, (template) => ({
                                         ...template,
                                         attributes: template.attributes.map((item, itemIdx) =>
                                           itemIdx === idx
-                                            ? { ...item, optionsTransformScript: committed }
+                                            ? { ...item, optionsScript: committed }
                                             : item
                                         )
                                       }));
@@ -1119,7 +1070,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                             </Box>
                           ) : (
                             <Typography variant="caption" color="text.secondary">
-                              -
+                              Hanya untuk select/radio/multiselect.
                             </Typography>
                           )}
                         </TableCell>
@@ -1154,19 +1105,15 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         {
                           enabled: true,
                           name: `attribute_${template.attributes.length + 1}`,
-                          type: "number",
-                          defaultValue: 0,
+                          valueType: "number",
+                          default: 0,
                           unit: "",
                           dashboardVisible: false,
                           dashboardEditable: true,
                           nullable: false,
-                          inputMode: "text",
-                          optionsSource: "static",
+                          inputType: "text",
                           options: [],
-                          optionsApiUrl: "",
-                          optionsTransformScript: "",
-                          optionsLabelPath: "",
-                          optionsValuePath: ""
+                          optionsScript: ""
                         }
                       ]
                     }))
