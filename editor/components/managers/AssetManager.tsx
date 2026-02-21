@@ -4,6 +4,7 @@ import {
   Button,
   Chip,
   FormControl,
+  FormControlLabel,
   InputLabel,
   MenuItem,
   Paper,
@@ -145,6 +146,14 @@ function getEffectiveAttributes(
       inputType: string;
       options: Array<{ label: string; value: unknown }>;
       optionsScript: string;
+      numberMin: number | null;
+      numberMax: number | null;
+      numberAllowNegative: boolean;
+      numberUseThousandSeparator: boolean;
+      numberPrefix: string;
+      numberSuffix: string;
+      numberAllowDecimal: boolean;
+      numberPrecision: number;
     }
   >();
 
@@ -166,7 +175,15 @@ function getEffectiveAttributes(
           nullable: attr.nullable === true,
           inputType: attr.inputType ?? "text",
           options: Array.isArray(attr.options) ? attr.options : [],
-          optionsScript: attr.optionsScript ?? ""
+          optionsScript: attr.optionsScript ?? "",
+          numberMin: typeof attr.numberMin === "number" ? attr.numberMin : null,
+          numberMax: typeof attr.numberMax === "number" ? attr.numberMax : null,
+          numberAllowNegative: attr.numberAllowNegative !== false,
+          numberUseThousandSeparator: attr.numberUseThousandSeparator === true,
+          numberPrefix: attr.numberPrefix ?? "",
+          numberSuffix: attr.numberSuffix ?? "",
+          numberAllowDecimal: attr.numberAllowDecimal !== false,
+          numberPrecision: Number(attr.numberPrecision ?? 2) || 0
         });
       } else {
         const prev = rows.get(attr.name);
@@ -194,7 +211,15 @@ function getEffectiveAttributes(
         nullable: false,
         inputType: "text",
         options: [],
-        optionsScript: ""
+        optionsScript: "",
+        numberMin: null,
+        numberMax: null,
+        numberAllowNegative: true,
+        numberUseThousandSeparator: false,
+        numberPrefix: "",
+        numberSuffix: "",
+        numberAllowDecimal: true,
+        numberPrecision: 2
       });
     }
   }
@@ -830,7 +855,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                     maxHeight: "calc(100vh - 360px)"
                   }}
                 >
-                <Table size="small" stickyHeader sx={{ minWidth: 1880 }}>
+                <Table size="small" stickyHeader sx={{ minWidth: 2300 }}>
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ minWidth: 220 }}>Name</TableCell>
@@ -842,6 +867,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                       <TableCell sx={{ minWidth: 120 }}>Dashboard Editable</TableCell>
                       <TableCell sx={{ minWidth: 120 }}>Dashboard Nullable</TableCell>
                       <TableCell sx={{ minWidth: 150 }}>Field/Form Type</TableCell>
+                      <TableCell sx={{ minWidth: 420 }}>Number Rules</TableCell>
                       <TableCell sx={{ minWidth: 540 }}>Options Script (supports await fetch)</TableCell>
                       <TableCell sx={{ minWidth: 100 }}>Action</TableCell>
                     </TableRow>
@@ -887,7 +913,14 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                                   ...template,
                                   attributes: template.attributes.map((item, itemIdx) =>
                                     itemIdx === idx
-                                      ? { ...item, valueType: e.target.value as AssetAttributeType }
+                                      ? {
+                                          ...item,
+                                          valueType: e.target.value as AssetAttributeType,
+                                          inputType:
+                                            e.target.value === "number"
+                                              ? "number"
+                                              : item.inputType ?? "text"
+                                        }
                                       : item
                                   )
                                 }));
@@ -1035,6 +1068,147 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                             </Select>
                           </FormControl>
                         </TableCell>
+                        <TableCell sx={{ minWidth: 400 }}>
+                          {attribute.inputType === "number" ? (
+                            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.5 }}>
+                              <TextField
+                                size="small"
+                                label="Min"
+                                value={attribute.numberMin ?? ""}
+                                onChange={(e) =>
+                                  updateTemplateWith(selectedTemplate.id, (template) => ({
+                                    ...template,
+                                    attributes: template.attributes.map((item, itemIdx) =>
+                                      itemIdx === idx
+                                        ? { ...item, numberMin: e.target.value === "" ? null : Number(e.target.value) }
+                                        : item
+                                    )
+                                  }))
+                                }
+                              />
+                              <TextField
+                                size="small"
+                                label="Max"
+                                value={attribute.numberMax ?? ""}
+                                onChange={(e) =>
+                                  updateTemplateWith(selectedTemplate.id, (template) => ({
+                                    ...template,
+                                    attributes: template.attributes.map((item, itemIdx) =>
+                                      itemIdx === idx
+                                        ? { ...item, numberMax: e.target.value === "" ? null : Number(e.target.value) }
+                                        : item
+                                    )
+                                  }))
+                                }
+                              />
+                              <TextField
+                                size="small"
+                                label="Prefix"
+                                value={attribute.numberPrefix ?? ""}
+                                onChange={(e) =>
+                                  updateTemplateWith(selectedTemplate.id, (template) => ({
+                                    ...template,
+                                    attributes: template.attributes.map((item, itemIdx) =>
+                                      itemIdx === idx ? { ...item, numberPrefix: e.target.value } : item
+                                    )
+                                  }))
+                                }
+                              />
+                              <TextField
+                                size="small"
+                                label="Suffix"
+                                value={attribute.numberSuffix ?? ""}
+                                onChange={(e) =>
+                                  updateTemplateWith(selectedTemplate.id, (template) => ({
+                                    ...template,
+                                    attributes: template.attributes.map((item, itemIdx) =>
+                                      itemIdx === idx ? { ...item, numberSuffix: e.target.value } : item
+                                    )
+                                  }))
+                                }
+                              />
+                              <TextField
+                                size="small"
+                                label="Precision"
+                                type="number"
+                                value={Number(attribute.numberPrecision ?? 2)}
+                                onChange={(e) =>
+                                  updateTemplateWith(selectedTemplate.id, (template) => ({
+                                    ...template,
+                                    attributes: template.attributes.map((item, itemIdx) =>
+                                      itemIdx === idx
+                                        ? {
+                                            ...item,
+                                            numberPrecision: Math.max(
+                                              0,
+                                              Math.min(10, Number(e.target.value) || 0)
+                                            )
+                                          }
+                                        : item
+                                    )
+                                  }))
+                                }
+                              />
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                                <FormControlLabel
+                                  control={
+                                    <Switch
+                                      size="small"
+                                      checked={attribute.numberAllowNegative !== false}
+                                      onChange={(_e, checked) =>
+                                        updateTemplateWith(selectedTemplate.id, (template) => ({
+                                          ...template,
+                                          attributes: template.attributes.map((item, itemIdx) =>
+                                            itemIdx === idx ? { ...item, numberAllowNegative: checked } : item
+                                          )
+                                        }))
+                                      }
+                                    />
+                                  }
+                                  label="Allow -"
+                                />
+                                <FormControlLabel
+                                  control={
+                                    <Switch
+                                      size="small"
+                                      checked={attribute.numberAllowDecimal !== false}
+                                      onChange={(_e, checked) =>
+                                        updateTemplateWith(selectedTemplate.id, (template) => ({
+                                          ...template,
+                                          attributes: template.attributes.map((item, itemIdx) =>
+                                            itemIdx === idx ? { ...item, numberAllowDecimal: checked } : item
+                                          )
+                                        }))
+                                      }
+                                    />
+                                  }
+                                  label="Decimal"
+                                />
+                                <FormControlLabel
+                                  control={
+                                    <Switch
+                                      size="small"
+                                      checked={attribute.numberUseThousandSeparator === true}
+                                      onChange={(_e, checked) =>
+                                        updateTemplateWith(selectedTemplate.id, (template) => ({
+                                          ...template,
+                                          attributes: template.attributes.map((item, itemIdx) =>
+                                            itemIdx === idx ? { ...item, numberUseThousandSeparator: checked } : item
+                                          )
+                                        }))
+                                      }
+                                    />
+                                  }
+                                  label="1,000"
+                                />
+                              </Box>
+                            </Box>
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">
+                              Only for number.
+                            </Typography>
+                          )}
+                        </TableCell>
                         <TableCell sx={{ minWidth: 520 }}>
                           {attribute.inputType === "select" ||
                           attribute.inputType === "radio" ||
@@ -1113,7 +1287,15 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           nullable: false,
                           inputType: "text",
                           options: [],
-                          optionsScript: ""
+                          optionsScript: "",
+                          numberMin: null,
+                          numberMax: null,
+                          numberAllowNegative: true,
+                          numberUseThousandSeparator: false,
+                          numberPrefix: "",
+                          numberSuffix: "",
+                          numberAllowDecimal: true,
+                          numberPrecision: 2
                         }
                       ]
                     }))

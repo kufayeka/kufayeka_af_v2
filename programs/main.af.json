@@ -190,11 +190,11 @@
           },
           "Alarm": {
             "value": "No alarm.",
-            "ts": "2026-02-21T05:19:06.638Z"
+            "ts": "2026-02-21T07:08:52.631Z"
           },
           "Machine Speed": {
-            "value": 5,
-            "ts": "2026-02-21T05:19:06.637Z"
+            "value": 23,
+            "ts": "2026-02-21T07:08:52.630Z"
           },
           "Machine Condition": {
             "value": {
@@ -221,11 +221,11 @@
           },
           "Alarm": {
             "value": "Oii Budi bahaya!",
-            "ts": "2026-02-21T05:19:05.561Z"
+            "ts": "2026-02-21T07:08:51.508Z"
           },
           "Machine Speed": {
-            "value": 68,
-            "ts": "2026-02-21T05:19:05.560Z"
+            "value": 64,
+            "ts": "2026-02-21T07:08:51.507Z"
           },
           "Machine Condition": {
             "value": {
@@ -291,7 +291,7 @@
             "dashboardVisible": true,
             "dashboardEditable": false,
             "nullable": false,
-            "inputType": "text",
+            "inputType": "number",
             "options": [],
             "optionsScript": ""
           },
@@ -304,7 +304,7 @@
             "dashboardVisible": false,
             "dashboardEditable": true,
             "nullable": false,
-            "inputType": "text",
+            "inputType": "number",
             "options": [],
             "optionsScript": ""
           },
@@ -445,6 +445,19 @@
             "inputType": "radio",
             "options": [],
             "optionsScript": "return [\r\n    {label: \"Budi\", value: \"operator1\"},\r\n    {label: \"Joni\", value: \"operator2\"},\r\n    {label: \"Plenger, S.T.\", value: \"operator3\"},\r\n]"
+          },
+          {
+            "enabled": true,
+            "name": "Number Of Staff",
+            "valueType": "number",
+            "default": 0,
+            "unit": "",
+            "dashboardVisible": true,
+            "dashboardEditable": true,
+            "nullable": true,
+            "inputType": "number",
+            "options": [],
+            "optionsScript": ""
           }
         ]
       }

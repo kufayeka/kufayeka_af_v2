@@ -35,6 +35,14 @@ export interface AssetTemplateAttributeDefinition {
   inputType?: AssetDashboardInputMode;
   options?: AssetAttributeOption[];
   optionsScript?: string;
+  numberMin?: number | null;
+  numberMax?: number | null;
+  numberAllowNegative?: boolean;
+  numberUseThousandSeparator?: boolean;
+  numberPrefix?: string;
+  numberSuffix?: string;
+  numberAllowDecimal?: boolean;
+  numberPrecision?: number;
 }
 
 export interface AssetAttributeTemplateDefinition {

@@ -27,6 +27,13 @@ Tambahan properti dashboard:
 - `inputType`: jenis komponen input di dashboard
 - `optionsScript`: script async untuk menghasilkan opsi `label/value` (khusus select/radio/multiselect)
 - `options`: fallback legacy (opsional)
+- Number rules (khusus `inputType=number`):
+  - `numberMin`, `numberMax`
+  - `numberAllowNegative`
+  - `numberUseThousandSeparator`
+  - `numberPrefix`, `numberSuffix`
+  - `numberAllowDecimal`
+  - `numberPrecision`
 
 ## Cara Buat Template
 
@@ -101,6 +108,17 @@ Normalisasi yang didukung:
 - Object berbentuk `{ data: [...] }`
 
 Jika script gagal / return kosong, UI akan fallback ke data `options` legacy (jika ada). Default value attribute tetap memakai `default` template.
+
+## Number Rules (Dashboard)
+
+Untuk field `number`, dashboard akan:
+
+- rata kiri pada input
+- validasi min/max
+- validasi boleh/tidaknya nilai negatif
+- validasi decimal/float dan batas `precision`
+- format ribuan jika `numberUseThousandSeparator=true`
+- tampilkan `prefix/suffix`
 
 ## Cara Terapkan Template ke Asset
 

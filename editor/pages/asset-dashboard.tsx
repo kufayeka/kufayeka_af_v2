@@ -9,6 +9,7 @@ import {
   FormGroup,
   FormHelperText,
   FormLabel,
+  InputAdornment,
   MenuItem,
   Paper,
   Radio,
@@ -135,6 +136,7 @@ function getEffectiveDashboardAttributes(
     string,
     {
       name: string;
+      valueType: string;
       value: unknown;
       default: unknown;
       unit: string;
@@ -145,6 +147,14 @@ function getEffectiveDashboardAttributes(
       options: Array<{ label: string; value: unknown }>;
       optionsScript: string;
       optionKeys: string[];
+      numberMin: number | null;
+      numberMax: number | null;
+      numberAllowNegative: boolean;
+      numberUseThousandSeparator: boolean;
+      numberPrefix: string;
+      numberSuffix: string;
+      numberAllowDecimal: boolean;
+      numberPrecision: number;
     }
   >();
 
@@ -157,16 +167,25 @@ function getEffectiveDashboardAttributes(
       if (!prev) {
         rows.set(attr.name, {
           name: attr.name,
+          valueType: String(attr.valueType ?? "string"),
           value: attr.default,
           default: attr.default,
           unit: attr.unit ?? "",
           dashboardVisible: attr.dashboardVisible === true,
           dashboardEditable: attr.dashboardEditable !== false,
           nullable: attr.nullable === true,
-          inputType: attr.inputType ?? "text",
+          inputType: attr.inputType ?? (String(attr.valueType || "string") === "number" ? "number" : "text"),
           options: Array.isArray(attr.options) ? attr.options : [],
           optionsScript: attr.optionsScript ?? "",
-          optionKeys: [`${template.id}:${attr.name}`]
+          optionKeys: [`${template.id}:${attr.name}`],
+          numberMin: typeof attr.numberMin === "number" ? attr.numberMin : null,
+          numberMax: typeof attr.numberMax === "number" ? attr.numberMax : null,
+          numberAllowNegative: attr.numberAllowNegative !== false,
+          numberUseThousandSeparator: attr.numberUseThousandSeparator === true,
+          numberPrefix: String(attr.numberPrefix ?? ""),
+          numberSuffix: String(attr.numberSuffix ?? ""),
+          numberAllowDecimal: attr.numberAllowDecimal !== false,
+          numberPrecision: Math.max(0, Math.min(10, Number(attr.numberPrecision ?? 2) || 0))
         });
       } else {
         const nextKeys = prev.optionKeys.includes(`${template.id}:${attr.name}`)
@@ -202,6 +221,8 @@ export default function AssetDashboardPage() {
   const [optionMap, setOptionMap] = useState<Record<string, Array<{ label: string; value: unknown }>>>({});
   const [jsonDrafts, setJsonDrafts] = useState<Record<string, string>>({});
   const [jsonErrors, setJsonErrors] = useState<Record<string, string>>({});
+  const [numberDrafts, setNumberDrafts] = useState<Record<string, string>>({});
+  const [numberErrors, setNumberErrors] = useState<Record<string, string>>({});
   const jsonMiniOptions = useMemo(
     () => ({
       minimap: { enabled: false },
@@ -243,7 +264,47 @@ export default function AssetDashboardPage() {
   useEffect(() => {
     setJsonDrafts({});
     setJsonErrors({});
+    setNumberDrafts({});
+    setNumberErrors({});
   }, [selectedAssetId]);
+
+  const sanitizeNumberInput = (
+    raw: string,
+    prefix: string,
+    suffix: string,
+    useThousandSeparator: boolean
+  ): string => {
+    let value = raw.trim();
+    if (prefix && value.startsWith(prefix)) {
+      value = value.slice(prefix.length);
+    }
+    if (suffix && value.endsWith(suffix)) {
+      value = value.slice(0, -suffix.length);
+    }
+    value = value.trim();
+    if (useThousandSeparator) {
+      value = value.replace(/,/g, "");
+    }
+    return value;
+  };
+
+  const formatNumberDisplay = (
+    value: unknown,
+    useThousandSeparator: boolean,
+    precision: number,
+    allowDecimal: boolean
+  ): string => {
+    if (value === null || value === undefined || value === "") return "";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return String(value);
+    if (!allowDecimal) return useThousandSeparator ? Math.trunc(n).toLocaleString("en-US") : String(Math.trunc(n));
+    const fixed = Number(n.toFixed(Math.max(0, Math.min(10, precision))));
+    if (!useThousandSeparator) return String(fixed);
+    return fixed.toLocaleString("en-US", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: Math.max(0, Math.min(10, precision))
+    });
+  };
 
   const assetById = useMemo(
     () => new Map(program.assets.assets.map((asset) => [asset.id, asset])),
@@ -404,7 +465,10 @@ export default function AssetDashboardPage() {
     }
     return invalid;
   }, [dashboardAttributes]);
-  const hasValidationError = invalidAttributeNames.size > 0 || Object.keys(jsonErrors).length > 0;
+  const hasValidationError =
+    invalidAttributeNames.size > 0 ||
+    Object.keys(jsonErrors).length > 0 ||
+    Object.keys(numberErrors).length > 0;
 
   const parseInputByType = (inputType: string, rawValue: string): unknown => {
     if (inputType === "number") {
@@ -594,24 +658,23 @@ export default function AssetDashboardPage() {
           )}
           {selectedAsset && (
             <Box sx={{ display: "grid", gap: 0.75, minHeight: 0 }}>
-              <Typography variant="h6">Asset Attribute Editor</Typography>
+              <Typography variant="h6">Asset Dashboard</Typography>
               <Box sx={{ overflow: "auto", minHeight: 0, border: "1px solid #e2e8f0", borderRadius: 0.5 }}>
                 <Table size="small" sx={{ minWidth: 760 }}>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Value</TableCell>
-                    <TableCell>Unit</TableCell>
-                  </TableRow>
-                </TableHead>
                 <TableBody>
                   {dashboardAttributes.map((attribute) => (
                     <TableRow key={`dashboard-${attribute.name}`}>
-                      <TableCell>{attribute.name}</TableCell>
+                      <TableCell>
+                        <Typography variant="body1">
+                          {attribute.name}
+                        </Typography>
+                      </TableCell>
                       <TableCell sx={{ minWidth: 220 }}>
                         {(() => {
                           const isInvalid = invalidAttributeNames.has(attribute.name);
-                          const errorText = isInvalid ? "Field wajib tidak boleh kosong/null." : "";
+                          const numberError = numberErrors[attribute.name] || "";
+                          const errorText = numberError || (isInvalid ? "Field wajib tidak boleh kosong/null." : "");
+                          const isError = errorText.length > 0;
                           return (
                             <>
                         {attribute.inputType === "boolean" ? (
@@ -626,7 +689,7 @@ export default function AssetDashboardPage() {
                             label="Enabled"
                           />
                         ) : attribute.inputType === "radio" ? (
-                          <FormControl error={isInvalid}>
+                          <FormControl error={isError}>
                             <RadioGroup
                               row
                               value={rawComparable(getRawValue(attribute.value) ?? "")}
@@ -655,10 +718,10 @@ export default function AssetDashboardPage() {
                                 />
                               ))}
                             </RadioGroup>
-                            {isInvalid && <FormHelperText>{errorText}</FormHelperText>}
+                            {isError && <FormHelperText>{errorText}</FormHelperText>}
                           </FormControl>
                         ) : attribute.inputType === "multiselect" ? (
-                          <FormControl fullWidth error={isInvalid}>
+                          <FormControl fullWidth error={isError}>
                             <FormLabel sx={{ mb: 0.5 }}>Multi Select</FormLabel>
                             <FormGroup row>
                               {getAttributeOptions(attribute).map((option) => {
@@ -691,10 +754,10 @@ export default function AssetDashboardPage() {
                                 );
                               })}
                             </FormGroup>
-                            {isInvalid && <FormHelperText>{errorText}</FormHelperText>}
+                            {isError && <FormHelperText>{errorText}</FormHelperText>}
                           </FormControl>
                         ) : attribute.inputType === "select" ? (
-                          <FormControl fullWidth size="small" error={isInvalid}>
+                          <FormControl fullWidth size="small" error={isError}>
                             <Select
                               value={rawComparable(getRawValue(attribute.value) ?? "")}
                               onChange={(e: SelectChangeEvent<string>) => {
@@ -722,8 +785,134 @@ export default function AssetDashboardPage() {
                                 </MenuItem>
                               ))}
                             </Select>
-                            {isInvalid && <FormHelperText>{errorText}</FormHelperText>}
+                            {isError && <FormHelperText>{errorText}</FormHelperText>}
                           </FormControl>
+                        ) : attribute.inputType === "number" ? (
+                          <TextField
+                            size="small"
+                            fullWidth
+                            value={
+                              Object.prototype.hasOwnProperty.call(numberDrafts, attribute.name)
+                                ? numberDrafts[attribute.name]
+                                : formatNumberDisplay(
+                                    attribute.value,
+                                    attribute.numberUseThousandSeparator,
+                                    attribute.numberPrecision,
+                                    attribute.numberAllowDecimal
+                                  )
+                            }
+                            onChange={(e) => {
+                              if (!attribute.dashboardEditable) return;
+                              const rawNext = e.target.value;
+                              setNumberDrafts((prev) => ({ ...prev, [attribute.name]: rawNext }));
+                              const sanitized = sanitizeNumberInput(
+                                rawNext,
+                                attribute.numberPrefix,
+                                attribute.numberSuffix,
+                                attribute.numberUseThousandSeparator
+                              );
+
+                              if (sanitized.trim() === "") {
+                                if (attribute.nullable) {
+                                  updateAttributeUnknown(attribute.name, null);
+                                  setNumberErrors((prev) => {
+                                    const copy = { ...prev };
+                                    delete copy[attribute.name];
+                                    return copy;
+                                  });
+                                  return;
+                                }
+                                setNumberErrors((prev) => ({
+                                  ...prev,
+                                  [attribute.name]: "Nilai number wajib diisi."
+                                }));
+                                return;
+                              }
+
+                              if (!attribute.numberAllowNegative && sanitized.startsWith("-")) {
+                                setNumberErrors((prev) => ({
+                                  ...prev,
+                                  [attribute.name]: "Negative value tidak diizinkan."
+                                }));
+                                return;
+                              }
+
+                              if (!attribute.numberAllowDecimal && sanitized.includes(".")) {
+                                setNumberErrors((prev) => ({
+                                  ...prev,
+                                  [attribute.name]: "Decimal/float tidak diizinkan."
+                                }));
+                                return;
+                              }
+
+                              const numberValue = Number(sanitized);
+                              if (!Number.isFinite(numberValue)) {
+                                setNumberErrors((prev) => ({
+                                  ...prev,
+                                  [attribute.name]: "Format number tidak valid."
+                                }));
+                                return;
+                              }
+
+                              const decimalPart = sanitized.includes(".") ? sanitized.split(".")[1] : "";
+                              if (attribute.numberAllowDecimal && decimalPart.length > attribute.numberPrecision) {
+                                setNumberErrors((prev) => ({
+                                  ...prev,
+                                  [attribute.name]: `Maksimal ${attribute.numberPrecision} digit desimal.`
+                                }));
+                                return;
+                              }
+
+                              if (typeof attribute.numberMin === "number" && numberValue < attribute.numberMin) {
+                                setNumberErrors((prev) => ({
+                                  ...prev,
+                                  [attribute.name]: `Nilai minimal ${attribute.numberMin}.`
+                                }));
+                                return;
+                              }
+
+                              if (typeof attribute.numberMax === "number" && numberValue > attribute.numberMax) {
+                                setNumberErrors((prev) => ({
+                                  ...prev,
+                                  [attribute.name]: `Nilai maksimal ${attribute.numberMax}.`
+                                }));
+                                return;
+                              }
+
+                              const normalizedValue = attribute.numberAllowDecimal
+                                ? Number(numberValue.toFixed(attribute.numberPrecision))
+                                : Math.trunc(numberValue);
+                              updateAttributeUnknown(attribute.name, normalizedValue);
+                              setNumberErrors((prev) => {
+                                if (!Object.prototype.hasOwnProperty.call(prev, attribute.name)) return prev;
+                                const copy = { ...prev };
+                                delete copy[attribute.name];
+                                return copy;
+                              });
+                            }}
+                            onBlur={() => {
+                              const raw = getRawValue(attribute.value);
+                              const next = formatNumberDisplay(
+                                raw,
+                                attribute.numberUseThousandSeparator,
+                                attribute.numberPrecision,
+                                attribute.numberAllowDecimal
+                              );
+                              setNumberDrafts((prev) => ({ ...prev, [attribute.name]: next }));
+                            }}
+                            disabled={!attribute.dashboardEditable}
+                            error={isError}
+                            helperText={errorText}
+                            InputProps={{
+                              startAdornment: attribute.numberPrefix ? (
+                                <InputAdornment position="start">{attribute.numberPrefix}</InputAdornment>
+                              ) : undefined,
+                              endAdornment: attribute.numberSuffix ? (
+                                <InputAdornment position="end">{attribute.numberSuffix}</InputAdornment>
+                              ) : undefined
+                            }}
+                            inputProps={{ style: { textAlign: "left" } }}
+                          />
                         ) : attribute.inputType === "json" ? (
                           <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
                             <StableMonaco
@@ -773,7 +962,7 @@ export default function AssetDashboardPage() {
                             value={serializeValue(attribute.value)}
                             onChange={(e) => updateAttributeValue(attribute.name, attribute.inputType, e.target.value)}
                             disabled={!attribute.dashboardEditable}
-                            error={isInvalid}
+                            error={isError}
                             helperText={errorText}
                           />
                         )}
@@ -782,7 +971,15 @@ export default function AssetDashboardPage() {
                             size="small"
                             variant="text"
                             sx={{ mt: 0.5 }}
-                            onClick={() => updateAttributeUnknown(attribute.name, null)}
+                            onClick={() => {
+                              updateAttributeUnknown(attribute.name, null);
+                              setNumberErrors((prev) => {
+                                if (!Object.prototype.hasOwnProperty.call(prev, attribute.name)) return prev;
+                                const copy = { ...prev };
+                                delete copy[attribute.name];
+                                return copy;
+                              });
+                            }}
                           >
                             Set Null (revert to default on save)
                           </Button>
@@ -791,7 +988,11 @@ export default function AssetDashboardPage() {
                           );
                         })()}
                       </TableCell>
-                      <TableCell>{attribute.unit || "-"}</TableCell>
+                      <TableCell>
+                        <Typography variant="body1">
+                          {attribute.unit || "-"}
+                        </Typography>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {dashboardAttributes.length === 0 && (
@@ -830,4 +1031,3 @@ export default function AssetDashboardPage() {
     </>
   );
 }
-
