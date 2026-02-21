@@ -476,6 +476,13 @@ export default function HomePage() {
           scriptTemplates: nextScriptTemplates
         };
       }
+      const shouldSyncScriptToActions = Object.prototype.hasOwnProperty.call(patch, "script");
+      if (!shouldSyncScriptToActions) {
+        return {
+          ...prev,
+          scriptTemplates: nextScriptTemplates
+        };
+      }
       const nextActions = prev.actions.map((action) =>
         action.templateId === id
           ? {
@@ -485,6 +492,7 @@ export default function HomePage() {
           : action
       );
       for (const action of nextActions) {
+        if (action.templateId !== id) continue;
         latestActionScriptsRef.current[action.id] = action.script || "";
       }
       return {

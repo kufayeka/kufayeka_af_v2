@@ -50,6 +50,29 @@ function serializeValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function isLabeledValue(value: unknown): value is { label: string; value: unknown } {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    Object.prototype.hasOwnProperty.call(value, "label") &&
+    Object.prototype.hasOwnProperty.call(value, "value")
+  );
+}
+
+function rawComparable(value: unknown): string {
+  if (isLabeledValue(value)) return String(value.value);
+  return String(value);
+}
+
+function getRawValue(value: unknown): unknown {
+  if (isLabeledValue(value)) return value.value;
+  return value;
+}
+
+function toLabeledValue(option: { label: string; value: unknown }): { label: string; value: unknown } {
+  return { label: option.label, value: option.value };
+}
+
 function runTransform(script: string, input: unknown): unknown {
   if (!script.trim()) return input;
   try {
@@ -290,23 +313,28 @@ export default function AssetDashboardPage() {
       return serializeValue(attribute.value);
     }
 
-    const options = getAttributeOptions(attribute);
-    const lookup = new Map(options.map((opt) => [String(opt.value), opt.label]));
-
     if (attribute.inputMode === "multiselect") {
       const values = Array.isArray(attribute.value) ? attribute.value : [];
       if (values.length === 0) return "[]";
       return values
         .map((value) => {
-          const raw = serializeValue(value);
-          const label = lookup.get(String(value));
-          return label ? `${label} (${raw})` : raw;
+          if (isLabeledValue(value)) {
+            return `${value.label} (${serializeValue(value.value)})`;
+          }
+          return serializeValue(value);
         })
         .join(", ");
     }
 
+    if (isLabeledValue(attribute.value)) {
+      return `${attribute.value.label} (${serializeValue(attribute.value.value)})`;
+    }
+
+    // Fallback for legacy primitive values.
+    const options = getAttributeOptions(attribute);
+    const lookup = new Map(options.map((opt) => [rawComparable(opt.value), opt.label]));
     const raw = serializeValue(attribute.value);
-    const label = lookup.get(String(attribute.value));
+    const label = lookup.get(rawComparable(attribute.value));
     return label ? `${label} (${raw})` : raw;
   };
 
@@ -329,8 +357,11 @@ export default function AssetDashboardPage() {
             title: (
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                 <ArrowRight size={14} />
-                <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                  {attr.name}: {formatTreeAttributeValue(attr)} {attr.unit || ""}
+                <Typography variant="body2" sx={{ fontFamily: "monospace", opacity: 0.75 }}>
+                  {attr.name}:
+                </Typography>
+                <Typography variant="body2" sx={{ fontFamily: "monospace", fontWeight: "bold" }}>
+                  {formatTreeAttributeValue(attr)} {attr.unit || ""}
                 </Typography>
               </Box>
             ),
@@ -539,13 +570,26 @@ export default function AssetDashboardPage() {
                           <FormControl>
                             <RadioGroup
                               row
-                              value={String(attribute.value ?? "")}
-                              onChange={(e) => updateAttributeUnknown(attribute.name, e.target.value)}
+                              value={rawComparable(getRawValue(attribute.value) ?? "")}
+                              onChange={(e) => {
+                                const options = getAttributeOptions(attribute);
+                                const selected = options.find(
+                                  (option) => rawComparable(option.value) === String(e.target.value)
+                                );
+                                if (selected) {
+                                  updateAttributeUnknown(attribute.name, toLabeledValue(selected));
+                                  return;
+                                }
+                                updateAttributeUnknown(attribute.name, {
+                                  label: String(e.target.value),
+                                  value: e.target.value
+                                });
+                              }}
                             >
                               {getAttributeOptions(attribute).map((option) => (
                                 <FormControlLabel
                                   key={`${attribute.name}-${String(option.value)}`}
-                                  value={String(option.value)}
+                                  value={rawComparable(option.value)}
                                   control={<Radio />}
                                   label={option.label}
                                   disabled={!attribute.dashboardEditable}
@@ -559,7 +603,9 @@ export default function AssetDashboardPage() {
                             <FormGroup row>
                               {getAttributeOptions(attribute).map((option) => {
                                 const current = Array.isArray(attribute.value) ? attribute.value : [];
-                                const checked = current.some((item) => item === option.value);
+                                const checked = current.some(
+                                  (item) => rawComparable(getRawValue(item)) === rawComparable(option.value)
+                                );
                                 return (
                                   <FormControlLabel
                                     key={`${attribute.name}-${String(option.value)}`}
@@ -569,9 +615,13 @@ export default function AssetDashboardPage() {
                                         disabled={!attribute.dashboardEditable}
                                         onChange={(_e, nextChecked) => {
                                           const base = Array.isArray(attribute.value) ? [...attribute.value] : [];
+                                          const nextValue = toLabeledValue(option);
                                           const next = nextChecked
-                                            ? [...base, option.value]
-                                            : base.filter((item) => item !== option.value);
+                                            ? [...base, nextValue]
+                                            : base.filter(
+                                                (item) =>
+                                                  rawComparable(getRawValue(item)) !== rawComparable(option.value)
+                                              );
                                           updateAttributeUnknown(attribute.name, next);
                                         }}
                                       />
@@ -585,14 +635,28 @@ export default function AssetDashboardPage() {
                         ) : attribute.inputMode === "select" ? (
                           <FormControl fullWidth size="small">
                             <Select
-                              value={String(attribute.value ?? "")}
-                              onChange={(e: SelectChangeEvent<string>) =>
-                                updateAttributeUnknown(attribute.name, e.target.value)
-                              }
+                              value={rawComparable(getRawValue(attribute.value) ?? "")}
+                              onChange={(e: SelectChangeEvent<string>) => {
+                                const options = getAttributeOptions(attribute);
+                                const selected = options.find(
+                                  (option) => rawComparable(option.value) === String(e.target.value)
+                                );
+                                if (selected) {
+                                  updateAttributeUnknown(attribute.name, toLabeledValue(selected));
+                                  return;
+                                }
+                                updateAttributeUnknown(attribute.name, {
+                                  label: String(e.target.value),
+                                  value: e.target.value
+                                });
+                              }}
                               disabled={!attribute.dashboardEditable}
                             >
                               {getAttributeOptions(attribute).map((option) => (
-                                <MenuItem key={`${attribute.name}-${String(option.value)}`} value={String(option.value)}>
+                                <MenuItem
+                                  key={`${attribute.name}-${String(option.value)}`}
+                                  value={rawComparable(option.value)}
+                                >
                                   {option.label}
                                 </MenuItem>
                               ))}

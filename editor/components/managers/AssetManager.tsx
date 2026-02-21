@@ -1,5 +1,4 @@
-import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -27,6 +26,7 @@ import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
 import { ArrowRight, Building2, RefreshCcw } from "lucide-react";
 import { normalizeProgram } from "../../lib/programUtils";
+import StableMonaco from "../common/StableMonaco";
 import type {
   AssetDashboardInputMode,
   AssetOptionSource,
@@ -36,8 +36,6 @@ import type {
   AssetFrameworkDefinition,
   Program
 } from "../../types/program";
-
-const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
 const ATTRIBUTE_TYPES: AssetAttributeType[] = [
   "number",
@@ -62,6 +60,20 @@ function parseMaybeJson(raw: string): unknown {
 function serializeValue(value: unknown): string {
   if (typeof value === "string") return value;
   return JSON.stringify(value);
+}
+
+function isLabeledValue(value: unknown): value is { label: string; value: unknown } {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    Object.prototype.hasOwnProperty.call(value, "label") &&
+    Object.prototype.hasOwnProperty.call(value, "value")
+  );
+}
+
+function rawComparable(value: unknown): string {
+  if (isLabeledValue(value)) return String(value.value);
+  return String(value);
 }
 
 function buildChildrenMap(assets: AssetDefinition[]): Map<string | null, AssetDefinition[]> {
@@ -211,6 +223,18 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [optionMap, setOptionMap] = useState<Record<string, Array<{ label: string; value: unknown }>>>({});
   const [loadingRuntime, setLoadingRuntime] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(false);
+  const [monacoFieldDrafts, setMonacoFieldDrafts] = useState<Record<string, string>>({});
+  const monacoFieldTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const jsonMiniOptions = useMemo(
+    () => ({
+      minimap: { enabled: false },
+      fontSize: 12,
+      lineNumbers: "off" as const,
+      wordWrap: "on" as const,
+      scrollBeyondLastLine: false
+    }),
+    []
+  );
 
   const assetById = useMemo(
     () => new Map(assets.assets.map((asset) => [asset.id, asset])),
@@ -270,6 +294,24 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     updateAssetWith(assetId, (asset) => ({ ...asset, ...patch }));
   };
 
+  const refreshAssetTemplateAttributes = (assetId: string) => {
+    updateAssetWith(assetId, (asset) => {
+      const allowedNames = new Set<string>();
+      for (const templateId of asset.templateIds || []) {
+        const template = templateById.get(templateId);
+        if (!template) continue;
+        for (const attribute of template.attributes || []) {
+          if (attribute.enabled === false) continue;
+          allowedNames.add(attribute.name);
+        }
+      }
+      const nextAttributes = Object.fromEntries(
+        Object.entries(asset.attributes || {}).filter(([name]) => allowedNames.has(name))
+      );
+      return { ...asset, attributes: nextAttributes };
+    });
+  };
+
   const addTemplate = () => {
     const id = makeId("template");
     const next = {
@@ -319,6 +361,33 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     }));
   };
 
+  useEffect(() => {
+    return () => {
+      for (const timer of Object.values(monacoFieldTimersRef.current)) {
+        clearTimeout(timer);
+      }
+    };
+  }, []);
+
+  const getMonacoFieldDraft = (fieldKey: string, source: string): string =>
+    Object.prototype.hasOwnProperty.call(monacoFieldDrafts, fieldKey)
+      ? monacoFieldDrafts[fieldKey]
+      : source;
+
+  const scheduleMonacoFieldSave = (
+    fieldKey: string,
+    next: string,
+    commit: (value: string) => void
+  ) => {
+    setMonacoFieldDrafts((prev) => ({ ...prev, [fieldKey]: next }));
+    const existing = monacoFieldTimersRef.current[fieldKey];
+    if (existing) clearTimeout(existing);
+    monacoFieldTimersRef.current[fieldKey] = setTimeout(() => {
+      commit(next);
+      delete monacoFieldTimersRef.current[fieldKey];
+    }, 600);
+  };
+
   const treeData = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     const childrenMap = buildChildrenMap(assets.assets);
@@ -344,8 +413,11 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         title: (
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             <ArrowRight size={14} />
-            <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-              {attr.name}: {formatTreeValue(attr, asset)} {attr.unit || ""}
+            <Typography variant="body2" sx={{ fontFamily: "monospace", opacity: 0.75 }}>
+              {attr.name}:
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: "monospace", fontWeight: "bold" }}>
+              {formatTreeValue(attr, asset)} {attr.unit || ""}
             </Typography>
           </Box>
         ),
@@ -502,6 +574,23 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     if (attr.inputMode !== "select" && attr.inputMode !== "radio" && attr.inputMode !== "multiselect") {
       return serializeValue(attr.value);
     }
+    if (attr.inputMode === "multiselect") {
+      const values = Array.isArray(attr.value) ? attr.value : [];
+      if (values.length === 0) return "[]";
+      return values
+        .map((item) => {
+          if (isLabeledValue(item)) {
+            return `${item.label} (${serializeValue(item.value)})`;
+          }
+          return serializeValue(item);
+        })
+        .join(", ");
+    }
+    if (isLabeledValue(attr.value)) {
+      return `${attr.value.label} (${serializeValue(attr.value.value)})`;
+    }
+
+    // Fallback for legacy primitive value that hasn't been migrated yet.
     const keys = asset.templateIds.flatMap((templateId) => {
       const template = assets.attributeTemplates.find((item) => item.id === templateId);
       if (!template) return [];
@@ -510,22 +599,10 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         .map((attribute) => `${template.id}:${attribute.name}`);
     });
     const options = keys.flatMap((key) => optionMap[key] || []);
-    const lookup = new Map(options.map((option) => [String(option.value), option.label]));
-
-    if (attr.inputMode === "multiselect") {
-      const values = Array.isArray(attr.value) ? attr.value : [];
-      if (values.length === 0) return "[]";
-      return values
-        .map((value) => {
-          const raw = serializeValue(value);
-          const label = lookup.get(String(value));
-          return label ? `${label} (${raw})` : raw;
-        })
-        .join(", ");
-    }
+    const lookup = new Map(options.map((option) => [rawComparable(option.value), option.label]));
 
     const raw = serializeValue(attr.value);
-    const label = lookup.get(String(attr.value));
+    const label = lookup.get(rawComparable(attr.value));
     return label ? `${label} (${raw})` : raw;
   }
 
@@ -598,6 +675,12 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                 <Box sx={{ display: "flex", gap: 0.75 }}>
                   <Button variant="outlined" onClick={() => addAsset(selectedAsset.id)}>
                     Add Child
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => refreshAssetTemplateAttributes(selectedAsset.id)}
+                  >
+                    Refresh Template Attr
                   </Button>
                   <Button color="error" variant="outlined" onClick={() => removeAsset(selectedAsset.id)}>
                     Remove Asset + Descendants
@@ -953,26 +1036,30 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           {(attribute.optionsSource === "api" || attribute.optionsSource === "scriptTransform") ? (
                             <Box sx={{ display: "grid", gap: 0.5 }}>
                               <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
-                                <MonacoEditor
+                                <StableMonaco
+                                  path={`template-options-url:${selectedTemplate.id}:${idx}`}
                                   height="68px"
-                                  defaultLanguage="plaintext"
-                                  value={attribute.optionsApiUrl ?? ""}
-                                  onChange={(value) => {
-                                    updateTemplateWith(selectedTemplate.id, (template) => ({
-                                      ...template,
-                                      attributes: template.attributes.map((item, itemIdx) =>
-                                        itemIdx === idx
-                                          ? { ...item, optionsApiUrl: value ?? "" }
-                                          : item
-                                      )
-                                    }));
-                                  }}
-                                  options={{
-                                    minimap: { enabled: false },
-                                    fontSize: 12,
-                                    lineNumbers: "off",
-                                    wordWrap: "on",
-                                    scrollBeyondLastLine: false
+                                  language="plaintext"
+                                  value={getMonacoFieldDraft(
+                                    `template-options-url:${selectedTemplate.id}:${idx}`,
+                                    attribute.optionsApiUrl ?? ""
+                                  )}
+                                  options={jsonMiniOptions}
+                                  onChangeText={(next) => {
+                                    scheduleMonacoFieldSave(
+                                      `template-options-url:${selectedTemplate.id}:${idx}`,
+                                      next,
+                                      (committed) => {
+                                        updateTemplateWith(selectedTemplate.id, (template) => ({
+                                          ...template,
+                                          attributes: template.attributes.map((item, itemIdx) =>
+                                            itemIdx === idx
+                                              ? { ...item, optionsApiUrl: committed }
+                                              : item
+                                          )
+                                        }));
+                                      }
+                                    );
                                   }}
                                 />
                               </Box>
@@ -1003,26 +1090,30 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         <TableCell sx={{ minWidth: 380 }}>
                           {attribute.optionsSource === "scriptTransform" ? (
                             <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
-                              <MonacoEditor
+                              <StableMonaco
+                                path={`template-options-transform:${selectedTemplate.id}:${idx}`}
                                 height="150px"
-                                defaultLanguage="javascript"
-                                value={attribute.optionsTransformScript ?? ""}
-                                onChange={(value) => {
-                                  updateTemplateWith(selectedTemplate.id, (template) => ({
-                                    ...template,
-                                    attributes: template.attributes.map((item, itemIdx) =>
-                                      itemIdx === idx
-                                        ? { ...item, optionsTransformScript: value ?? "" }
-                                        : item
-                                    )
-                                  }));
-                                }}
-                                options={{
-                                  minimap: { enabled: false },
-                                  fontSize: 12,
-                                  lineNumbers: "off",
-                                  wordWrap: "on",
-                                  scrollBeyondLastLine: false
+                                language="javascript"
+                                value={getMonacoFieldDraft(
+                                  `template-options-transform:${selectedTemplate.id}:${idx}`,
+                                  attribute.optionsTransformScript ?? ""
+                                )}
+                                options={jsonMiniOptions}
+                                onChangeText={(next) => {
+                                  scheduleMonacoFieldSave(
+                                    `template-options-transform:${selectedTemplate.id}:${idx}`,
+                                    next,
+                                    (committed) => {
+                                      updateTemplateWith(selectedTemplate.id, (template) => ({
+                                        ...template,
+                                        attributes: template.attributes.map((item, itemIdx) =>
+                                          itemIdx === idx
+                                            ? { ...item, optionsTransformScript: committed }
+                                            : item
+                                        )
+                                      }));
+                                    }
+                                  );
                                 }}
                               />
                             </Box>

@@ -1,5 +1,4 @@
-import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Autocomplete,
   Box,
@@ -28,6 +27,7 @@ import type { SelectChangeEvent } from "@mui/material/Select";
 import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
 import { FileCode2, FolderTree } from "lucide-react";
+import StableMonaco from "../common/StableMonaco";
 import type {
   ActionDefinition,
   AssetFrameworkDefinition,
@@ -35,8 +35,6 @@ import type {
   ScriptVariableBindingDefinition,
   ScriptTemplateDefinition
 } from "../../types/program";
-
-const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
 interface ActionManagerProps {
   actions: ActionDefinition[];
@@ -272,6 +270,14 @@ export default function ActionManager({
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [maxEditor, setMaxEditor] = useState(false); // action editor
   const [maxTemplateEditor, setMaxTemplateEditor] = useState(false); // template editor
+  const [actionScriptDraft, setActionScriptDraft] = useState("");
+  const [templateScriptDraft, setTemplateScriptDraft] = useState("");
+  const [monacoFieldDrafts, setMonacoFieldDrafts] = useState<Record<string, string>>({});
+  const actionScriptSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const templateScriptSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fieldSaveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const actionTypingUntilRef = useRef(0);
+  const templateTypingUntilRef = useRef(0);
 
   const selectedAction = actions.find((item) => item.id === selectedActionId);
   const selectedTemplate = scriptTemplates.find((item) => item.id === selectedTemplateId);
@@ -282,11 +288,103 @@ export default function ActionManager({
     () => attributeOptions.map((item) => item.path),
     [attributeOptions]
   );
+  const actionEditorOptions = useMemo(
+    () => ({
+      minimap: { enabled: false },
+      fontSize: 14,
+      wordWrap: "on" as const,
+      scrollBeyondLastLine: false
+    }),
+    []
+  );
+  const jsonMiniOptions = useMemo(
+    () => ({
+      minimap: { enabled: false },
+      fontSize: 12,
+      lineNumbers: "off" as const,
+      wordWrap: "on" as const,
+      scrollBeyondLastLine: false
+    }),
+    []
+  );
 
   const selectedFolderPath = useMemo(() => {
     if (!selectedHierarchyKey.startsWith("folder:")) return "";
     return selectedHierarchyKey.slice("folder:".length);
   }, [selectedHierarchyKey]);
+
+  useEffect(() => {
+    if (!selectedAction) {
+      setActionScriptDraft("");
+      return;
+    }
+    if (Date.now() < actionTypingUntilRef.current) return;
+    const next = getTemplateScriptForAction(selectedAction, scriptTemplates);
+    setActionScriptDraft((prev) => (prev === next ? prev : next));
+  }, [selectedAction?.id, selectedAction?.script, selectedAction?.templateId, scriptTemplates]);
+
+  useEffect(() => {
+    if (!selectedTemplate) {
+      setTemplateScriptDraft("");
+      return;
+    }
+    if (Date.now() < templateTypingUntilRef.current) return;
+    const next = selectedTemplate.script ?? "";
+    setTemplateScriptDraft((prev) => (prev === next ? prev : next));
+  }, [selectedTemplate?.id, selectedTemplate?.script]);
+
+  useEffect(() => {
+    return () => {
+      if (actionScriptSaveTimerRef.current) {
+        clearTimeout(actionScriptSaveTimerRef.current);
+      }
+      if (templateScriptSaveTimerRef.current) {
+        clearTimeout(templateScriptSaveTimerRef.current);
+      }
+      for (const timer of Object.values(fieldSaveTimersRef.current)) {
+        clearTimeout(timer);
+      }
+    };
+  }, []);
+
+  const scheduleSaveActionScript = (actionId: string, script: string) => {
+    if (actionScriptSaveTimerRef.current) {
+      clearTimeout(actionScriptSaveTimerRef.current);
+    }
+    actionScriptSaveTimerRef.current = setTimeout(() => {
+      onUpdateAction(actionId, { script });
+      actionScriptSaveTimerRef.current = null;
+    }, 600);
+  };
+
+  const scheduleSaveTemplateScript = (templateId: string, script: string) => {
+    if (templateScriptSaveTimerRef.current) {
+      clearTimeout(templateScriptSaveTimerRef.current);
+    }
+    templateScriptSaveTimerRef.current = setTimeout(() => {
+      onUpdateScriptTemplate(templateId, { script });
+      templateScriptSaveTimerRef.current = null;
+    }, 600);
+  };
+
+  const getMonacoFieldDraft = (fieldKey: string, source: string): string =>
+    Object.prototype.hasOwnProperty.call(monacoFieldDrafts, fieldKey)
+      ? monacoFieldDrafts[fieldKey]
+      : source;
+
+  const scheduleMonacoFieldSave = (
+    fieldKey: string,
+    next: string,
+    commit: (value: string) => void
+  ) => {
+    setMonacoFieldDrafts((prev) => ({ ...prev, [fieldKey]: next }));
+    const existing = fieldSaveTimersRef.current[fieldKey];
+    if (existing) clearTimeout(existing);
+    fieldSaveTimersRef.current[fieldKey] = setTimeout(() => {
+      commit(next);
+      delete fieldSaveTimersRef.current[fieldKey];
+    }, 600);
+  };
 
   useEffect(() => {
     const nextExpanded: Key[] = [];
@@ -519,31 +617,38 @@ export default function ActionManager({
                                     />
                                   ) : effective.source === "static_array" || effective.source === "static_object" ? (
                                     <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
-                                      <MonacoEditor
+                                      <StableMonaco
+                                        path={`action-binding-json:${selectedAction.id}:${binding.name}`}
                                         height="84px"
-                                        defaultLanguage="json"
-                                        value={serializeValue(effective.staticValue ?? (effective.source === "static_array" ? [] : {}))}
-                                        onChange={(value) => {
+                                        language="json"
+                                        readOnly={!canOverride}
+                                        value={getMonacoFieldDraft(
+                                          `action-binding-json:${selectedAction.id}:${binding.name}`,
+                                          serializeValue(
+                                            effective.staticValue ??
+                                              (effective.source === "static_array" ? [] : {})
+                                          )
+                                        )}
+                                        options={jsonMiniOptions}
+                                        onChangeText={(next) => {
                                           if (!canOverride) return;
-                                          onUpdateAction(selectedAction.id, {
-                                            templateBindingOverrides: {
-                                              ...(selectedAction.templateBindingOverrides || {}),
-                                              [binding.name]: {
-                                                ...binding,
-                                                ...currentOverride,
-                                                source: effective.source,
-                                                staticValue: parseMaybeJson(value ?? "")
-                                              }
+                                          scheduleMonacoFieldSave(
+                                            `action-binding-json:${selectedAction.id}:${binding.name}`,
+                                            next,
+                                            (committed) => {
+                                              onUpdateAction(selectedAction.id, {
+                                                templateBindingOverrides: {
+                                                  ...(selectedAction.templateBindingOverrides || {}),
+                                                  [binding.name]: {
+                                                    ...binding,
+                                                    ...currentOverride,
+                                                    source: effective.source,
+                                                    staticValue: parseMaybeJson(committed)
+                                                  }
+                                                }
+                                              });
                                             }
-                                          });
-                                        }}
-                                        options={{
-                                          minimap: { enabled: false },
-                                          fontSize: 12,
-                                          lineNumbers: "off",
-                                          wordWrap: "on",
-                                          readOnly: !canOverride,
-                                          scrollBeyondLastLine: false
+                                          );
                                         }}
                                       />
                                     </Box>
@@ -606,18 +711,18 @@ export default function ActionManager({
                   </Button>
                 </Box>
                 <Box sx={{ border: "1px solid #bbbcbd", borderRadius: 0.5, overflow: "hidden" }}>
-                  <MonacoEditor
+                  <StableMonaco
+                    path={`action:${selectedAction.id}:${selectedAction.templateId || "none"}`}
                     height="calc(100vh - 410px)"
-                    defaultLanguage="javascript"
-                    value={getTemplateScriptForAction(selectedAction, scriptTemplates)}
-                    onChange={(value) =>
-                      onUpdateAction(selectedAction.id, { script: value ?? "" })
-                    }
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 14,
-                      wordWrap: "on",
-                      readOnly: !!selectedAction.templateId
+                    language="javascript"
+                    value={actionScriptDraft}
+                    readOnly={!!selectedAction.templateId}
+                    options={actionEditorOptions}
+                    onChangeText={(next) => {
+                      if (selectedAction.templateId) return;
+                      actionTypingUntilRef.current = Date.now() + 1000;
+                      setActionScriptDraft(next);
+                      scheduleSaveActionScript(selectedAction.id, next);
                     }}
                   />
                 </Box>
@@ -638,18 +743,18 @@ export default function ActionManager({
                       </Button>
                     </Box>
                     <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
-                      <MonacoEditor
+                      <StableMonaco
+                        path={`action-full:${selectedAction.id}:${selectedAction.templateId || "none"}`}
                         height="calc(100vh - 96px)"
-                        defaultLanguage="javascript"
-                        value={getTemplateScriptForAction(selectedAction, scriptTemplates)}
-                        onChange={(value) =>
-                          onUpdateAction(selectedAction.id, { script: value ?? "" })
-                        }
-                        options={{
-                          minimap: { enabled: false },
-                          fontSize: 14,
-                          wordWrap: "on",
-                          readOnly: !!selectedAction.templateId
+                        language="javascript"
+                        value={actionScriptDraft}
+                        readOnly={!!selectedAction.templateId}
+                        options={actionEditorOptions}
+                        onChangeText={(next) => {
+                          if (selectedAction.templateId) return;
+                          actionTypingUntilRef.current = Date.now() + 1000;
+                          setActionScriptDraft(next);
+                          scheduleSaveActionScript(selectedAction.id, next);
                         }}
                       />
                     </Box>
@@ -859,25 +964,33 @@ export default function ActionManager({
                               {(binding.source === "static_array" || binding.source === "static_object") && (
                                 <Box sx={{ display: "grid", gap: 0.5 }}>
                                   <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
-                                    <MonacoEditor
+                                    <StableMonaco
+                                      path={`template-binding-json:${selectedTemplate.id}:${index}`}
                                       height="80px"
-                                      defaultLanguage="json"
-                                      value={serializeValue(binding.staticValue ?? (binding.source === "static_array" ? [] : {}))}
-                                      onChange={(value) =>
-                                        onUpdateScriptTemplate(selectedTemplate.id, {
-                                          variableBindings: (selectedTemplate.variableBindings || []).map((item, itemIdx) =>
-                                            itemIdx === index
-                                              ? { ...item, staticValue: parseMaybeJson(value ?? "") }
-                                              : item
-                                          )
-                                        })
-                                      }
-                                      options={{
-                                        minimap: { enabled: false },
-                                        fontSize: 12,
-                                        lineNumbers: "off",
-                                        wordWrap: "on",
-                                        scrollBeyondLastLine: false
+                                      language="json"
+                                      value={getMonacoFieldDraft(
+                                        `template-binding-json:${selectedTemplate.id}:${index}`,
+                                        serializeValue(
+                                          binding.staticValue ??
+                                            (binding.source === "static_array" ? [] : {})
+                                        )
+                                      )}
+                                      options={jsonMiniOptions}
+                                      onChangeText={(next) => {
+                                        scheduleMonacoFieldSave(
+                                          `template-binding-json:${selectedTemplate.id}:${index}`,
+                                          next,
+                                          (committed) => {
+                                            onUpdateScriptTemplate(selectedTemplate.id, {
+                                              variableBindings: (selectedTemplate.variableBindings || []).map(
+                                                (item, itemIdx) =>
+                                                  itemIdx === index
+                                                    ? { ...item, staticValue: parseMaybeJson(committed) }
+                                                    : item
+                                              )
+                                            });
+                                          }
+                                        );
                                       }}
                                     />
                                   </Box>
@@ -961,17 +1074,16 @@ export default function ActionManager({
                 </Box>
 
                 <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
-                  <MonacoEditor
+                  <StableMonaco
+                    path={`template:${selectedTemplate.id}`}
                     height="calc(100vh - 420px)"
-                    defaultLanguage="javascript"
-                    value={selectedTemplate.script}
-                    onChange={(value) =>
-                      onUpdateScriptTemplate(selectedTemplate.id, { script: value ?? "" })
-                    }
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 14,
-                      wordWrap: "on"
+                    language="javascript"
+                    value={templateScriptDraft}
+                    options={actionEditorOptions}
+                    onChangeText={(next) => {
+                      templateTypingUntilRef.current = Date.now() + 1000;
+                      setTemplateScriptDraft(next);
+                      scheduleSaveTemplateScript(selectedTemplate.id, next);
                     }}
                   />
                 </Box>
@@ -986,19 +1098,18 @@ export default function ActionManager({
                     </Button>
                   </Box>
 
-                  <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
-                    <MonacoEditor
-                      height="calc(100vh - 96px)"
-                      defaultLanguage="javascript"
-                      value={selectedTemplate.script}
-                      onChange={(value) =>
-                        onUpdateScriptTemplate(selectedTemplate.id, { script: value ?? "" })
-                      }
-                      options={{
-                        minimap: { enabled: false },
-                        fontSize: 14,
-                        wordWrap: "on"
-                      }}
+                    <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
+                      <StableMonaco
+                        path={`template-full:${selectedTemplate.id}`}
+                        height="calc(100vh - 96px)"
+                        language="javascript"
+                        value={templateScriptDraft}
+                        options={actionEditorOptions}
+                        onChangeText={(next) => {
+                          templateTypingUntilRef.current = Date.now() + 1000;
+                          setTemplateScriptDraft(next);
+                          scheduleSaveTemplateScript(selectedTemplate.id, next);
+                        }}
                     />
                   </Box>
                 </DialogContent>
