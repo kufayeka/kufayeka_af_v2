@@ -29,6 +29,7 @@ export interface AssetTemplateAttributeDefinition {
   unit?: string;
   historianEnabled?: boolean;
   historianTimeSourcePath?: string;
+  historianTargetId?: string;
 }
 
 export interface AssetAttributeTemplateDefinition {
@@ -54,6 +55,17 @@ export interface AssetDefinition {
 export interface AssetFrameworkDefinition {
   assets: AssetDefinition[];
   attributeTemplates: AssetAttributeTemplateDefinition[];
+  historians?: HistorianTargetDefinition[];
+}
+
+export interface HistorianTargetDefinition {
+  id: string;
+  name: string;
+  udpHost: string;
+  udpPort: number;
+  httpBaseUrl: string;
+  timestampUnit: "us" | "ns";
+  enabled?: boolean;
 }
 
 export interface TriggerDefinition {

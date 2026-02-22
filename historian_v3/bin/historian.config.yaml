@@ -1,0 +1,47 @@
+# historian.config.yaml
+#
+# Catatan umum:
+# - Semua field numerik boleh memakai ekspresi integer: +, -, *
+# - Contoh: 24 * 60 * 60 * 1000
+# - Timestamp unit: us (microseconds) atau ns (nanoseconds)
+
+udp:
+  host: 0.0.0.0       # bind host UDP ingest
+  port: 9900          # port UDP ingest
+
+http:
+  host: 0.0.0.0       # bind host HTTP API
+  port: 8080          # port HTTP API
+  maxPoints: 100000   # batas maksimal point untuk raw/range
+  streamThresholdPoints: 5000 # threshold internal untuk mode respons besar
+
+storage:
+  dataDir: ./data     # root folder data historian
+  shardCount: 16      # jumlah shard write/read (tagId % shardCount)
+  partitionDurationMs: 24 * 60 * 60 * 1000 # durasi partisi file (1d)
+  timestampUnit: us   # us atau ns
+
+flush:
+  flushIntervalMs: 5       # interval flush queue ke disk
+  flushBytes: 256 * 1024   # flush jika buffer >= nilai ini
+  maxQueuePoints: 200000   # backpressure limit queue
+  backpressurePolicy: drop_new # drop_new | drop_oldest
+
+index:
+  indexBlockOnFlush: true     # tulis block index di tiap flush
+  enablePerTagSparseIndex: false # cadangan pengembangan
+  indexStridePerTag: 4096     # cadangan pengembangan
+
+retention:
+  enabled: false            # aktifkan cleanup partisi tua
+  maxAgeHours: 7 * 24       # umur maksimum partisi (7 days)
+  checkIntervalMs: 5 * 60 * 1000 # interval retention scan
+
+query:
+  maxParallel: 8            # goroutine query paralel maksimum
+
+fsync:
+  walPolicy: interval       # always | interval | off
+  walIntervalMs: 200        # dipakai saat walPolicy=interval
+  segmentPolicy: interval   # always | interval | off
+  segmentIntervalMs: 500    # dipakai saat segmentPolicy=interval

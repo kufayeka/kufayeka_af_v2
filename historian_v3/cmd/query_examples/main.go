@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	cfg, err := historian.LoadConfig("historian.config.json")
+	cfg, err := historian.LoadConfig("historian.config.yaml")
 	if err != nil {
 		panic(err)
 	}

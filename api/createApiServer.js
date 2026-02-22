@@ -58,6 +58,22 @@ function createApiServer(runtime, options = {}) {
   const assetStore = ensureAssetStorage(runtime, runtime.getGlobal("assetFramework", {}));
   const historianHttpBase = process.env.HISTORIAN_HTTP_BASE || "http://127.0.0.1:8080";
 
+  const resolveHistorianTargetById = (targetId) => {
+    const state = assetStore.getState();
+    const list = Array.isArray(state.historians) ? state.historians : [];
+    const found = list.find((h) => h && h.id === targetId);
+    if (found) return found;
+    return {
+      id: "default",
+      name: "Default Historian",
+      httpBaseUrl: historianHttpBase,
+      udpHost: "127.0.0.1",
+      udpPort: 9900,
+      timestampUnit: "us",
+      enabled: true
+    };
+  };
+
   async function historianByPath(kind, requestUrl) {
     const pathQuery = requestUrl.searchParams.get("path") || "";
     if (!pathQuery) {
@@ -76,6 +92,21 @@ function createApiServer(runtime, options = {}) {
     if (matches.length === 0) {
       return { status: 404, body: { error: "No matching attribute path", path: pathQuery, matches: [] } };
     }
+    const targetIds = matches
+      .map((m) => String(m.historianTargetId || "default"))
+      .filter((v, i, arr) => arr.indexOf(v) === i);
+    if (targetIds.length > 1) {
+      return {
+        status: 400,
+        body: {
+          error: "Path matched multiple historian targets; query one target/path per request",
+          targetIds,
+          matches
+        }
+      };
+    }
+    const target = resolveHistorianTargetById(targetIds[0] || "default");
+    const baseUrl = String(target.httpBaseUrl || historianHttpBase);
 
     const params = new URLSearchParams();
     params.set(
@@ -91,7 +122,7 @@ function createApiServer(runtime, options = {}) {
       if (value != null && value !== "") params.set(key, value);
     }
 
-    const upstreamUrl = `${historianHttpBase}/hist/${kind}?${params.toString()}`;
+    const upstreamUrl = `${baseUrl}/hist/${kind}?${params.toString()}`;
     const upstreamRes = await fetch(upstreamUrl);
     const upstreamJson = await upstreamRes.json();
     if (!upstreamRes.ok) {
@@ -117,7 +148,8 @@ function createApiServer(runtime, options = {}) {
         matches,
         rows,
         truncated: upstreamJson.truncated === true,
-        agg: upstreamJson.agg
+        agg: upstreamJson.agg,
+        historianTargetId: target.id || "default"
       }
     };
   }
@@ -130,11 +162,23 @@ function createApiServer(runtime, options = {}) {
         path: item.path,
         assetId: item.assetId,
         attributeName: item.attributeName,
-        tagId: computeTagID(item.assetId, item.attributeName)
+        tagId: computeTagID(item.assetId, item.attributeName),
+        historianTargetId: item.historianTargetId || "default"
       }));
   }
 
   async function historianDeleteByMatches(matches, requestUrl) {
+    const targetIds = matches
+      .map((m) => String(m.historianTargetId || "default"))
+      .filter((v, i, arr) => arr.indexOf(v) === i);
+    if (targetIds.length > 1) {
+      return {
+        status: 400,
+        body: { error: "Delete supports one historian target per request", targetIds, matches }
+      };
+    }
+    const target = resolveHistorianTargetById(targetIds[0] || "default");
+    const baseUrl = String(target.httpBaseUrl || historianHttpBase);
     const uniqueTagIds = matches
       .map((item) => item.tagId)
       .filter((v, i, arr) => arr.indexOf(v) === i);
@@ -146,7 +190,7 @@ function createApiServer(runtime, options = {}) {
     const to = requestUrl.searchParams.get("to");
     if (from) payload.from = from;
     if (to) payload.to = to;
-    const upstreamRes = await fetch(`${historianHttpBase}/hist/delete`, {
+    const upstreamRes = await fetch(`${baseUrl}/hist/delete`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -162,6 +206,7 @@ function createApiServer(runtime, options = {}) {
         message: "historian has been deleted",
         deletedRecords: upstreamJson.deletedRecords ?? 0,
         touchedSegments: upstreamJson.touchedSegments ?? 0,
+        historianTargetId: target.id || "default",
         matches
       }
     };
@@ -263,6 +308,47 @@ function createApiServer(runtime, options = {}) {
       return;
     }
 
+    if (method === "GET" && urlPath === "/api/historian/targets") {
+      const state = assetStore.getState();
+      const list = Array.isArray(state.historians) ? state.historians : [];
+      sendJson(req, res, 200, {
+        count: list.length,
+        targets: list,
+        bridgeStats: runtime.getGlobal("historianBridgeStats", {})
+      });
+      return;
+    }
+
+    if (method === "GET" && urlPath === "/api/historian/target-metrics") {
+      try {
+        const targetId = requestUrl.searchParams.get("targetId") || "default";
+        const target = resolveHistorianTargetById(targetId);
+        const baseUrl = String(target.httpBaseUrl || historianHttpBase);
+        const upstream = await fetch(`${baseUrl}/metrics`);
+        const payload = await upstream.json();
+        sendJson(req, res, upstream.ok ? 200 : upstream.status, payload);
+      } catch (error) {
+        sendJson(req, res, 502, { error: `Historian metrics upstream error: ${error.message}` });
+      }
+      return;
+    }
+
+    if (method === "GET" && urlPath === "/api/historian/target-logs") {
+      try {
+        const targetId = requestUrl.searchParams.get("targetId") || "default";
+        const kind = requestUrl.searchParams.get("kind") || "";
+        const limit = requestUrl.searchParams.get("limit") || "100";
+        const target = resolveHistorianTargetById(targetId);
+        const baseUrl = String(target.httpBaseUrl || historianHttpBase);
+        const upstream = await fetch(`${baseUrl}/logs?kind=${encodeURIComponent(kind)}&limit=${encodeURIComponent(limit)}`);
+        const payload = await upstream.json();
+        sendJson(req, res, upstream.ok ? 200 : upstream.status, payload);
+      } catch (error) {
+        sendJson(req, res, 502, { error: `Historian logs upstream error: ${error.message}` });
+      }
+      return;
+    }
+
     if (method === "DELETE" && urlPath === "/api/historian/delete-attribute") {
       try {
         const pathQuery = requestUrl.searchParams.get("path") || "";
@@ -360,6 +446,7 @@ function createApiServer(runtime, options = {}) {
           type: origin?.type,
           historianEnabled: origin?.historianEnabled === true,
           historianTimeSourcePath: origin?.historianTimeSourcePath || "",
+          historianTargetId: origin?.historianTargetId || "default",
         };
       });
       sendJson(req, res, 200, { path: pathQuery, count: matches.length, matches });

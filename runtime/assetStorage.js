@@ -21,6 +21,7 @@ function ensureAssetStorage(runtime, initialSection = {}) {
       timestampUnit: process.env.HISTORIAN_TIMESTAMP_UNIT || "us",
       flushIntervalMs: Number(process.env.HISTORIAN_FLUSH_INTERVAL_MS || 20),
       maxQueue: Number(process.env.HISTORIAN_MAX_QUEUE || 100000),
+      targets: runtime.getGlobal("assetFramework", initialSection)?.historians || [],
     });
   runtime.setGlobal("historianBridge", historianBridge);
 
@@ -37,9 +38,13 @@ function ensureAssetStorage(runtime, initialSection = {}) {
   store.subscribe((nextState, meta) => {
     runtime.setGlobal("assetFramework", nextState);
     runtime.setGlobal("assetFrameworkMeta", meta);
+    if (typeof historianBridge.updateTargets === "function") {
+      historianBridge.updateTargets(nextState.historians || []);
+    }
     if (meta?.change?.type === "attribute.set") {
       historianBridge.enqueueChanges(meta.change.changes || [], store);
     }
+    runtime.setGlobal("historianBridgeStats", historianBridge.stats());
   });
 
   runtime.setGlobal("assetStorage", store);
@@ -48,6 +53,9 @@ function ensureAssetStorage(runtime, initialSection = {}) {
     revision: store.getRevision(),
     updatedAt: store.getUpdatedAt(),
   });
+  if (typeof historianBridge.updateTargets === "function") {
+    historianBridge.updateTargets(store.getState().historians || []);
+  }
   runtime.setGlobal("historianBridgeStats", historianBridge.stats());
 
   return store;

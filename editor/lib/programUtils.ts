@@ -150,10 +150,31 @@ export function normalizeProgram(program: Program): Program {
               : (attribute as { defaultValue?: unknown }).defaultValue,
           unit: String(attribute.unit ?? ""),
           historianEnabled: (attribute as { historianEnabled?: unknown }).historianEnabled === true,
-          historianTimeSourcePath: String((attribute as { historianTimeSourcePath?: unknown }).historianTimeSourcePath ?? "")
+          historianTimeSourcePath: String((attribute as { historianTimeSourcePath?: unknown }).historianTimeSourcePath ?? ""),
+          historianTargetId: String((attribute as { historianTargetId?: unknown }).historianTargetId ?? "default")
         };
       }).filter((attribute) => attribute.name.length > 0)
-    }))
+    })),
+    historians: [
+      {
+        id: "default",
+        name: "Default Historian",
+        udpHost: "127.0.0.1",
+        udpPort: 9900,
+        httpBaseUrl: "http://127.0.0.1:8080",
+        timestampUnit: "us" as "us" | "ns",
+        enabled: true
+      },
+      ...((program.assets as { historians?: Array<Record<string, unknown>> } | undefined)?.historians || []).map((h) => ({
+        id: String(h.id || ""),
+        name: String(h.name || h.id || ""),
+        udpHost: String(h.udpHost || "127.0.0.1"),
+        udpPort: Math.max(1, Number(h.udpPort) || 9900),
+        httpBaseUrl: String(h.httpBaseUrl || "http://127.0.0.1:8080"),
+        timestampUnit: (String(h.timestampUnit || "us") === "ns" ? "ns" : "us") as "us" | "ns",
+        enabled: h.enabled !== false
+      })).filter((h) => h.id.length > 0)
+    ].filter((h, i, arr) => arr.findIndex((x) => x.id === h.id) === i)
   };
 
   return {

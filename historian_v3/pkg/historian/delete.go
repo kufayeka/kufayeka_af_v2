@@ -131,6 +131,14 @@ func rewriteSegmentDelete(segPath, idxPath string, tagSet map[uint32]struct{}, f
 		return 0, false, nil
 	}
 
+	if len(kept) == 0 {
+		_ = os.Remove(segPath)
+		_ = os.Remove(idxPath)
+		trimEmptyDirs(filepath.Dir(segPath), filepath.Dir(filepath.Dir(filepath.Dir(segPath))))
+		trimEmptyDirs(filepath.Dir(idxPath), filepath.Dir(filepath.Dir(filepath.Dir(idxPath))))
+		return deleted, true, nil
+	}
+
 	tmpSeg := segPath + ".tmp"
 	if err := os.WriteFile(tmpSeg, kept, 0o644); err != nil {
 		return 0, false, err
@@ -162,4 +170,27 @@ func rewriteSegmentDelete(segPath, idxPath string, tagSet map[uint32]struct{}, f
 		return 0, false, err
 	}
 	return deleted, true, nil
+}
+
+func trimEmptyDirs(startDir, stopDir string) {
+	cur := startDir
+	stop := filepath.Clean(stopDir)
+	for {
+		cleanCur := filepath.Clean(cur)
+		if cleanCur == stop {
+			return
+		}
+		entries, err := os.ReadDir(cleanCur)
+		if err != nil || len(entries) > 0 {
+			return
+		}
+		if err := os.Remove(cleanCur); err != nil {
+			return
+		}
+		next := filepath.Dir(cleanCur)
+		if next == cleanCur {
+			return
+		}
+		cur = next
+	}
 }

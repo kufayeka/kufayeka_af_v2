@@ -167,35 +167,85 @@ function encodeBatch(points) {
 
 function createHistorianBridge(options = {}) {
   const enabled = options.enabled !== false;
-  const host = String(options.host || "127.0.0.1");
-  const port = Number(options.port || 9900);
-  const unit = options.timestampUnit === "ns" ? "ns" : "us";
+  const fallbackHost = String(options.host || "127.0.0.1");
+  const fallbackPort = Number(options.port || 9900);
+  const fallbackUnit = options.timestampUnit === "ns" ? "ns" : "us";
   const flushIntervalMs = Math.max(5, Number(options.flushIntervalMs || 20));
   const maxQueue = Math.max(1000, Number(options.maxQueue || 100000));
-  const socket = dgram.createSocket("udp4");
-  const queue = [];
-  let sentPoints = 0;
-  let droppedPoints = 0;
-  let sendErrors = 0;
-  let invalidTimestampFallbacks = 0;
+  const targets = new Map();
+
+  const ensureTarget = (cfg) => {
+    const id = String(cfg.id || "default");
+    if (targets.has(id)) return targets.get(id);
+    const target = {
+      id,
+      name: String(cfg.name || id),
+      host: String(cfg.udpHost || fallbackHost),
+      port: Number(cfg.udpPort || fallbackPort),
+      unit: cfg.timestampUnit === "ns" ? "ns" : fallbackUnit,
+      enabled: cfg.enabled !== false,
+      socket: dgram.createSocket("udp4"),
+      queue: [],
+      sentPoints: 0,
+      droppedPoints: 0,
+      sendErrors: 0,
+      invalidTimestampFallbacks: 0
+    };
+    targets.set(id, target);
+    return target;
+  };
+
+  const applyTargets = (cfgTargets = []) => {
+    const normalized = Array.isArray(cfgTargets) ? cfgTargets : [];
+    const nextIds = new Set(["default"]);
+    ensureTarget({
+      id: "default",
+      name: "Default Historian",
+      udpHost: fallbackHost,
+      udpPort: fallbackPort,
+      timestampUnit: fallbackUnit,
+      enabled: true
+    });
+    for (const t of normalized) {
+      if (!t || typeof t !== "object") continue;
+      const id = String(t.id || "");
+      if (!id) continue;
+      nextIds.add(id);
+      const current = ensureTarget(t);
+      current.name = String(t.name || id);
+      current.host = String(t.udpHost || fallbackHost);
+      current.port = Number(t.udpPort || fallbackPort);
+      current.unit = t.timestampUnit === "ns" ? "ns" : "us";
+      current.enabled = t.enabled !== false;
+    }
+    for (const [id, target] of targets.entries()) {
+      if (nextIds.has(id)) continue;
+      target.socket.close();
+      targets.delete(id);
+    }
+  };
+  applyTargets(options.targets || []);
 
   const flush = () => {
-    if (!enabled || queue.length === 0) return;
-    const points = queue.splice(0, queue.length);
-    const packet = encodeBatch(points);
-    if (!packet) return;
-    socket.send(packet, port, host, (error) => {
-      if (error) {
-        sendErrors += points.length;
-        return;
-      }
-      sentPoints += points.length;
-    });
+    if (!enabled) return;
+    for (const target of targets.values()) {
+      if (!target.enabled || target.queue.length === 0) continue;
+      const points = target.queue.splice(0, target.queue.length);
+      const packet = encodeBatch(points);
+      if (!packet) continue;
+      target.socket.send(packet, target.port, target.host, (error) => {
+        if (error) {
+          target.sendErrors += points.length;
+          return;
+        }
+        target.sentPoints += points.length;
+      });
+    }
   };
   const timer = setInterval(flush, flushIntervalMs);
   timer.unref();
 
-  const resolveTimeSource = (change, store) => {
+  const resolveTimeSource = (change, store, unit) => {
     const fallbackToNow = () => {
       const fromChangeTs = parseTimestamp(change.ts, unit);
       if (fromChangeTs != null && isPlausibleEpoch(fromChangeTs, unit)) {
@@ -209,50 +259,71 @@ function createHistorianBridge(options = {}) {
     if (matches.length === 0) return fallbackToNow();
     const ts = parseTimestamp(matches[0].value, unit);
     if (ts == null || !isPlausibleEpoch(ts, unit)) {
-      invalidTimestampFallbacks += 1;
       return fallbackToNow();
     }
     return ts;
   };
 
   return {
+    updateTargets(nextTargets = []) {
+      applyTargets(nextTargets);
+    },
     enqueueChanges(changes = [], store) {
       if (!enabled || !store) return;
       for (const change of changes) {
         if (!change || change.kind !== "attribute") continue;
         if (change.historianEnabled !== true) continue;
         if (!change.assetId || !change.attributeName) continue;
+        const targetId = String(change.historianTargetId || "default");
+        const target = targets.get(targetId) || targets.get("default");
+        if (!target || !target.enabled) continue;
         const tagId = computeTagID(change.assetId, change.attributeName);
         const typed = normalizeTypeValue(change.type, change.value);
-        queue.push({
+        const resolvedTs = resolveTimeSource(change, store, target.unit);
+        if (!isPlausibleEpoch(resolvedTs, target.unit)) {
+          target.invalidTimestampFallbacks += 1;
+        }
+        target.queue.push({
           tagId,
-          tsEpoch: resolveTimeSource(change, store),
+          tsEpoch: resolvedTs,
           typeCode: typed.typeCode,
           value: typed.value,
         });
       }
-      if (queue.length > maxQueue) {
-        const overflow = queue.length - maxQueue;
-        queue.splice(0, overflow);
-        droppedPoints += overflow;
+      for (const target of targets.values()) {
+        if (target.queue.length > maxQueue) {
+          const overflow = target.queue.length - maxQueue;
+          target.queue.splice(0, overflow);
+          target.droppedPoints += overflow;
+        }
       }
     },
     stats() {
+      const byTarget = {};
+      for (const target of targets.values()) {
+        byTarget[target.id] = {
+          name: target.name,
+          enabled: target.enabled,
+          host: target.host,
+          port: target.port,
+          timestampUnit: target.unit,
+          sentPoints: target.sentPoints,
+          droppedPoints: target.droppedPoints,
+          sendErrors: target.sendErrors,
+          invalidTimestampFallbacks: target.invalidTimestampFallbacks,
+          queue: target.queue.length
+        };
+      }
       return {
         enabled,
-        host,
-        port,
-        timestampUnit: unit,
-        sentPoints,
-        droppedPoints,
-        sendErrors,
-        invalidTimestampFallbacks,
-        queue: queue.length,
+        targets: byTarget,
       };
     },
     close() {
       clearInterval(timer);
-      socket.close();
+      for (const target of targets.values()) {
+        target.socket.close();
+      }
     },
   };
 }

@@ -5,6 +5,10 @@ import {
   Box,
   Button,
   Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   FormControlLabel,
   InputLabel,
@@ -28,7 +32,13 @@ import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
 import { ArrowRight, Building2, RefreshCcw } from "lucide-react";
 import { normalizeProgram } from "../../lib/programUtils";
-import type { AssetAttributeType, AssetDefinition, AssetFrameworkDefinition, Program } from "../../types/program";
+import type {
+  AssetAttributeType,
+  AssetDefinition,
+  AssetFrameworkDefinition,
+  HistorianTargetDefinition,
+  Program
+} from "../../types/program";
 
 const ATTRIBUTE_TYPES: AssetAttributeType[] = [
   "int8",
@@ -44,6 +54,16 @@ const ATTRIBUTE_TYPES: AssetAttributeType[] = [
   "array",
   "object"
 ];
+
+const DEFAULT_HISTORIAN_TARGET: HistorianTargetDefinition = {
+  id: "default",
+  name: "Default Historian",
+  udpHost: "127.0.0.1",
+  udpPort: 9900,
+  httpBaseUrl: "http://127.0.0.1:8080",
+  timestampUnit: "us",
+  enabled: true
+};
 
 interface EffectiveAttributeRow {
   name: string;
@@ -62,6 +82,17 @@ interface AssetManagerProps {
       | AssetFrameworkDefinition
       | ((assets: AssetFrameworkDefinition) => AssetFrameworkDefinition)
   ) => void;
+}
+
+type MonitorLogsKind = "system" | "ingest" | "";
+
+interface MonitorLogEntry {
+  ts?: string;
+  time?: string;
+  level?: string;
+  msg?: string;
+  message?: string;
+  [key: string]: unknown;
 }
 
 function makeId(prefix: string): string {
@@ -205,6 +236,14 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     kind: "success",
     message: ""
   });
+  const [monitorOpen, setMonitorOpen] = useState(false);
+  const [monitorTarget, setMonitorTarget] = useState<HistorianTargetDefinition | null>(null);
+  const [monitorLoading, setMonitorLoading] = useState(false);
+  const [monitorMetrics, setMonitorMetrics] = useState<Record<string, unknown> | null>(null);
+  const [monitorLogs, setMonitorLogs] = useState<MonitorLogEntry[]>([]);
+  const [monitorLogsKind, setMonitorLogsKind] = useState<MonitorLogsKind>("system");
+  const [monitorLogsLimit, setMonitorLogsLimit] = useState(50);
+  const [monitorError, setMonitorError] = useState("");
   const fieldTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const runtimeApiBase = process.env.NEXT_PUBLIC_RUNTIME_API_BASE || "http://127.0.0.1:4000";
 
@@ -216,6 +255,11 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const selectedAsset = selectedAssetId ? assetById.get(selectedAssetId) : undefined;
   const selectedTemplate = assets.attributeTemplates.find((template) => template.id === selectedTemplateId);
   const selectedAssetPath = selectedAsset ? getAssetPath(selectedAsset, assetById) : "";
+  const historianTargets = useMemo<HistorianTargetDefinition[]>(() => {
+    const list = assets.historians || [];
+    if (list.some((x) => x.id === "default")) return list;
+    return [DEFAULT_HISTORIAN_TARGET, ...list];
+  }, [assets.historians]);
 
   const updateAssets = (nextAssets: AssetDefinition[]) => {
     onChange((prev) => ({ ...prev, assets: nextAssets }));
@@ -223,6 +267,10 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
 
   const updateTemplates = (nextTemplates: AssetFrameworkDefinition["attributeTemplates"]) => {
     onChange((prev) => ({ ...prev, attributeTemplates: nextTemplates }));
+  };
+
+  const updateHistorians = (nextHistorians: HistorianTargetDefinition[]) => {
+    onChange((prev) => ({ ...prev, historians: nextHistorians }));
   };
 
   const updateAssetWith = (assetId: string, updater: (asset: AssetDefinition) => AssetDefinition) => {
@@ -461,6 +509,70 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     }
   };
 
+  const toLogEntries = (payload: Record<string, unknown>): MonitorLogEntry[] => {
+    const items = payload.items;
+    if (Array.isArray(items)) {
+      return items.filter((item) => item && typeof item === "object") as MonitorLogEntry[];
+    }
+    const direct = payload.logs;
+    if (Array.isArray(direct)) {
+      return direct.filter((item) => item && typeof item === "object") as MonitorLogEntry[];
+    }
+    if (direct && typeof direct === "object") {
+      const byKind = direct as Record<string, unknown>;
+      const merged: MonitorLogEntry[] = [];
+      for (const value of Object.values(byKind)) {
+        if (!Array.isArray(value)) continue;
+        merged.push(...(value.filter((item) => item && typeof item === "object") as MonitorLogEntry[]));
+      }
+      return merged;
+    }
+    return [];
+  };
+
+  const loadMonitorData = async (
+    target: HistorianTargetDefinition,
+    kind: MonitorLogsKind,
+    limit: number
+  ) => {
+    setMonitorLoading(true);
+    setMonitorError("");
+    try {
+      const [metricsRes, logsRes] = await Promise.all([
+        fetch(`${runtimeApiBase}/api/historian/target-metrics?targetId=${encodeURIComponent(target.id)}`),
+        fetch(
+          `${runtimeApiBase}/api/historian/target-logs?targetId=${encodeURIComponent(target.id)}&kind=${encodeURIComponent(
+            kind
+          )}&limit=${encodeURIComponent(String(limit))}`
+        )
+      ]);
+      const metricsJson = await readJsonLike(metricsRes);
+      const logsJson = await readJsonLike(logsRes);
+      if (!metricsRes.ok) {
+        setMonitorError(String(metricsJson.error || `Metrics request failed (${metricsRes.status})`));
+      }
+      if (!logsRes.ok) {
+        setMonitorError((prev) =>
+          prev
+            ? `${prev}; ${String(logsJson.error || `Logs request failed (${logsRes.status})`)}`
+            : String(logsJson.error || `Logs request failed (${logsRes.status})`)
+        );
+      }
+      setMonitorMetrics(metricsJson);
+      setMonitorLogs(toLogEntries(logsJson));
+    } catch (error) {
+      setMonitorError(`Monitor request failed: ${(error as Error).message}`);
+    } finally {
+      setMonitorLoading(false);
+    }
+  };
+
+  const openMonitor = async (target: HistorianTargetDefinition) => {
+    setMonitorTarget(target);
+    setMonitorOpen(true);
+    await loadMonitorData(target, monitorLogsKind, monitorLogsLimit);
+  };
+
   const deleteHistorianByPath = async (path: string) => {
     try {
       const res = await fetch(`${runtimeApiBase}/api/historian/delete-attribute?path=${encodeURIComponent(path)}`, {
@@ -522,6 +634,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         <Tabs value={mainTab} onChange={(_e, value: number) => setMainTab(value)}>
           <Tab label="Assets" />
           <Tab label="Attribute Templates" />
+          <Tab label="Historian Manager" />
         </Tabs>
       </Paper>
 
@@ -831,6 +944,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Unit</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 140 }}>Historian</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 260 }}>Time Source</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 180 }}>Historian Target</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Action</TableCell>
                       </TableRow>
                     </TableHead>
@@ -998,6 +1112,28 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                             />
                           </TableCell>
                           <TableCell>
+                            <FormControl size="small" sx={{ minWidth: 170 }}>
+                              <Select
+                                value={attribute.historianTargetId || "default"}
+                                onChange={(e: SelectChangeEvent<string>) => {
+                                  const historianTargetId = e.target.value;
+                                  updateTemplateWith(selectedTemplate.id, (template) => ({
+                                    ...template,
+                                    attributes: template.attributes.map((item, itemIdx) =>
+                                      itemIdx === idx ? { ...item, historianTargetId } : item
+                                    )
+                                  }));
+                                }}
+                              >
+                                {historianTargets.map((target) => (
+                                  <MenuItem key={target.id} value={target.id}>
+                                    {target.name || target.id}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </TableCell>
+                          <TableCell>
                             <Button
                               size="small"
                               variant="outlined"
@@ -1055,7 +1191,8 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           default: 0,
                           unit: "",
                           historianEnabled: false,
-                          historianTimeSourcePath: ""
+                          historianTimeSourcePath: "",
+                          historianTargetId: "default"
                         }
                       ]
                     }));
@@ -1068,7 +1205,315 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
           </Paper>
         </Box>
       )}
+
+      {mainTab === 2 && (
+        <Paper sx={{ p: 1.25, minHeight: "74vh", overflow: "auto" }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Historian Targets
+            </Typography>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => {
+                const next: HistorianTargetDefinition = {
+                  id: `hist_${Date.now()}`,
+                  name: `Historian ${historianTargets.length + 1}`,
+                  udpHost: "127.0.0.1",
+                  udpPort: 9900,
+                  httpBaseUrl: "http://127.0.0.1:8080",
+                  timestampUnit: "us",
+                  enabled: true
+                };
+                updateHistorians([...historianTargets, next]);
+              }}
+            >
+              Add Historian
+            </Button>
+          </Box>
+          <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1 }}>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 140 }}>ID</TableCell>
+                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 160 }}>Name</TableCell>
+                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 140 }}>UDP Host</TableCell>
+                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 110 }}>UDP Port</TableCell>
+                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 220 }}>HTTP Base URL</TableCell>
+                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 110 }}>TS Unit</TableCell>
+                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 110 }}>Enabled</TableCell>
+                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 260 }}>Action</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {historianTargets.map((target, idx) => (
+                  <TableRow key={`hist-target:${target.id}`}>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        value={target.id}
+                        disabled={target.id === "default"}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          updateHistorians(
+                            historianTargets.map((item, itemIdx) =>
+                              itemIdx === idx ? { ...item, id } : item
+                            )
+                          );
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        value={target.name}
+                        onChange={(e) => {
+                          const name = e.target.value;
+                          updateHistorians(
+                            historianTargets.map((item, itemIdx) =>
+                              itemIdx === idx ? { ...item, name } : item
+                            )
+                          );
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        value={target.udpHost}
+                        onChange={(e) => {
+                          const udpHost = e.target.value;
+                          updateHistorians(
+                            historianTargets.map((item, itemIdx) =>
+                              itemIdx === idx ? { ...item, udpHost } : item
+                            )
+                          );
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={target.udpPort}
+                        onChange={(e) => {
+                          const udpPort = Number(e.target.value) || 9900;
+                          updateHistorians(
+                            historianTargets.map((item, itemIdx) =>
+                              itemIdx === idx ? { ...item, udpPort } : item
+                            )
+                          );
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        value={target.httpBaseUrl}
+                        onChange={(e) => {
+                          const httpBaseUrl = e.target.value;
+                          updateHistorians(
+                            historianTargets.map((item, itemIdx) =>
+                              itemIdx === idx ? { ...item, httpBaseUrl } : item
+                            )
+                          );
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <FormControl size="small" sx={{ minWidth: 100 }}>
+                        <Select
+                          value={target.timestampUnit}
+                          onChange={(e: SelectChangeEvent<"us" | "ns">) => {
+                            const timestampUnit = e.target.value as "us" | "ns";
+                            updateHistorians(
+                              historianTargets.map((item, itemIdx) =>
+                                itemIdx === idx ? { ...item, timestampUnit } : item
+                              )
+                            );
+                          }}
+                        >
+                          <MenuItem value="us">us</MenuItem>
+                          <MenuItem value="ns">ns</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </TableCell>
+                    <TableCell>
+                      <Checkbox
+                        checked={target.enabled !== false}
+                        onChange={(_e, checked) => {
+                          updateHistorians(
+                            historianTargets.map((item, itemIdx) =>
+                              itemIdx === idx ? { ...item, enabled: checked } : item
+                            )
+                          );
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => {
+                          void openMonitor(target);
+                        }}
+                      >
+                        Monitor
+                      </Button>
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() => {
+                          if (target.id === "default") {
+                            showNotice("error", "default historian cannot be removed");
+                            return;
+                          }
+                          if (!window.confirm(`Remove historian target "${target.name}"?`)) return;
+                          updateHistorians(historianTargets.filter((_item, itemIdx) => itemIdx !== idx));
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
     </Box>
+    <Dialog open={monitorOpen} onClose={() => setMonitorOpen(false)} maxWidth="lg" fullWidth>
+      <DialogTitle>
+        Historian Monitor
+        {monitorTarget ? ` - ${monitorTarget.name || monitorTarget.id}` : ""}
+      </DialogTitle>
+      <DialogContent>
+        <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap", mb: 1.25 }}>
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel>Log Type</InputLabel>
+            <Select
+              label="Log Type"
+              value={monitorLogsKind}
+              onChange={(e: SelectChangeEvent<MonitorLogsKind>) =>
+                setMonitorLogsKind(e.target.value as MonitorLogsKind)
+              }
+            >
+              <MenuItem value="">all</MenuItem>
+              <MenuItem value="system">system</MenuItem>
+              <MenuItem value="ingest">ingest</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            size="small"
+            type="number"
+            label="Log Limit"
+            value={monitorLogsLimit}
+            onChange={(e) => {
+              const next = Number.parseInt(e.target.value, 10);
+              if (!Number.isFinite(next)) {
+                setMonitorLogsLimit(50);
+                return;
+              }
+              setMonitorLogsLimit(Math.max(1, Math.min(5000, next)));
+            }}
+            sx={{ width: 130 }}
+          />
+          <Button
+            variant="contained"
+            size="small"
+            disabled={monitorLoading || !monitorTarget}
+            onClick={() => {
+              if (!monitorTarget) return;
+              void loadMonitorData(monitorTarget, monitorLogsKind, monitorLogsLimit);
+            }}
+          >
+            {monitorLoading ? "Loading..." : "Refresh"}
+          </Button>
+        </Box>
+
+        {monitorError ? (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {monitorError}
+          </Alert>
+        ) : null}
+
+        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.25 }}>
+          <Paper sx={{ p: 1, border: "1px solid #dbe3ef" }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+              Metrics
+            </Typography>
+            {!monitorMetrics ? (
+              <Typography variant="body2" color="text.secondary">
+                No metrics loaded.
+              </Typography>
+            ) : (
+              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.75 }}>
+                {Object.entries(monitorMetrics).map(([section, value]) => (
+                  <Paper key={`metric-section:${section}`} sx={{ p: 0.75, border: "1px solid #edf1f7" }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                      {section}
+                    </Typography>
+                    {value && typeof value === "object" ? (
+                      <Box sx={{ mt: 0.5 }}>
+                        {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
+                          <Typography key={`metric-${section}-${k}`} variant="caption" sx={{ display: "block" }}>
+                            {k}: {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                          </Typography>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" sx={{ display: "block", mt: 0.5 }}>
+                        {String(value)}
+                      </Typography>
+                    )}
+                  </Paper>
+                ))}
+              </Box>
+            )}
+          </Paper>
+
+          <Paper sx={{ p: 1, border: "1px solid #dbe3ef" }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+              Logs ({monitorLogs.length})
+            </Typography>
+            <Box sx={{ maxHeight: 420, overflow: "auto", border: "1px solid #edf1f7", borderRadius: 1 }}>
+              {monitorLogs.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                  No logs found.
+                </Typography>
+              ) : (
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ minWidth: 160 }}>time</TableCell>
+                      <TableCell sx={{ minWidth: 80 }}>level</TableCell>
+                      <TableCell>message</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {monitorLogs.map((log, idx) => (
+                      <TableRow key={`monitor-log:${idx}`}>
+                        <TableCell sx={{ fontFamily: "monospace" }}>
+                          {String(log.ts || log.time || "-")}
+                        </TableCell>
+                        <TableCell>{String(log.level || "-")}</TableCell>
+                        <TableCell sx={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+                          {String(log.msg || log.message || JSON.stringify(log))}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Box>
+          </Paper>
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setMonitorOpen(false)}>Close</Button>
+      </DialogActions>
+    </Dialog>
     <Snackbar
       open={notice.open}
       autoHideDuration={2400}

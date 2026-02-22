@@ -24,6 +24,7 @@ function normalizeAssetSection(input = {}) {
   const attributeTemplates = Array.isArray(input.attributeTemplates)
     ? input.attributeTemplates
     : [];
+  const historians = Array.isArray(input.historians) ? input.historians : [];
 
   return {
     assets: assets.map((asset) => ({
@@ -48,6 +49,7 @@ function normalizeAssetSection(input = {}) {
             unit: attribute.unit ?? "",
             historianEnabled: attribute.historianEnabled === true,
             historianTimeSourcePath: String(attribute.historianTimeSourcePath ?? ""),
+            historianTargetId: String(attribute.historianTargetId ?? "default"),
             dashboardVisible: attribute.dashboardVisible === true,
             dashboardEditable: attribute.dashboardEditable !== false,
             nullable: attribute.nullable === true,
@@ -65,6 +67,26 @@ function normalizeAssetSection(input = {}) {
           }))
         : [],
     })),
+    historians: [
+      {
+        id: "default",
+        name: "Default Historian",
+        udpHost: "127.0.0.1",
+        udpPort: 9900,
+        httpBaseUrl: "http://127.0.0.1:8080",
+        timestampUnit: "us",
+        enabled: true
+      },
+      ...historians.map((h) => ({
+        id: String(h.id ?? ""),
+        name: String(h.name ?? h.id ?? ""),
+        udpHost: String(h.udpHost ?? "127.0.0.1"),
+        udpPort: Math.max(1, Number(h.udpPort) || 9900),
+        httpBaseUrl: String(h.httpBaseUrl ?? "http://127.0.0.1:8080"),
+        timestampUnit: String(h.timestampUnit ?? "us") === "ns" ? "ns" : "us",
+        enabled: h.enabled !== false,
+      })).filter((h) => h.id.length > 0)
+    ].filter((h, i, arr) => arr.findIndex((x) => x.id === h.id) === i),
   };
 }
 
@@ -145,6 +167,7 @@ function createAssetFrameworkStore(initialSection = {}) {
             unit: attribute.unit ?? "",
             historianEnabled: attribute.historianEnabled === true,
             historianTimeSourcePath: String(attribute.historianTimeSourcePath ?? ""),
+            historianTargetId: String(attribute.historianTargetId ?? "default"),
           });
         }
       }
@@ -215,6 +238,7 @@ function createAssetFrameworkStore(initialSection = {}) {
           ts: attribute.ts,
           historianEnabled: attribute.historianEnabled === true,
           historianTimeSourcePath: attribute.historianTimeSourcePath || "",
+          historianTargetId: attribute.historianTargetId || "default",
           source: isOverride ? "override" : "template",
         };
       });
@@ -274,6 +298,7 @@ function createAssetFrameworkStore(initialSection = {}) {
           unit: attribute.unit || "",
           historianEnabled: attribute.historianEnabled === true,
           historianTimeSourcePath: attribute.historianTimeSourcePath || "",
+          historianTargetId: attribute.historianTargetId || "default",
         });
       }
     }

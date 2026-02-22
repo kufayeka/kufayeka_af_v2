@@ -72,7 +72,12 @@ go run ./cmd/query_examples
 - `rotateCount`
 - `syncCount`, `syncErrors`
 
-## Konfigurasi (`historian.config.json`)
+## Konfigurasi (`historian.config.yaml`)
+Catatan:
+- File aktif yang dibaca server adalah `historian.config.yaml`.
+- YAML mendukung komentar.
+- Field numerik/durasi bisa ditulis sebagai ekspresi integer dengan operator `+`, `-`, `*` (contoh: `24 * 60 * 60 * 1000`).
+- Konfigurasi cukup 1 file: `historian.config.yaml` (sudah berisi komentar panduan).
 
 ### `udp`
 - `host`: bind UDP.
@@ -135,4 +140,3 @@ Saran baseline industri:
 - Flush writer.
 - Flush last-value async queue.
 - Close WAL.
-
