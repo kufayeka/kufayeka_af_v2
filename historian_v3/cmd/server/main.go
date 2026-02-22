@@ -47,6 +47,7 @@ func main() {
 	writer.Start()
 	historian.StartRetentionLoop(cfg)
 	query := historian.NewQueryEngine(cfg)
+	defer query.Close()
 	activity := historian.NewActivityLogger(100)
 	server := historian.NewServer(cfg, writer, query, lastStore, wal, activity)
 	activity.AddSystem("info", "historian starting", map[string]any{

@@ -4,44 +4,86 @@
 # - Semua field numerik boleh memakai ekspresi integer: +, -, *
 # - Contoh: 24 * 60 * 60 * 1000
 # - Timestamp unit: us (microseconds) atau ns (nanoseconds)
+# - Rekomendasi tuning:
+#   * Utamakan ubah 1-2 parameter lalu observasi metrics 10-30 menit.
+#   * Naikkan throughput: flushBytes, scanChunkBytes, maxParallel.
+#   * Naikkan durability: walPolicy/segmentPolicy -> always atau interval lebih kecil.
+#   * Naikkan stabilitas RAM: scanChunkBytes jangan terlalu besar.
 
 udp:
-  host: 0.0.0.0       # bind host UDP ingest
-  port: 9900          # port UDP ingest
+  host: 0.0.0.0       # bind host UDP ingest. pakai 0.0.0.0 untuk listen semua NIC.
+  port: 9900          # port UDP ingest (1..65535). ganti jika bentrok service lain.
 
 http:
-  host: 0.0.0.0       # bind host HTTP API
-  port: 8080          # port HTTP API
-  maxPoints: 100000   # batas maksimal point untuk raw/range
-  streamThresholdPoints: 5000 # threshold internal untuk mode respons besar
+  host: 0.0.0.0       # bind host HTTP API. gunakan 127.0.0.1 jika hanya local.
+  port: 8080          # port HTTP API (1..65535).
+  maxPoints: 100000   # hard cap row hasil query. semakin besar -> RAM/latensi bisa naik.
+                     # range umum: 10_000..1_000_000 (default aman: 100_000).
+  streamThresholdPoints: 5000 # threshold internal respons besar (kompatibilitas).
+                              # range umum: 1_000..20_000.
 
 storage:
-  dataDir: ./data     # root folder data historian
-  shardCount: 16      # jumlah shard write/read (tagId % shardCount)
-  partitionDurationMs: 24 * 60 * 60 * 1000 # durasi partisi file (1d)
-  timestampUnit: us   # us atau ns
+  dataDir: ./data     # root folder data historian.
+  shardCount: 16      # shard berdasarkan tagId % shardCount.
+                      # efek: lebih tinggi -> paralelisme naik, file descriptor & small files juga naik.
+                      # range umum: 8..64 (16-32 biasanya ideal).
+  partitionDurationMs: 24 * 60 * 60 * 1000 # durasi partisi per file.
+                                           # lebih pendek -> query pendek cepat, tapi jumlah file naik.
+                                           # lebih panjang -> file lebih besar, query panjang bisa lebih efisien.
+                                           # range umum: 1h..7d.
+  timestampUnit: us   # us|ns. ns lebih presisi, ukuran timestamp sama (int64), beban parsing setara.
 
 flush:
-  flushIntervalMs: 100       # interval flush queue ke disk
-  flushBytes: 256 * 1024   # flush jika buffer >= nilai ini
-  maxQueuePoints: 200000   # backpressure limit queue
-  backpressurePolicy: drop_new # drop_new | drop_oldest
+  flushIntervalMs: 100       # interval scheduler flush queue -> segment.
+                            # lebih kecil: latency write turun, syscall/fsync naik.
+                            # lebih besar: throughput naik, risiko data di queue saat crash naik.
+                            # range umum: 5..200 ms.
+  flushBytes: 256 * 1024   # trigger flush jika queue bytes >= ini.
+                          # lebih besar: throughput naik, latency data muncul di query bisa naik.
+                          # range umum: 256KB..4MB (mulai dari 512KB/1MB untuk high throughput).
+  maxQueuePoints: 200000   # batas queue point per key (partition+shard) untuk backpressure.
+                           # terlalu kecil -> drop saat spike; terlalu besar -> RAM naik.
+                           # range umum: 50_000..1_000_000.
+  backpressurePolicy: drop_new # drop_new|drop_oldest.
+                               # drop_new: data lama dipertahankan, data baru bisa hilang saat overload.
+                               # drop_oldest: data terbaru diprioritaskan, histori lama di queue bisa tergeser.
 
 index:
-  indexBlockOnFlush: true     # tulis block index di tiap flush
-  enablePerTagSparseIndex: false # cadangan pengembangan
-  indexStridePerTag: 4096     # cadangan pengembangan
+  indexBlockOnFlush: true     # wajib true untuk pruning query by time range.
+  enablePerTagSparseIndex: false # belum dipakai aktif (reserved).
+  indexStridePerTag: 4096     # reserved. abaikan untuk sekarang.
 
 retention:
-  enabled: false            # aktifkan cleanup partisi tua
-  maxAgeHours: 7 * 24       # umur maksimum partisi (7 days)
-  checkIntervalMs: 5 * 60 * 1000 # interval retention scan
+  enabled: false            # true = auto hapus partisi lama.
+  maxAgeHours: 7 * 24       # umur maksimum data. 7*24=7 hari.
+                           # untuk 90 hari: 90*24.
+  checkIntervalMs: 5 * 60 * 1000 # interval job retention.
+                                 # range umum: 1m..1h (5m-15m biasanya cukup).
 
 query:
-  maxParallel: 8            # goroutine query paralel maksimum
+  maxParallel: 8            # goroutine query paralel maksimum.
+                           # terlalu besar bisa contention CPU/disk.
+                           # saran awal: jumlah core fisik atau core-1.
+  scanChunkBytes: 512 * 1024 # chunk baca per scan range.
+                             # lebih kecil: RAM stabil, syscall lebih banyak.
+                             # lebih besar: throughput baca naik, peak RAM naik.
+                             # range umum: 128KB..2MB (default aman: 512KB).
+  fdCacheEnabled: true      # cache file descriptor seg/index (reduce open/close syscall).
+  fdCacheMaxOpen: 256       # batas FD cache. terlalu besar bisa dekati OS FD limit.
+                            # range umum: 64..1024 (sesuaikan limit OS + jumlah partisi aktif).
+  fdCacheIdleMs: 30 * 1000  # tutup FD idle setelah durasi ini.
+                            # lebih kecil: FD hemat tapi reopen lebih sering.
+                            # lebih besar: query hangat lebih cepat tapi FD lebih lama terbuka.
+                            # range umum: 10s..120s.
 
 fsync:
-  walPolicy: interval       # always | interval | off
-  walIntervalMs: 200        # dipakai saat walPolicy=interval
-  segmentPolicy: interval   # always | interval | off
-  segmentIntervalMs: 500    # dipakai saat segmentPolicy=interval
+  walPolicy: interval       # always|interval|off.
+                            # always: durability tertinggi, throughput turun.
+                            # interval: balance durability/performance (umum produksi).
+                            # off: throughput tinggi, risiko kehilangan data saat crash/power loss.
+  walIntervalMs: 200        # aktif saat walPolicy=interval.
+                            # lebih kecil: lebih aman, sync lebih sering.
+                            # range umum: 100..1000 ms.
+  segmentPolicy: interval   # always|interval|off untuk segment/index file.
+  segmentIntervalMs: 500    # aktif saat segmentPolicy=interval.
+                            # range umum: 300..2000 ms.

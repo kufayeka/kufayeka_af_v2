@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -21,10 +22,24 @@ type Server struct {
 	queryCount          uint64
 	queryErrors         uint64
 	queryTotalLatencyMs uint64
+	startedAt           time.Time
+	querySampleMu       sync.Mutex
+	querySamples        []querySample
+	querySampleHead     int
+	querySampleLen      int
 }
 
 func NewServer(cfg Config, writer *HistorianWriter, query *QueryEngine, lastStore *LastValueStore, wal *WAL, logger *ActivityLogger) *Server {
-	return &Server{cfg: cfg, writer: writer, query: query, lastStore: lastStore, wal: wal, logger: logger}
+	return &Server{
+		cfg:          cfg,
+		writer:       writer,
+		query:        query,
+		lastStore:    lastStore,
+		wal:          wal,
+		logger:       logger,
+		startedAt:    time.Now(),
+		querySamples: make([]querySample, 4096),
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -43,17 +58,44 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]any{"ok": true}, http.StatusOK)
 }
 
-func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	now := time.Now()
+	uptimeSec := now.Sub(s.startedAt).Seconds()
+	if uptimeSec < 1 {
+		uptimeSec = 1
+	}
+	writerStats := s.writer.Stats()
+	queryWindow := s.queryWindowStats(60*time.Second, now)
 	payload := map[string]any{
-		"writer": s.writer.Stats(),
-		"query": map[string]any{
-			"count":          atomic.LoadUint64(&s.queryCount),
-			"errors":         atomic.LoadUint64(&s.queryErrors),
-			"totalLatencyMs": atomic.LoadUint64(&s.queryTotalLatencyMs),
+		"uptimeSec": int64(now.Sub(s.startedAt).Seconds()),
+		"query":     queryWindow,
+		"writer": map[string]any{
+			"ingestPointsPerSec":  float64(writerStats.AcceptedPoints) / uptimeSec,
+			"dropPointsPerSec":    float64(writerStats.DroppedPoints) / uptimeSec,
+			"decodeErrorsTotal":   writerStats.DecodeErrors,
+			"segmentSyncErrorsTotal": writerStats.SegmentSyncErrors,
 		},
 	}
 	if s.wal != nil {
-		payload["wal"] = s.wal.Stats()
+		walStats := s.wal.Stats()
+		payload["wal"] = map[string]any{
+			"appendPerSec":     float64(walStats.AppendOK) / uptimeSec,
+			"syncPerSec":       float64(walStats.SyncCount) / uptimeSec,
+			"appendErrorsTotal": walStats.AppendErrors,
+			"syncErrorsTotal":   walStats.SyncErrors,
+			"replayPointsTotal": walStats.ReplayPoints,
+		}
+		if r.URL.Query().Get("raw") == "1" {
+			payload["walRawTotals"] = walStats
+		}
+	}
+	if r.URL.Query().Get("raw") == "1" {
+		payload["queryRawTotals"] = map[string]any{
+			"count":          atomic.LoadUint64(&s.queryCount),
+			"errors":         atomic.LoadUint64(&s.queryErrors),
+			"totalLatencyMs": atomic.LoadUint64(&s.queryTotalLatencyMs),
+		}
+		payload["writerRawTotals"] = writerStats
 	}
 	if s.logger != nil {
 		payload["logs"] = map[string]any{
@@ -66,17 +108,17 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) handleLast(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	atomic.AddUint64(&s.queryCount, 1)
-	defer func() { atomic.AddUint64(&s.queryTotalLatencyMs, uint64(time.Since(start).Milliseconds())) }()
+	queryErr := false
+	defer func() { s.recordQuery(time.Since(start), queryErr) }()
 	tagIDs, err := parseTagIDs(r.URL.Query().Get("tagIds"))
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		return
 	}
 	tf, err := parseTimeFormat(r.URL.Query().Get("time"))
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		return
 	}
@@ -93,46 +135,46 @@ func (s *Server) handleLast(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	atomic.AddUint64(&s.queryCount, 1)
-	defer func() { atomic.AddUint64(&s.queryTotalLatencyMs, uint64(time.Since(start).Milliseconds())) }()
+	queryErr := false
+	defer func() { s.recordQuery(time.Since(start), queryErr) }()
 	q := r.URL.Query()
 	if q.Get("bucketMs") != "" || q.Get("agg") != "" {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, errors.New("bucketMs/agg is not supported on /hist/raw. Use /hist/range instead"))
 		return
 	}
 	tagIDs, err := parseTagIDs(q.Get("tagIds"))
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		return
 	}
 	from, err := parseTimestamp(q.Get("from"), "from", s.cfg.Storage.TimestampUnit)
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		return
 	}
 	to, err := parseTimestamp(q.Get("to"), "to", s.cfg.Storage.TimestampUnit)
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		return
 	}
 	if to < from {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, errors.New("to must be >= from"))
 		return
 	}
 	order, err := parseOrder(q.Get("order"))
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		return
 	}
 	tf, err := parseTimeFormat(q.Get("time"))
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		return
 	}
@@ -146,7 +188,7 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.query.Raw(tagIDs, from, to, limit, order)
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		if s.logger != nil {
 			s.logger.AddSystem("error", "query raw failed", map[string]any{"error": err.Error()})
@@ -171,41 +213,41 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRange(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	atomic.AddUint64(&s.queryCount, 1)
-	defer func() { atomic.AddUint64(&s.queryTotalLatencyMs, uint64(time.Since(start).Milliseconds())) }()
+	queryErr := false
+	defer func() { s.recordQuery(time.Since(start), queryErr) }()
 	q := r.URL.Query()
 	tagIDs, err := parseTagIDs(q.Get("tagIds"))
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		return
 	}
 	from, err := parseTimestamp(q.Get("from"), "from", s.cfg.Storage.TimestampUnit)
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		return
 	}
 	to, err := parseTimestamp(q.Get("to"), "to", s.cfg.Storage.TimestampUnit)
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		return
 	}
 	if to < from {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, errors.New("to must be >= from"))
 		return
 	}
 	order, err := parseOrder(q.Get("order"))
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		return
 	}
 	tf, err := parseTimeFormat(q.Get("time"))
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		return
 	}
@@ -221,7 +263,7 @@ func (s *Server) handleRange(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.query.Range(tagIDs, from, to, bucketMs, agg, order, s.cfg.HTTP.MaxPoints)
 	if err != nil {
-		atomic.AddUint64(&s.queryErrors, 1)
+		queryErr = true
 		writeErr(w, err)
 		if s.logger != nil {
 			s.logger.AddSystem("error", "query range failed", map[string]any{"error": err.Error()})
@@ -522,4 +564,95 @@ func withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+type querySample struct {
+	at        time.Time
+	latencyMs int64
+	isError   bool
+}
+
+func (s *Server) recordQuery(d time.Duration, isError bool) {
+	atomic.AddUint64(&s.queryCount, 1)
+	if isError {
+		atomic.AddUint64(&s.queryErrors, 1)
+	}
+	latMs := d.Milliseconds()
+	if latMs < 0 {
+		latMs = 0
+	}
+	atomic.AddUint64(&s.queryTotalLatencyMs, uint64(latMs))
+
+	s.querySampleMu.Lock()
+	if len(s.querySamples) > 0 {
+		s.querySamples[s.querySampleHead] = querySample{
+			at:        time.Now(),
+			latencyMs: latMs,
+			isError:   isError,
+		}
+		s.querySampleHead = (s.querySampleHead + 1) % len(s.querySamples)
+		if s.querySampleLen < len(s.querySamples) {
+			s.querySampleLen++
+		}
+	}
+	s.querySampleMu.Unlock()
+}
+
+func (s *Server) queryWindowStats(window time.Duration, now time.Time) map[string]any {
+	s.querySampleMu.Lock()
+	defer s.querySampleMu.Unlock()
+	cutoff := now.Add(-window)
+	latencies := make([]int64, 0, s.querySampleLen)
+	count := 0
+	errors := 0
+	for i := 0; i < s.querySampleLen; i++ {
+		idx := s.querySampleHead - 1 - i
+		if idx < 0 {
+			idx += len(s.querySamples)
+		}
+		sample := s.querySamples[idx]
+		if sample.at.IsZero() {
+			continue
+		}
+		if sample.at.Before(cutoff) {
+			break
+		}
+		count++
+		if sample.isError {
+			errors++
+		}
+		latencies = append(latencies, sample.latencyMs)
+	}
+	avg := float64(0)
+	p95 := int64(0)
+	if count > 0 {
+		sum := int64(0)
+		for _, v := range latencies {
+			sum += v
+		}
+		avg = float64(sum) / float64(count)
+		sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+		p95Index := int(float64(len(latencies)-1) * 0.95)
+		if p95Index < 0 {
+			p95Index = 0
+		}
+		p95 = latencies[p95Index]
+	}
+	return map[string]any{
+		"windowSec":       int(window.Seconds()),
+		"count":           count,
+		"errors":          errors,
+		"qps":             float64(count) / window.Seconds(),
+		"avgLatencyMs":    avg,
+		"p95LatencyMs":    p95,
+		"errorRatePct":    pct(errors, count),
+		"samplesBuffered": s.querySampleLen,
+	}
+}
+
+func pct(num, den int) float64 {
+	if den <= 0 {
+		return 0
+	}
+	return (float64(num) / float64(den)) * 100
 }

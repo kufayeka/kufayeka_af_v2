@@ -17,7 +17,7 @@
   },
   "flush": {
     "flushIntervalMs": 100,
-    "flushBytes": 1048576,
+    "flushBytes": 262144,
     "maxQueuePoints": 200000,
     "backpressurePolicy": "drop_new"
   },
@@ -32,12 +32,16 @@
     "checkIntervalMs": 300000
   },
   "query": {
-    "maxParallel": 8
+    "maxParallel": 6,
+    "scanChunkBytes": 524288,
+    "fdCacheEnabled": true,
+    "fdCacheMaxOpen": 256,
+    "fdCacheIdleMs": 5000
   },
   "fsync": {
     "walPolicy": "interval",
-    "walIntervalMs": 500,
+    "walIntervalMs": 200,
     "segmentPolicy": "interval",
-    "segmentIntervalMs": 1000
+    "segmentIntervalMs": 500
   }
 }

@@ -112,6 +112,10 @@ Catatan:
 
 ### `query`
 - `maxParallel`: maksimum goroutine paralel scan query.
+- `scanChunkBytes`: ukuran chunk baca file saat scan range (lebih kecil = RAM lebih stabil, lebih besar = throughput baca bisa naik).
+- `fdCacheEnabled`: aktifkan cache file descriptor untuk kurangi open/close berulang.
+- `fdCacheMaxOpen`: batas jumlah FD cache.
+- `fdCacheIdleMs`: FD idle lebih lama dari ini akan ditutup otomatis.
 
 ### `fsync`
 - `walPolicy`: `always | interval | off`

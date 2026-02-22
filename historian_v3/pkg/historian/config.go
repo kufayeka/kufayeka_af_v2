@@ -46,7 +46,11 @@ type Config struct {
 		CheckIntervalMs int  `json:"checkIntervalMs" yaml:"checkIntervalMs"`
 	} `json:"retention" yaml:"retention"`
 	Query struct {
-		MaxParallel int `json:"maxParallel" yaml:"maxParallel"`
+		MaxParallel    int  `json:"maxParallel" yaml:"maxParallel"`
+		ScanChunkBytes int  `json:"scanChunkBytes" yaml:"scanChunkBytes"`
+		FDCacheEnabled bool `json:"fdCacheEnabled" yaml:"fdCacheEnabled"`
+		FDCacheMaxOpen int  `json:"fdCacheMaxOpen" yaml:"fdCacheMaxOpen"`
+		FDCacheIdleMs  int  `json:"fdCacheIdleMs" yaml:"fdCacheIdleMs"`
 	} `json:"query" yaml:"query"`
 	FSync struct {
 		WALPolicy         string `json:"walPolicy" yaml:"walPolicy"`                 // always | interval | off
@@ -81,6 +85,10 @@ func DefaultConfig() Config {
 	if c.Query.MaxParallel < 1 {
 		c.Query.MaxParallel = 1
 	}
+	c.Query.ScanChunkBytes = 512 * 1024
+	c.Query.FDCacheEnabled = true
+	c.Query.FDCacheMaxOpen = 256
+	c.Query.FDCacheIdleMs = 30000
 	c.FSync.WALPolicy = "interval"
 	c.FSync.WALIntervalMs = 200
 	c.FSync.SegmentPolicy = "interval"
@@ -111,6 +119,15 @@ func LoadConfig(path string) (Config, error) {
 func normalizeConfig(cfg *Config) {
 	if cfg.Query.MaxParallel <= 0 {
 		cfg.Query.MaxParallel = 1
+	}
+	if cfg.Query.ScanChunkBytes <= 0 {
+		cfg.Query.ScanChunkBytes = 512 * 1024
+	}
+	if cfg.Query.FDCacheMaxOpen <= 0 {
+		cfg.Query.FDCacheMaxOpen = 256
+	}
+	if cfg.Query.FDCacheIdleMs <= 0 {
+		cfg.Query.FDCacheIdleMs = 30000
 	}
 	if cfg.Storage.ShardCount <= 0 {
 		cfg.Storage.ShardCount = 1
@@ -188,6 +205,16 @@ func applyConfigValues(cfg *Config, raw map[string]any) error {
 	}
 
 	if err = setInt(raw, "query.maxParallel", &cfg.Query.MaxParallel); err != nil {
+		return err
+	}
+	if err = setInt(raw, "query.scanChunkBytes", &cfg.Query.ScanChunkBytes); err != nil {
+		return err
+	}
+	setBool(raw, "query.fdCacheEnabled", &cfg.Query.FDCacheEnabled)
+	if err = setInt(raw, "query.fdCacheMaxOpen", &cfg.Query.FDCacheMaxOpen); err != nil {
+		return err
+	}
+	if err = setInt(raw, "query.fdCacheIdleMs", &cfg.Query.FDCacheIdleMs); err != nil {
 		return err
 	}
 
