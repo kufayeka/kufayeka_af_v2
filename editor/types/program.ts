@@ -1,6 +1,18 @@
 export type TriggerType = "interval" | "watcher";
 export type ActionType = "script";
-export type AssetAttributeType = "number" | "boolean" | "string" | "array" | "object";
+export type AssetAttributeType =
+  | "int8"
+  | "uint8"
+  | "int16"
+  | "uint16"
+  | "int32"
+  | "uint32"
+  | "float32"
+  | "float64"
+  | "boolean"
+  | "string"
+  | "array"
+  | "object";
 export type ScriptBindingSource =
   | "attribute"
   | "static_number"
@@ -15,6 +27,8 @@ export interface AssetTemplateAttributeDefinition {
   valueType: AssetAttributeType;
   default: unknown;
   unit?: string;
+  historianEnabled?: boolean;
+  historianTimeSourcePath?: string;
 }
 
 export interface AssetAttributeTemplateDefinition {

@@ -3,6 +3,7 @@ package historian
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -16,13 +17,14 @@ type Server struct {
 	query               *QueryEngine
 	lastStore           *LastValueStore
 	wal                 *WAL
+	logger              *ActivityLogger
 	queryCount          uint64
 	queryErrors         uint64
 	queryTotalLatencyMs uint64
 }
 
-func NewServer(cfg Config, writer *HistorianWriter, query *QueryEngine, lastStore *LastValueStore, wal *WAL) *Server {
-	return &Server{cfg: cfg, writer: writer, query: query, lastStore: lastStore, wal: wal}
+func NewServer(cfg Config, writer *HistorianWriter, query *QueryEngine, lastStore *LastValueStore, wal *WAL, logger *ActivityLogger) *Server {
+	return &Server{cfg: cfg, writer: writer, query: query, lastStore: lastStore, wal: wal, logger: logger}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -31,6 +33,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/hist/last", s.handleLast)
 	mux.HandleFunc("/hist/raw", s.handleRaw)
 	mux.HandleFunc("/hist/range", s.handleRange)
+	mux.HandleFunc("/hist/delete", s.handleDelete)
+	mux.HandleFunc("/logs", s.handleLogs)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	return withCORS(mux)
 }
@@ -50,6 +54,12 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 	}
 	if s.wal != nil {
 		payload["wal"] = s.wal.Stats()
+	}
+	if s.logger != nil {
+		payload["logs"] = map[string]any{
+			"ingestLast100": len(s.logger.Snapshot("ingest", 100)),
+			"systemLast100": len(s.logger.Snapshot("system", 100)),
+		}
 	}
 	writeJSON(w, payload, http.StatusOK)
 }
@@ -73,6 +83,12 @@ func (s *Server) handleLast(w http.ResponseWriter, r *http.Request) {
 	points := s.lastStore.GetLatest(tagIDs)
 	rows := pivotPoints(points, tf, s.cfg.Storage.TimestampUnit, OrderDesc)
 	writeJSON(w, map[string]any{"rows": rows}, http.StatusOK)
+	if s.logger != nil {
+		s.logger.AddSystem("info", "query last", map[string]any{
+			"tagCount": len(tagIDs),
+			"rows":     len(rows),
+		})
+	}
 }
 
 func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
@@ -132,10 +148,25 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		atomic.AddUint64(&s.queryErrors, 1)
 		writeErr(w, err)
+		if s.logger != nil {
+			s.logger.AddSystem("error", "query raw failed", map[string]any{"error": err.Error()})
+		}
 		return
 	}
 	rows := pivotPoints(res.Points, tf, s.cfg.Storage.TimestampUnit, order)
 	writeJSON(w, map[string]any{"rows": rows, "truncated": res.Truncated}, http.StatusOK)
+	if s.logger != nil {
+		s.logger.AddSystem("info", "query raw", map[string]any{
+			"tagCount":   len(tagIDs),
+			"rows":       len(rows),
+			"truncated":  res.Truncated,
+			"from":       from,
+			"to":         to,
+			"order":      order,
+			"limit":      limit,
+			"durationMs": time.Since(start).Milliseconds(),
+		})
+	}
 }
 
 func (s *Server) handleRange(w http.ResponseWriter, r *http.Request) {
@@ -192,10 +223,121 @@ func (s *Server) handleRange(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		atomic.AddUint64(&s.queryErrors, 1)
 		writeErr(w, err)
+		if s.logger != nil {
+			s.logger.AddSystem("error", "query range failed", map[string]any{"error": err.Error()})
+		}
 		return
 	}
 	rows := pivotBuckets(res.Buckets, tf, s.cfg.Storage.TimestampUnit, order)
 	writeJSON(w, map[string]any{"rows": rows, "truncated": res.Truncated, "agg": agg}, http.StatusOK)
+	if s.logger != nil {
+		s.logger.AddSystem("info", "query range", map[string]any{
+			"tagCount":   len(tagIDs),
+			"rows":       len(rows),
+			"truncated":  res.Truncated,
+			"agg":        agg,
+			"durationMs": time.Since(start).Milliseconds(),
+		})
+	}
+}
+
+type deleteReq struct {
+	TagIDs []uint32 `json:"tagIds"`
+	From   *string  `json:"from,omitempty"`
+	To     *string  `json:"to,omitempty"`
+}
+
+func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		writeJSON(w, map[string]any{"error": "method not allowed"}, http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeJSON(w, map[string]any{"error": "invalid body"}, http.StatusBadRequest)
+		return
+	}
+	req := deleteReq{}
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeJSON(w, map[string]any{"error": "invalid json body"}, http.StatusBadRequest)
+			return
+		}
+	}
+	if len(req.TagIDs) == 0 {
+		writeJSON(w, map[string]any{"error": "tagIds is required"}, http.StatusBadRequest)
+		return
+	}
+	var fromTs *int64
+	var toTs *int64
+	if req.From != nil && *req.From != "" {
+		v, err := parseTimestamp(*req.From, "from", s.cfg.Storage.TimestampUnit)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		fromTs = &v
+	}
+	if req.To != nil && *req.To != "" {
+		v, err := parseTimestamp(*req.To, "to", s.cfg.Storage.TimestampUnit)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		toTs = &v
+	}
+	err = s.writer.RunMaintenance(func() error {
+		result, err := s.query.DeleteByTags(req.TagIDs, fromTs, toTs)
+		if err != nil {
+			return err
+		}
+		if err := s.lastStore.RebuildTags(s.cfg.Storage.DataDir, req.TagIDs); err != nil {
+			return err
+		}
+		writeJSON(w, map[string]any{
+			"ok":             true,
+			"deletedRecords": result.DeletedRecords,
+			"touchedSegments": result.TouchedSegments,
+			"tagIds":         req.TagIDs,
+		}, http.StatusOK)
+		if s.logger != nil {
+			s.logger.AddSystem("info", "historian delete", map[string]any{
+				"tagIds":          req.TagIDs,
+				"deletedRecords":  result.DeletedRecords,
+				"touchedSegments": result.TouchedSegments,
+				"from":            fromTs,
+				"to":              toTs,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		writeJSON(w, map[string]any{"error": err.Error()}, http.StatusInternalServerError)
+		if s.logger != nil {
+			s.logger.AddSystem("error", "historian delete failed", map[string]any{"error": err.Error()})
+		}
+		return
+	}
+}
+
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	kind := r.URL.Query().Get("kind")
+	limit := 100
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if s.logger == nil {
+		writeJSON(w, map[string]any{"items": []LogEntry{}}, http.StatusOK)
+		return
+	}
+	items := s.logger.Snapshot(kind, limit)
+	writeJSON(w, map[string]any{
+		"kind":  kind,
+		"count": len(items),
+		"items": items,
+	}, http.StatusOK)
 }
 
 func parseTagIDs(v string) ([]uint32, error) {
@@ -264,11 +406,20 @@ func formatTime(ts int64, unit, tf string) string {
 	if tf == "epoch" {
 		return strconv.FormatInt(ts, 10)
 	}
-	ms := ts / 1_000
+	var sec int64
+	var nsec int64
 	if unit == "ns" {
-		ms = ts / 1_000_000
+		sec = ts / 1_000_000_000
+		nsec = ts % 1_000_000_000
+	} else {
+		sec = ts / 1_000_000
+		nsec = (ts % 1_000_000) * 1_000
 	}
-	return time.UnixMilli(ms).UTC().Format(time.RFC3339)
+	if nsec < 0 {
+		sec -= 1
+		nsec += 1_000_000_000
+	}
+	return time.Unix(sec, nsec).UTC().Format(time.RFC3339Nano)
 }
 
 func pivotPoints(points []Point, tf, unit string, order QueryOrder) []map[string]any {

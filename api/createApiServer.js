@@ -1,5 +1,6 @@
 const http = require("node:http");
 const { ensureAssetStorage } = require("../runtime/assetStorage");
+const { computeTagID } = require("../runtime/historianBridge");
 
 /**
  * DEV CORS: allow all origins (no credentials).
@@ -55,6 +56,116 @@ function createApiServer(runtime, options = {}) {
   const port = options.port ?? 4000;
   const host = options.host ?? "0.0.0.0";
   const assetStore = ensureAssetStorage(runtime, runtime.getGlobal("assetFramework", {}));
+  const historianHttpBase = process.env.HISTORIAN_HTTP_BASE || "http://127.0.0.1:8080";
+
+  async function historianByPath(kind, requestUrl) {
+    const pathQuery = requestUrl.searchParams.get("path") || "";
+    if (!pathQuery) {
+      return { status: 400, body: { error: "Query parameter 'path' wajib diisi" } };
+    }
+    const matches = assetStore
+      .query(pathQuery)
+      .filter((item) => item.kind === "attribute")
+      .map((item) => ({
+        path: item.path,
+        assetId: item.assetId,
+        attributeName: item.attributeName,
+        tagId: computeTagID(item.assetId, item.attributeName)
+      }));
+
+    if (matches.length === 0) {
+      return { status: 404, body: { error: "No matching attribute path", path: pathQuery, matches: [] } };
+    }
+
+    const params = new URLSearchParams();
+    params.set(
+      "tagIds",
+      matches
+        .map((item) => String(item.tagId))
+        .filter((v, i, arr) => arr.indexOf(v) === i)
+        .join(",")
+    );
+    const passThrough = ["from", "to", "order", "time", "limit", "bucketMs", "agg"];
+    for (const key of passThrough) {
+      const value = requestUrl.searchParams.get(key);
+      if (value != null && value !== "") params.set(key, value);
+    }
+
+    const upstreamUrl = `${historianHttpBase}/hist/${kind}?${params.toString()}`;
+    const upstreamRes = await fetch(upstreamUrl);
+    const upstreamJson = await upstreamRes.json();
+    if (!upstreamRes.ok) {
+      return { status: upstreamRes.status, body: upstreamJson };
+    }
+
+    const tagToPath = new Map(matches.map((item) => [`tag${item.tagId}`, item.path]));
+    const rows = Array.isArray(upstreamJson.rows)
+      ? upstreamJson.rows.map((row) => {
+          const next = { time: row.time };
+          for (const [key, value] of Object.entries(row)) {
+            if (key === "time") continue;
+            next[tagToPath.get(key) || key] = value;
+          }
+          return next;
+        })
+      : [];
+
+    return {
+      status: 200,
+      body: {
+        path: pathQuery,
+        matches,
+        rows,
+        truncated: upstreamJson.truncated === true,
+        agg: upstreamJson.agg
+      }
+    };
+  }
+
+  function resolvePathMatches(pathQuery) {
+    return assetStore
+      .query(pathQuery)
+      .filter((item) => item.kind === "attribute")
+      .map((item) => ({
+        path: item.path,
+        assetId: item.assetId,
+        attributeName: item.attributeName,
+        tagId: computeTagID(item.assetId, item.attributeName)
+      }));
+  }
+
+  async function historianDeleteByMatches(matches, requestUrl) {
+    const uniqueTagIds = matches
+      .map((item) => item.tagId)
+      .filter((v, i, arr) => arr.indexOf(v) === i);
+    if (uniqueTagIds.length === 0) {
+      return { status: 404, body: { error: "No matching historian tags", matches: [] } };
+    }
+    const payload = { tagIds: uniqueTagIds };
+    const from = requestUrl.searchParams.get("from");
+    const to = requestUrl.searchParams.get("to");
+    if (from) payload.from = from;
+    if (to) payload.to = to;
+    const upstreamRes = await fetch(`${historianHttpBase}/hist/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const upstreamJson = await upstreamRes.json();
+    if (!upstreamRes.ok) {
+      return { status: upstreamRes.status, body: upstreamJson };
+    }
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        message: "historian has been deleted",
+        deletedRecords: upstreamJson.deletedRecords ?? 0,
+        touchedSegments: upstreamJson.touchedSegments ?? 0,
+        matches
+      }
+    };
+  }
 
   const server = http.createServer(async (req, res) => {
     // Always set CORS headers
@@ -122,13 +233,135 @@ function createApiServer(runtime, options = {}) {
       return;
     }
 
+    if (method === "GET" && urlPath === "/api/historian/raw") {
+      try {
+        const result = await historianByPath("raw", requestUrl);
+        sendJson(req, res, result.status, result.body);
+      } catch (error) {
+        sendJson(req, res, 502, { error: `Historian upstream error: ${error.message}` });
+      }
+      return;
+    }
+
+    if (method === "GET" && urlPath === "/api/historian/range") {
+      try {
+        const result = await historianByPath("range", requestUrl);
+        sendJson(req, res, result.status, result.body);
+      } catch (error) {
+        sendJson(req, res, 502, { error: `Historian upstream error: ${error.message}` });
+      }
+      return;
+    }
+
+    if (method === "GET" && urlPath === "/api/historian/last") {
+      try {
+        const result = await historianByPath("last", requestUrl);
+        sendJson(req, res, result.status, result.body);
+      } catch (error) {
+        sendJson(req, res, 502, { error: `Historian upstream error: ${error.message}` });
+      }
+      return;
+    }
+
+    if (method === "DELETE" && urlPath === "/api/historian/delete-attribute") {
+      try {
+        const pathQuery = requestUrl.searchParams.get("path") || "";
+        if (!pathQuery) {
+          sendJson(req, res, 400, { error: "Query parameter 'path' wajib diisi" });
+          return;
+        }
+        const matches = resolvePathMatches(pathQuery);
+        const result = await historianDeleteByMatches(matches, requestUrl);
+        sendJson(req, res, result.status, {
+          ...result.body,
+          path: pathQuery
+        });
+      } catch (error) {
+        sendJson(req, res, 502, { error: `Historian delete upstream error: ${error.message}` });
+      }
+      return;
+    }
+
+    if (method === "DELETE" && urlPath === "/api/historian/delete-template-attribute") {
+      try {
+        const templateId = requestUrl.searchParams.get("templateId") || "";
+        const attributeName = requestUrl.searchParams.get("attributeName") || "";
+        if (!templateId || !attributeName) {
+          sendJson(req, res, 400, { error: "templateId dan attributeName wajib diisi" });
+          return;
+        }
+        const state = assetStore.getState();
+        const byId = new Map((state.assets || []).map((asset) => [asset.id, asset]));
+        const getPath = (assetId) => {
+          const asset = byId.get(assetId);
+          if (!asset) return "";
+          const parts = [asset.name];
+          let parentId = asset.parentId;
+          while (parentId) {
+            const parent = byId.get(parentId);
+            if (!parent) break;
+            parts.unshift(parent.name);
+            parentId = parent.parentId;
+          }
+          return parts.join(".");
+        };
+        const pathMatches = [];
+        for (const asset of state.assets || []) {
+          if (!Array.isArray(asset.templateIds) || !asset.templateIds.includes(templateId)) continue;
+          const path = `${getPath(asset.id)}.${attributeName}`;
+          const resolved = resolvePathMatches(path);
+          for (const item of resolved) pathMatches.push(item);
+        }
+        const dedup = [];
+        const seen = new Set();
+        for (const m of pathMatches) {
+          const key = `${m.assetId}:${m.attributeName}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          dedup.push(m);
+        }
+        const result = await historianDeleteByMatches(dedup, requestUrl);
+        sendJson(req, res, result.status, {
+          ...result.body,
+          templateId,
+          attributeName
+        });
+      } catch (error) {
+        sendJson(req, res, 502, { error: `Historian delete upstream error: ${error.message}` });
+      }
+      return;
+    }
+
     if (urlPath === "/api/assets/query" && method === "GET") {
       const pathQuery = requestUrl.searchParams.get("path") || "";
       if (!pathQuery) {
         sendJson(req, res, 400, { error: "Query parameter 'path' wajib diisi" });
         return;
       }
-      const matches = assetStore.query(pathQuery);
+      const matches = assetStore.query(pathQuery).map((item) => {
+        if (item.kind !== "attribute") return item;
+        return {
+          ...item,
+          tagId: computeTagID(item.assetId, item.attributeName),
+        };
+      });
+      sendJson(req, res, 200, { path: pathQuery, count: matches.length, matches });
+      return;
+    }
+
+    if (urlPath === "/api/assets/historian-tags" && method === "GET") {
+      const pathQuery = requestUrl.searchParams.get("path") || "*.*.*";
+      const matches = resolvePathMatches(pathQuery).map((item) => {
+        const origin = assetStore
+          .query(item.path)
+          .find((x) => x.kind === "attribute" && x.assetId === item.assetId && x.attributeName === item.attributeName);
+        return {
+          ...item,
+          type: origin?.type,
+          historianEnabled: origin?.historianEnabled === true,
+          historianTimeSourcePath: origin?.historianTimeSourcePath || "",
+        };
+      });
       sendJson(req, res, 200, { path: pathQuery, count: matches.length, matches });
       return;
     }
@@ -144,7 +377,11 @@ function createApiServer(runtime, options = {}) {
       if (method === "GET") {
         const matches = assetStore
           .query(pathQuery)
-          .filter((item) => item.kind === "attribute");
+          .filter((item) => item.kind === "attribute")
+          .map((item) => ({
+            ...item,
+            tagId: computeTagID(item.assetId, item.attributeName),
+          }));
         sendJson(req, res, 200, { path: pathQuery, count: matches.length, matches });
         return;
       }
@@ -157,7 +394,14 @@ function createApiServer(runtime, options = {}) {
             return;
           }
           const matches = assetStore.setAttribute(pathQuery, body.value);
-          sendJson(req, res, 200, { path: pathQuery, count: matches.length, matches });
+          sendJson(req, res, 200, {
+            path: pathQuery,
+            count: matches.length,
+            matches: matches.map((item) => ({
+              ...item,
+              tagId: computeTagID(item.assetId, item.attributeName),
+            })),
+          });
         } catch (error) {
           sendJson(req, res, 400, { error: error.message });
         }
@@ -170,7 +414,16 @@ function createApiServer(runtime, options = {}) {
         const body = await parseJsonBody(req);
         const items = Array.isArray(body.items) ? body.items : [];
         const results = assetStore.setAttributes(items);
-        sendJson(req, res, 200, { count: results.length, results });
+        sendJson(req, res, 200, {
+          count: results.length,
+          results: results.map((result) => ({
+            ...result,
+            matches: (result.matches || []).map((item) => ({
+              ...item,
+              tagId: computeTagID(item.assetId, item.attributeName),
+            })),
+          })),
+        });
       } catch (error) {
         sendJson(req, res, 400, { error: error.message });
       }

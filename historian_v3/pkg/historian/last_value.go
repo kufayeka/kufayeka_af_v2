@@ -3,6 +3,7 @@ package historian
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -105,6 +106,55 @@ func (s *LastValueStore) GetLatest(tagIDs []uint32) []Point {
 		}
 	}
 	return out
+}
+
+func (s *LastValueStore) RebuildTags(dataDir string, tagIDs []uint32) error {
+	if len(tagIDs) == 0 {
+		return nil
+	}
+	tagSet := make(map[uint32]struct{}, len(tagIDs))
+	for _, t := range tagIDs {
+		tagSet[t] = struct{}{}
+	}
+	s.mu.Lock()
+	for _, t := range tagIDs {
+		delete(s.latest, t)
+	}
+	s.mu.Unlock()
+
+	segFiles, err := listSegmentFiles(dataDir)
+	if err != nil {
+		return err
+	}
+	sort.Strings(segFiles)
+	for _, segPath := range segFiles {
+		buf, err := os.ReadFile(segPath)
+		if err != nil {
+			continue
+		}
+		off := 0
+		for off < len(buf) {
+			p, n, ok := DecodeSegmentRecord(buf, off)
+			if !ok {
+				break
+			}
+			off += n
+			if _, ok := tagSet[p.TagID]; !ok {
+				continue
+			}
+			s.mu.Lock()
+			s.upsertNoLock(*p)
+			s.mu.Unlock()
+		}
+	}
+
+	s.mu.RLock()
+	payload := make([]byte, 0, len(s.latest)*32)
+	for _, p := range s.latest {
+		payload = append(payload, EncodeSegmentRecord(p)...)
+	}
+	s.mu.RUnlock()
+	return os.WriteFile(s.path, payload, 0o644)
 }
 
 func (s *LastValueStore) flushLoop() {

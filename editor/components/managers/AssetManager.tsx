@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
+  Autocomplete,
   Box,
   Button,
   Checkbox,
@@ -9,6 +11,7 @@ import {
   MenuItem,
   Paper,
   Select,
+  Snackbar,
   Tab,
   Tabs,
   Table,
@@ -27,7 +30,20 @@ import { ArrowRight, Building2, RefreshCcw } from "lucide-react";
 import { normalizeProgram } from "../../lib/programUtils";
 import type { AssetAttributeType, AssetDefinition, AssetFrameworkDefinition, Program } from "../../types/program";
 
-const ATTRIBUTE_TYPES: AssetAttributeType[] = ["number", "boolean", "string", "array", "object"];
+const ATTRIBUTE_TYPES: AssetAttributeType[] = [
+  "int8",
+  "uint8",
+  "int16",
+  "uint16",
+  "int32",
+  "uint32",
+  "float32",
+  "float64",
+  "boolean",
+  "string",
+  "array",
+  "object"
+];
 
 interface EffectiveAttributeRow {
   name: string;
@@ -36,6 +52,7 @@ interface EffectiveAttributeRow {
   value: unknown;
   source: string;
   overridden: boolean;
+  historianEnabled: boolean;
 }
 
 interface AssetManagerProps {
@@ -60,7 +77,18 @@ function parseMaybeJson(raw: string): unknown {
 }
 
 function parseByType(type: AssetAttributeType, raw: string): unknown {
-  if (type === "number") {
+  if (
+    type === "int8" ||
+    type === "uint8" ||
+    type === "int16" ||
+    type === "uint16" ||
+    type === "int32" ||
+    type === "uint32"
+  ) {
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) ? n : raw;
+  }
+  if (type === "float32" || type === "float64") {
     const n = Number(raw);
     return Number.isFinite(n) ? n : raw;
   }
@@ -137,7 +165,8 @@ function getEffectiveAttributes(
           unit: attr.unit ?? "",
           value: attr.default,
           source: template.name,
-          overridden: false
+          overridden: false,
+          historianEnabled: attr.historianEnabled === true
         });
       }
     }
@@ -154,7 +183,8 @@ function getEffectiveAttributes(
         unit: "",
         value: val.value,
         source: "Custom",
-        overridden: true
+        overridden: true,
+        historianEnabled: false
       });
     }
   }
@@ -169,6 +199,14 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
   const [loadingRuntime, setLoadingRuntime] = useState(false);
+  const [fieldDrafts, setFieldDrafts] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState<{ open: boolean; kind: "success" | "error"; message: string }>({
+    open: false,
+    kind: "success",
+    message: ""
+  });
+  const fieldTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const runtimeApiBase = process.env.NEXT_PUBLIC_RUNTIME_API_BASE || "http://127.0.0.1:4000";
 
   const assetById = useMemo(() => new Map(assets.assets.map((asset) => [asset.id, asset])), [assets.assets]);
   const templateById = useMemo(
@@ -177,6 +215,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   );
   const selectedAsset = selectedAssetId ? assetById.get(selectedAssetId) : undefined;
   const selectedTemplate = assets.attributeTemplates.find((template) => template.id === selectedTemplateId);
+  const selectedAssetPath = selectedAsset ? getAssetPath(selectedAsset, assetById) : "";
 
   const updateAssets = (nextAssets: AssetDefinition[]) => {
     onChange((prev) => ({ ...prev, assets: nextAssets }));
@@ -205,6 +244,24 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         template.id === templateId ? updater(template) : template
       )
     }));
+  };
+
+  const getDraft = (fieldKey: string, source: string): string =>
+    Object.prototype.hasOwnProperty.call(fieldDrafts, fieldKey) ? fieldDrafts[fieldKey] : source;
+
+  const scheduleDraftCommit = (fieldKey: string, next: string, commit: (value: string) => void) => {
+    setFieldDrafts((prev) => ({ ...prev, [fieldKey]: next }));
+    const existing = fieldTimersRef.current[fieldKey];
+    if (existing) clearTimeout(existing);
+    fieldTimersRef.current[fieldKey] = setTimeout(() => {
+      commit(next);
+      setFieldDrafts((prev) => {
+        const cloned = { ...prev };
+        delete cloned[fieldKey];
+        return cloned;
+      });
+      delete fieldTimersRef.current[fieldKey];
+    }, 350);
   };
 
   const addAsset = (parentId: string | null) => {
@@ -275,10 +332,41 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     setExpandedKeys(assetKeys);
   }, [assets.assets.length]);
 
+  useEffect(() => {
+    return () => {
+      for (const timer of Object.values(fieldTimersRef.current)) {
+        clearTimeout(timer);
+      }
+    };
+  }, []);
+
   const selectedAssetEffectiveAttributes = useMemo(() => {
     if (!selectedAsset) return [];
     return getEffectiveAttributes(selectedAsset, templateById);
   }, [selectedAsset, templateById]);
+  const assetAttributePaths = useMemo(() => {
+    const options: string[] = [];
+    for (const asset of assets.assets) {
+      const basePath = getAssetPath(asset, assetById);
+      const names = new Set<string>();
+      for (const templateId of asset.templateIds) {
+        const template = templateById.get(templateId);
+        if (!template) continue;
+        for (const attribute of template.attributes) {
+          if (attribute.enabled === false) continue;
+          names.add(attribute.name);
+        }
+      }
+      for (const name of Object.keys(asset.attributes || {})) {
+        names.add(name);
+      }
+      for (const name of names) {
+        options.push(`${basePath}.${name}`);
+      }
+    }
+    options.sort((a, b) => a.localeCompare(b));
+    return options;
+  }, [assetById, assets.assets, templateById]);
 
   const treeData = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -360,7 +448,68 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     }
   };
 
+  const showNotice = (kind: "success" | "error", message: string) => {
+    setNotice({ open: true, kind, message });
+  };
+
+  const readJsonLike = async (res: Response): Promise<Record<string, unknown>> => {
+    const text = await res.text();
+    try {
+      return JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      return { error: `Non-JSON response (${res.status})` };
+    }
+  };
+
+  const deleteHistorianByPath = async (path: string) => {
+    try {
+      const res = await fetch(`${runtimeApiBase}/api/historian/delete-attribute?path=${encodeURIComponent(path)}`, {
+        method: "DELETE"
+      });
+      const json = (await readJsonLike(res)) as {
+        error?: string;
+        message?: string;
+        deletedRecords?: number;
+      };
+      if (!res.ok) {
+        showNotice("error", json.error || "Failed deleting historian records");
+        return;
+      }
+      showNotice(
+        "success",
+        `${json.message || "historian has been deleted"} (${json.deletedRecords ?? 0} records)`
+      );
+    } catch (error) {
+      showNotice("error", `Failed deleting historian records: ${(error as Error).message}`);
+    }
+  };
+
+  const deleteHistorianByTemplateAttribute = async (templateId: string, attributeName: string) => {
+    try {
+      const res = await fetch(
+        `${runtimeApiBase}/api/historian/delete-template-attribute?templateId=${encodeURIComponent(templateId)}&attributeName=${encodeURIComponent(attributeName)}`,
+        { method: "DELETE" }
+      );
+      const json = (await readJsonLike(res)) as {
+        error?: string;
+        message?: string;
+        deletedRecords?: number;
+      };
+      if (!res.ok) {
+        showNotice("error", json.error || "Failed deleting inherited historian records");
+        return;
+      }
+      showNotice(
+        "success",
+        `${json.message || "historian has been deleted"} (${json.deletedRecords ?? 0} records)`
+      );
+    } catch (error) {
+      showNotice("error", `Failed deleting inherited historian records: ${(error as Error).message}`);
+    }
+  };
+
   return (
+    <>
     <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
       {/* <Paper sx={{ p: 1.25, display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
 
@@ -430,7 +579,17 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                     Asset Detail
                   </Typography>
                     
-                    <Button variant="contained" size="small" color="error" onClick={() => selectedAsset && removeAsset(selectedAsset.id)} disabled={!selectedAsset}>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      color="error"
+                      onClick={() => {
+                        if (!selectedAsset) return;
+                        if (!window.confirm(`Remove asset "${selectedAsset.name}" and all descendants?`)) return;
+                        removeAsset(selectedAsset.id);
+                      }}
+                      disabled={!selectedAsset}
+                    >
                       Remove
                     </Button>
                 </Box>
@@ -439,10 +598,12 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                 <TextField
                   size="small"
                   label="Asset Name"
-                  value={selectedAsset.name}
+                  value={getDraft(`asset-name:${selectedAsset.id}`, selectedAsset.name)}
                   onChange={(e) => {
                     const name = e.target.value;
-                    updateAssetWith(selectedAsset.id, (asset) => ({ ...asset, name }));
+                    scheduleDraftCommit(`asset-name:${selectedAsset.id}`, name, (committed) => {
+                      updateAssetWith(selectedAsset.id, (asset) => ({ ...asset, name: committed }));
+                    });
                   }}
                   sx={{ minWidth: 460, maxWidth: 460 }}
                 />
@@ -526,7 +687,9 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Value</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Type</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Unit</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Historian</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Source</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 140 }}>Action</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -537,23 +700,60 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                             <TextField
                               size="small"
                               fullWidth
-                              value={serializeValue(row.value)}
+                              value={getDraft(
+                                `asset-attr:${selectedAsset.id}:${row.name}`,
+                                serializeValue(row.value)
+                              )}
                               onChange={(e) => {
                                 const raw = e.target.value;
-                                const nextValue = row.valueType === "custom" ? parseMaybeJson(raw) : parseByType(row.valueType, raw);
-                                updateAssetWith(selectedAsset.id, (asset) => ({
-                                  ...asset,
-                                  attributes: {
-                                    ...asset.attributes,
-                                    [row.name]: { value: nextValue }
+                                scheduleDraftCommit(
+                                  `asset-attr:${selectedAsset.id}:${row.name}`,
+                                  raw,
+                                  (committed) => {
+                                    const nextValue =
+                                      row.valueType === "custom"
+                                        ? parseMaybeJson(committed)
+                                        : parseByType(row.valueType, committed);
+                                    updateAssetWith(selectedAsset.id, (asset) => ({
+                                      ...asset,
+                                      attributes: {
+                                        ...asset.attributes,
+                                        [row.name]: { value: nextValue }
+                                      }
+                                    }));
                                   }
-                                }));
+                                );
                               }}
                             />
                           </TableCell>
                           <TableCell>{row.valueType}</TableCell>
                           <TableCell>{row.unit || "-"}</TableCell>
+                          <TableCell>{row.historianEnabled ? "enabled" : "-"}</TableCell>
                           <TableCell>{row.source}{row.overridden ? " (override)" : ""}</TableCell>
+                          <TableCell>
+                            {row.historianEnabled ? (
+                              <Button
+                                size="small"
+                                color="error"
+                                variant="outlined"
+                                onClick={() => {
+                                  const fullPath = `${selectedAssetPath}.${row.name}`;
+                                  if (
+                                    !window.confirm(
+                                      `Delete historian records for attribute "${fullPath}"? This cannot be undone.`
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  void deleteHistorianByPath(fullPath);
+                                }}
+                              >
+                                Delete Historian
+                              </Button>
+                            ) : (
+                              "-"
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -572,7 +772,16 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
               <Button size="small" variant="contained" onClick={addTemplate}>
                 Add Template
               </Button>
-              <Button size="small" color="error" onClick={() => selectedTemplate && removeTemplate(selectedTemplate.id)} disabled={!selectedTemplate}>
+              <Button
+                size="small"
+                color="error"
+                onClick={() => {
+                  if (!selectedTemplate) return;
+                  if (!window.confirm(`Remove template "${selectedTemplate.name}"?`)) return;
+                  removeTemplate(selectedTemplate.id);
+                }}
+                disabled={!selectedTemplate}
+              >
                 Remove
               </Button>
             </Box>
@@ -601,10 +810,12 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                 <TextField
                   size="small"
                   label="Template Name"
-                  value={selectedTemplate.name}
+                  value={getDraft(`template-name:${selectedTemplate.id}`, selectedTemplate.name)}
                   onChange={(e) => {
                     const name = e.target.value;
-                    updateTemplateWith(selectedTemplate.id, (template) => ({ ...template, name }));
+                    scheduleDraftCommit(`template-name:${selectedTemplate.id}`, name, (committed) => {
+                      updateTemplateWith(selectedTemplate.id, (template) => ({ ...template, name: committed }));
+                    });
                   }}
                   sx={{ maxWidth: 460 }}
                 />
@@ -618,12 +829,14 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Type</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Default</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Unit</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 140 }}>Historian</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 260 }}>Time Source</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Action</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {selectedTemplate.attributes.map((attribute, idx) => (
-                        <TableRow key={`${attribute.name}-${idx}`}>
+                        <TableRow key={`template-attr:${selectedTemplate.id}:${idx}`}>
                           <TableCell>
                             <FormControlLabel
                               control={
@@ -645,15 +858,24 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           <TableCell>
                             <TextField
                               size="small"
-                              value={attribute.name}
+                              value={getDraft(
+                                `template-attr-name:${selectedTemplate.id}:${idx}`,
+                                attribute.name
+                              )}
                               onChange={(e) => {
                                 const name = e.target.value;
-                                updateTemplateWith(selectedTemplate.id, (template) => ({
-                                  ...template,
-                                  attributes: template.attributes.map((item, itemIdx) =>
-                                    itemIdx === idx ? { ...item, name } : item
-                                  )
-                                }));
+                                scheduleDraftCommit(
+                                  `template-attr-name:${selectedTemplate.id}:${idx}`,
+                                  name,
+                                  (committed) => {
+                                    updateTemplateWith(selectedTemplate.id, (template) => ({
+                                      ...template,
+                                      attributes: template.attributes.map((item, itemIdx) =>
+                                        itemIdx === idx ? { ...item, name: committed } : item
+                                      )
+                                    }));
+                                  }
+                                );
                               }}
                             />
                           </TableCell>
@@ -661,6 +883,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                             <FormControl size="small" sx={{ minWidth: 130 }}>
                               <Select
                                 value={attribute.valueType}
+                                disabled={attribute.historianEnabled === true}
                                 onChange={(e: SelectChangeEvent<AssetAttributeType>) => {
                                   const valueType = e.target.value as AssetAttributeType;
                                   updateTemplateWith(selectedTemplate.id, (template) => ({
@@ -682,38 +905,125 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           <TableCell>
                             <TextField
                               size="small"
-                              value={serializeValue(attribute.default)}
+                              value={getDraft(
+                                `template-attr-default:${selectedTemplate.id}:${idx}`,
+                                serializeValue(attribute.default)
+                              )}
                               onChange={(e) => {
-                                const next = parseByType(attribute.valueType, e.target.value);
-                                updateTemplateWith(selectedTemplate.id, (template) => ({
-                                  ...template,
-                                  attributes: template.attributes.map((item, itemIdx) =>
-                                    itemIdx === idx ? { ...item, default: next } : item
-                                  )
-                                }));
+                                const raw = e.target.value;
+                                scheduleDraftCommit(
+                                  `template-attr-default:${selectedTemplate.id}:${idx}`,
+                                  raw,
+                                  (committed) => {
+                                    const next = parseByType(attribute.valueType, committed);
+                                    updateTemplateWith(selectedTemplate.id, (template) => ({
+                                      ...template,
+                                      attributes: template.attributes.map((item, itemIdx) =>
+                                        itemIdx === idx ? { ...item, default: next } : item
+                                      )
+                                    }));
+                                  }
+                                );
                               }}
                             />
                           </TableCell>
                           <TableCell>
                             <TextField
                               size="small"
-                              value={attribute.unit ?? ""}
+                              value={getDraft(
+                                `template-attr-unit:${selectedTemplate.id}:${idx}`,
+                                attribute.unit ?? ""
+                              )}
                               onChange={(e) => {
                                 const unit = e.target.value;
+                                scheduleDraftCommit(
+                                  `template-attr-unit:${selectedTemplate.id}:${idx}`,
+                                  unit,
+                                  (committed) => {
+                                    updateTemplateWith(selectedTemplate.id, (template) => ({
+                                      ...template,
+                                      attributes: template.attributes.map((item, itemIdx) =>
+                                        itemIdx === idx ? { ...item, unit: committed } : item
+                                      )
+                                    }));
+                                  }
+                                );
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Checkbox
+                              checked={attribute.historianEnabled === true}
+                              onChange={(_e, checked) => {
                                 updateTemplateWith(selectedTemplate.id, (template) => ({
                                   ...template,
                                   attributes: template.attributes.map((item, itemIdx) =>
-                                    itemIdx === idx ? { ...item, unit } : item
+                                    itemIdx === idx ? { ...item, historianEnabled: checked } : item
                                   )
                                 }));
                               }}
                             />
                           </TableCell>
                           <TableCell>
+                            <Autocomplete
+                              freeSolo
+                              options={assetAttributePaths}
+                              value={getDraft(
+                                `template-attr-time-source:${selectedTemplate.id}:${idx}`,
+                                attribute.historianTimeSourcePath ?? ""
+                              )}
+                              onInputChange={(_e, value) => {
+                                scheduleDraftCommit(
+                                  `template-attr-time-source:${selectedTemplate.id}:${idx}`,
+                                  value,
+                                  (committed) => {
+                                    updateTemplateWith(selectedTemplate.id, (template) => ({
+                                      ...template,
+                                      attributes: template.attributes.map((item, itemIdx) =>
+                                        itemIdx === idx
+                                          ? { ...item, historianTimeSourcePath: committed }
+                                          : item
+                                      )
+                                    }));
+                                  }
+                                );
+                              }}
+                              renderInput={(params) => (
+                                <TextField
+                                  {...params}
+                                  size="small"
+                                  placeholder="AssetA.Machine1.EventTime"
+                                />
+                              )}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              onClick={() => {
+                                if (attribute.historianEnabled === true) {
+                                  if (
+                                    !window.confirm(
+                                      `Delete historian records for all assets inheriting "${attribute.name}" from template "${selectedTemplate.name}"? This cannot be undone.`
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  void deleteHistorianByTemplateAttribute(selectedTemplate.id, attribute.name);
+                                  return;
+                                }
+                              }}
+                              disabled={attribute.historianEnabled !== true}
+                            >
+                              Delete Historian
+                            </Button>
                             <Button
                               size="small"
                               color="error"
                               onClick={() => {
+                                if (!window.confirm(`Remove template attribute "${attribute.name}"?`)) return;
                                 updateTemplateWith(selectedTemplate.id, (template) => ({
                                   ...template,
                                   attributes: template.attributes.filter((_item, itemIdx) => itemIdx !== idx)
@@ -741,9 +1051,11 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         {
                           enabled: true,
                           name: `attribute_${template.attributes.length + 1}`,
-                          valueType: "number",
+                          valueType: "float64",
                           default: 0,
-                          unit: ""
+                          unit: "",
+                          historianEnabled: false,
+                          historianTimeSourcePath: ""
                         }
                       ]
                     }));
@@ -757,5 +1069,21 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         </Box>
       )}
     </Box>
+    <Snackbar
+      open={notice.open}
+      autoHideDuration={2400}
+      onClose={() => setNotice((prev) => ({ ...prev, open: false }))}
+      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+    >
+      <Alert
+        onClose={() => setNotice((prev) => ({ ...prev, open: false }))}
+        severity={notice.kind}
+        variant="filled"
+        sx={{ width: "100%" }}
+      >
+        {notice.message}
+      </Alert>
+    </Snackbar>
+    </>
   );
 }

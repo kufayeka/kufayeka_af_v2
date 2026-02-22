@@ -142,6 +142,10 @@ func (w *HistorianWriter) ingestBatchNoWAL(points []Point) error {
 func (w *HistorianWriter) FlushAll() error {
 	w.flushMu.Lock()
 	defer w.flushMu.Unlock()
+	return w.flushAllLocked()
+}
+
+func (w *HistorianWriter) flushAllLocked() error {
 	type batch struct {
 		key    string
 		points []Point
@@ -172,6 +176,15 @@ func (w *HistorianWriter) FlushAll() error {
 		}
 	}
 	return nil
+}
+
+func (w *HistorianWriter) RunMaintenance(fn func() error) error {
+	w.flushMu.Lock()
+	defer w.flushMu.Unlock()
+	if err := w.flushAllLocked(); err != nil {
+		return err
+	}
+	return fn()
 }
 
 func (w *HistorianWriter) flushOne(key string, points []Point) error {

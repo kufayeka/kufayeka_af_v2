@@ -47,12 +47,19 @@ func main() {
 	writer.Start()
 	historian.StartRetentionLoop(cfg)
 	query := historian.NewQueryEngine(cfg)
-	server := historian.NewServer(cfg, writer, query, lastStore, wal)
+	activity := historian.NewActivityLogger(100)
+	server := historian.NewServer(cfg, writer, query, lastStore, wal, activity)
+	activity.AddSystem("info", "historian starting", map[string]any{
+		"udpHost": cfg.UDP.Host,
+		"udpPort": cfg.UDP.Port,
+		"httpHost": cfg.HTTP.Host,
+		"httpPort": cfg.HTTP.Port,
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		if err := historian.RunUDPServer(ctx, cfg, writer); err != nil {
+		if err := historian.RunUDPServer(ctx, cfg, writer, activity); err != nil {
 			log.Fatal(err)
 		}
 	}()

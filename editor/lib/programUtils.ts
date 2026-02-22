@@ -51,16 +51,40 @@ export function parseMaybeJson(input: string): unknown {
 }
 
 export function normalizeProgram(program: Program): Program {
-  const normalizeAssetValueType = (value: unknown): "number" | "boolean" | "string" | "array" | "object" => {
+  const normalizeAssetValueType = (
+    value: unknown
+  ):
+    | "int8"
+    | "uint8"
+    | "int16"
+    | "uint16"
+    | "int32"
+    | "uint32"
+    | "float32"
+    | "float64"
+    | "boolean"
+    | "string"
+    | "array"
+    | "object" => {
     const normalized = String(value || "string");
     if (
-      normalized === "number" ||
+      normalized === "int8" ||
+      normalized === "uint8" ||
+      normalized === "int16" ||
+      normalized === "uint16" ||
+      normalized === "int32" ||
+      normalized === "uint32" ||
+      normalized === "float32" ||
+      normalized === "float64" ||
       normalized === "boolean" ||
       normalized === "string" ||
       normalized === "array" ||
       normalized === "object"
     ) {
       return normalized;
+    }
+    if (normalized === "number") {
+      return "float64";
     }
     return "string";
   };
@@ -124,7 +148,9 @@ export function normalizeProgram(program: Program): Program {
             (attribute as { default?: unknown }).default !== undefined
               ? (attribute as { default?: unknown }).default
               : (attribute as { defaultValue?: unknown }).defaultValue,
-          unit: String(attribute.unit ?? "")
+          unit: String(attribute.unit ?? ""),
+          historianEnabled: (attribute as { historianEnabled?: unknown }).historianEnabled === true,
+          historianTimeSourcePath: String((attribute as { historianTimeSourcePath?: unknown }).historianTimeSourcePath ?? "")
         };
       }).filter((attribute) => attribute.name.length > 0)
     }))

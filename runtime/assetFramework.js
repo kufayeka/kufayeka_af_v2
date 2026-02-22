@@ -1,4 +1,25 @@
 function normalizeAssetSection(input = {}) {
+  const normalizeValueType = (rawType) => {
+    const t = String(rawType || "string");
+    if (
+      t === "int8" ||
+      t === "uint8" ||
+      t === "int16" ||
+      t === "uint16" ||
+      t === "int32" ||
+      t === "uint32" ||
+      t === "float32" ||
+      t === "float64" ||
+      t === "boolean" ||
+      t === "string" ||
+      t === "array" ||
+      t === "object"
+    ) {
+      return t;
+    }
+    if (t === "number") return "float64";
+    return "string";
+  };
   const assets = Array.isArray(input.assets) ? input.assets : [];
   const attributeTemplates = Array.isArray(input.attributeTemplates)
     ? input.attributeTemplates
@@ -19,12 +40,14 @@ function normalizeAssetSection(input = {}) {
         ? template.attributes.map((attribute) => ({
             enabled: attribute.enabled !== false,
             name: attribute.name,
-            valueType: attribute.valueType || attribute.type || "string",
+            valueType: normalizeValueType(attribute.valueType || attribute.type || "string"),
             default:
               Object.prototype.hasOwnProperty.call(attribute, "default")
                 ? attribute.default
                 : attribute.defaultValue,
             unit: attribute.unit ?? "",
+            historianEnabled: attribute.historianEnabled === true,
+            historianTimeSourcePath: String(attribute.historianTimeSourcePath ?? ""),
             dashboardVisible: attribute.dashboardVisible === true,
             dashboardEditable: attribute.dashboardEditable !== false,
             nullable: attribute.nullable === true,
@@ -93,6 +116,20 @@ function createAssetFrameworkStore(initialSection = {}) {
     return pattern === "*" || pattern === value;
   }
 
+  function valuesEqual(left, right) {
+    if (Object.is(left, right)) return true;
+    const leftType = typeof left;
+    const rightType = typeof right;
+    if (leftType !== "object" || rightType !== "object" || left === null || right === null) {
+      return false;
+    }
+    try {
+      return JSON.stringify(left) === JSON.stringify(right);
+    } catch {
+      return false;
+    }
+  }
+
   function buildEffectiveAttributeMap(asset, templateById) {
     const map = new Map();
 
@@ -106,6 +143,8 @@ function createAssetFrameworkStore(initialSection = {}) {
             value: attribute.default,
             valueType: attribute.valueType,
             unit: attribute.unit ?? "",
+            historianEnabled: attribute.historianEnabled === true,
+            historianTimeSourcePath: String(attribute.historianTimeSourcePath ?? ""),
           });
         }
       }
@@ -115,6 +154,12 @@ function createAssetFrameworkStore(initialSection = {}) {
       map.set(name, {
         ...(map.get(name) || {}),
         value: val && Object.prototype.hasOwnProperty.call(val, "value") ? val.value : val,
+        ts:
+          val &&
+          typeof val === "object" &&
+          Object.prototype.hasOwnProperty.call(val, "ts")
+            ? val.ts
+            : undefined,
       });
     }
 
@@ -167,6 +212,9 @@ function createAssetFrameworkStore(initialSection = {}) {
           value: attribute.value,
           valueType: attribute.valueType || "custom",
           unit: attribute.unit || "",
+          ts: attribute.ts,
+          historianEnabled: attribute.historianEnabled === true,
+          historianTimeSourcePath: attribute.historianTimeSourcePath || "",
           source: isOverride ? "override" : "template",
         };
       });
@@ -221,8 +269,11 @@ function createAssetFrameworkStore(initialSection = {}) {
           assetId: node.asset.id,
           attributeName: name,
           value: attribute.value,
+          ts: attribute.ts,
           type: attribute.valueType || "custom",
           unit: attribute.unit || "",
+          historianEnabled: attribute.historianEnabled === true,
+          historianTimeSourcePath: attribute.historianTimeSourcePath || "",
         });
       }
     }
@@ -242,11 +293,21 @@ function createAssetFrameworkStore(initialSection = {}) {
       const assetPattern = segments.slice(0, -1).join(".");
       const assetMatches = resolve(assetPattern).filter((item) => item.kind === "asset");
       if (assetMatches.length === 0) return [];
+      const templateById = new Map(
+        (state.attributeTemplates || []).map((template) => [template.id, template])
+      );
 
       const updatesByAssetId = new Map();
       for (const item of assetMatches) {
-        updatesByAssetId.set(item.assetId, [attrName]);
+        const targetAsset = state.assets.find((asset) => asset.id === item.assetId);
+        if (!targetAsset) continue;
+        const effectiveMap = buildEffectiveAttributeMap(targetAsset, templateById);
+        const currentValue = effectiveMap.get(attrName)?.value;
+        if (!valuesEqual(currentValue, value)) {
+          updatesByAssetId.set(item.assetId, [attrName]);
+        }
       }
+      if (updatesByAssetId.size === 0) return [];
 
       state = {
         ...state,
@@ -261,21 +322,27 @@ function createAssetFrameworkStore(initialSection = {}) {
         }),
       };
       matches = resolve(path).filter((item) => item.kind === "attribute");
+      const changedKeys = new Set(
+        Array.from(updatesByAssetId.entries()).map(([assetId, names]) => `${assetId}:${names[0]}`)
+      );
+      const changedMatches = matches.filter((item) => changedKeys.has(`${item.assetId}:${item.attributeName}`));
       emitChange({
         type: "attribute.set",
         pattern: path,
-        changes: matches.map((item) => ({ ...item }))
+        changes: changedMatches.map((item) => ({ ...item }))
       });
-      return matches;
+      return changedMatches;
     }
 
     const updatesByAssetId = new Map();
     for (const item of matches) {
+      if (valuesEqual(item.value, value)) continue;
       if (!updatesByAssetId.has(item.assetId)) {
         updatesByAssetId.set(item.assetId, []);
       }
       updatesByAssetId.get(item.assetId).push(item.attributeName);
     }
+    if (updatesByAssetId.size === 0) return [];
 
     state = {
       ...state,
@@ -289,13 +356,19 @@ function createAssetFrameworkStore(initialSection = {}) {
         return { ...asset, attributes: nextAttributes };
       }),
     };
+    const nextMatches = resolve(path).filter((item) => item.kind === "attribute");
+    const changedKeys = new Set();
+    for (const [assetId, names] of updatesByAssetId.entries()) {
+      for (const name of names) changedKeys.add(`${assetId}:${name}`);
+    }
+    const changedMatches = nextMatches.filter((item) => changedKeys.has(`${item.assetId}:${item.attributeName}`));
     emitChange({
       type: "attribute.set",
       pattern: path,
-      changes: matches.map((item) => ({ ...item }))
+      changes: changedMatches.map((item) => ({ ...item }))
     });
 
-    return resolve(path).filter((item) => item.kind === "attribute");
+    return changedMatches;
   }
 
   return {
