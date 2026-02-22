@@ -15,6 +15,12 @@ type QueryEngine struct {
 
 func NewQueryEngine(cfg Config) *QueryEngine { return &QueryEngine{cfg: cfg} }
 
+var scanBufPool = sync.Pool{
+	New: func() any {
+		return make([]byte, 0, 64*1024)
+	},
+}
+
 type RawResult struct {
 	Points    []Point `json:"points"`
 	Truncated bool    `json:"truncated"`
@@ -139,9 +145,10 @@ func (q *QueryEngine) scanPartitionShard(
 		if n <= 0 {
 			continue
 		}
-		buf := make([]byte, n)
+		buf := getScanBuf(n)
 		readN, err := f.ReadAt(buf, int64(r[0]))
 		if err != nil && readN <= 0 {
+			putScanBuf(buf)
 			continue
 		}
 		buf = buf[:readN]
@@ -164,27 +171,31 @@ func (q *QueryEngine) scanPartitionShard(
 				}
 				out = append(out, *p)
 				if len(out) >= limit {
+					putScanBuf(buf)
 					return out
 				}
 			}
 		} else {
-			blockPts := decodeFiltered(buf, tagSet, from, to)
+			blockPts := decodeFilteredInto(nil, buf, tagSet, from, to)
 			for i := len(blockPts) - 1; i >= 0; i-- {
 				if !takeBudget(remaining) {
+					putScanBuf(buf)
 					return out
 				}
 				out = append(out, blockPts[i])
 				if len(out) >= limit {
+					putScanBuf(buf)
 					return out
 				}
 			}
 		}
+		putScanBuf(buf)
 	}
 	return out
 }
 
-func decodeFiltered(buf []byte, tags map[uint32]struct{}, from, to int64) []Point {
-	out := make([]Point, 0, 1024)
+func decodeFilteredInto(dst []Point, buf []byte, tags map[uint32]struct{}, from, to int64) []Point {
+	out := dst[:0]
 	off := 0
 	for off < len(buf) {
 		p, n, ok := DecodeSegmentRecord(buf, off)
@@ -201,6 +212,29 @@ func decodeFiltered(buf []byte, tags map[uint32]struct{}, from, to int64) []Poin
 		out = append(out, *p)
 	}
 	return out
+}
+
+func getScanBuf(n int) []byte {
+	if n <= 0 {
+		return nil
+	}
+	v := scanBufPool.Get()
+	if v == nil {
+		return make([]byte, n)
+	}
+	b := v.([]byte)
+	if cap(b) < n {
+		return make([]byte, n)
+	}
+	return b[:n]
+}
+
+func putScanBuf(b []byte) {
+	const maxPooled = 8 * 1024 * 1024
+	if b == nil || cap(b) > maxPooled {
+		return
+	}
+	scanBufPool.Put(b[:0])
 }
 
 func takeBudget(remaining *int64) bool {

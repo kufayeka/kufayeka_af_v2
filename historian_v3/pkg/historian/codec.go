@@ -22,25 +22,77 @@ type BlockIndexEntry struct {
 }
 
 func EncodeUDPBatch(points []Point) []byte {
-	buf := make([]byte, 4)
+	total := 4
+	for i := range points {
+		total += udpPointSize(points[i])
+	}
+	buf := make([]byte, total)
 	binary.LittleEndian.PutUint32(buf[:4], uint32(len(points)))
-	for _, p := range points {
-		buf = append(buf, encodeUDPPoint(p)...)
+	off := 4
+	for i := range points {
+		off += encodeUDPPointTo(buf[off:], points[i])
 	}
 	return buf
 }
 
-func encodeUDPPoint(p Point) []byte {
-	out := make([]byte, 0, 32)
-	tmp4 := make([]byte, 4)
-	tmp8 := make([]byte, 8)
-	binary.LittleEndian.PutUint32(tmp4, p.TagID)
-	out = append(out, tmp4...)
-	binary.LittleEndian.PutUint64(tmp8, uint64(p.TsEpoch))
-	out = append(out, tmp8...)
-	out = append(out, byte(p.TypeCode))
-	out = appendTypedValue(out, p.TypeCode, p.Value, true)
-	return out
+func udpPointSize(p Point) int {
+	size := 4 + 8 + 1
+	switch p.TypeCode {
+	case TypeInt8, TypeUInt8:
+		return size + 1
+	case TypeInt16, TypeUInt16:
+		return size + 2
+	case TypeInt32, TypeUInt32, TypeFloat32:
+		return size + 4
+	case TypeFloat64:
+		return size + 8
+	case TypeString:
+		s, _ := p.Value.(string)
+		return size + 4 + len(s)
+	default:
+		return size
+	}
+}
+
+func encodeUDPPointTo(dst []byte, p Point) int {
+	binary.LittleEndian.PutUint32(dst[0:4], p.TagID)
+	binary.LittleEndian.PutUint64(dst[4:12], uint64(p.TsEpoch))
+	dst[12] = byte(p.TypeCode)
+	off := 13
+	switch p.TypeCode {
+	case TypeInt8:
+		dst[off] = byte(int8(toFloat(p.Value)))
+		return off + 1
+	case TypeUInt8:
+		dst[off] = byte(uint8(toFloat(p.Value)))
+		return off + 1
+	case TypeInt16:
+		binary.LittleEndian.PutUint16(dst[off:off+2], uint16(int16(toFloat(p.Value))))
+		return off + 2
+	case TypeUInt16:
+		binary.LittleEndian.PutUint16(dst[off:off+2], uint16(toFloat(p.Value)))
+		return off + 2
+	case TypeInt32:
+		binary.LittleEndian.PutUint32(dst[off:off+4], uint32(int32(toFloat(p.Value))))
+		return off + 4
+	case TypeUInt32:
+		binary.LittleEndian.PutUint32(dst[off:off+4], uint32(toFloat(p.Value)))
+		return off + 4
+	case TypeFloat32:
+		binary.LittleEndian.PutUint32(dst[off:off+4], math.Float32bits(float32(toFloat(p.Value))))
+		return off + 4
+	case TypeFloat64:
+		binary.LittleEndian.PutUint64(dst[off:off+8], math.Float64bits(toFloat(p.Value)))
+		return off + 8
+	case TypeString:
+		s, _ := p.Value.(string)
+		binary.LittleEndian.PutUint32(dst[off:off+4], uint32(len(s)))
+		off += 4
+		copy(dst[off:off+len(s)], s)
+		return off + len(s)
+	default:
+		return off
+	}
 }
 
 func DecodeUDPBatch(packet []byte) ([]Point, error) {
@@ -71,25 +123,70 @@ func DecodeUDPBatch(packet []byte) ([]Point, error) {
 }
 
 func EncodeSegmentRecord(p Point) []byte {
-	out := make([]byte, 0, 32)
-	tmp4 := make([]byte, 4)
-	tmp8 := make([]byte, 8)
-	binary.LittleEndian.PutUint32(tmp4, p.TagID)
-	out = append(out, tmp4...)
-	binary.LittleEndian.PutUint64(tmp8, uint64(p.TsEpoch))
-	out = append(out, tmp8...)
-	out = append(out, byte(p.TypeCode))
+	rec := make([]byte, SegmentRecordSize(p))
+	encodeSegmentRecordTo(rec, p)
+	return rec
+}
+
+func SegmentRecordSize(p Point) int {
 	fixed := p.TypeCode.FixedSize()
 	if fixed > 0 {
-		binary.LittleEndian.PutUint32(tmp4, 0)
-		out = append(out, tmp4...)
-	} else {
-		s := p.Value.(string)
-		binary.LittleEndian.PutUint32(tmp4, uint32(len(s)))
-		out = append(out, tmp4...)
+		return SegmentHeaderSize + fixed
 	}
-	out = appendTypedValue(out, p.TypeCode, p.Value, false)
-	return out
+	if p.TypeCode == TypeString {
+		s, _ := p.Value.(string)
+		return SegmentHeaderSize + len(s)
+	}
+	return SegmentHeaderSize
+}
+
+func encodeSegmentRecordTo(dst []byte, p Point) int {
+	binary.LittleEndian.PutUint32(dst[0:4], p.TagID)
+	binary.LittleEndian.PutUint64(dst[4:12], uint64(p.TsEpoch))
+	dst[12] = byte(p.TypeCode)
+	off := SegmentHeaderSize
+	switch p.TypeCode {
+	case TypeInt8:
+		binary.LittleEndian.PutUint32(dst[13:17], 0)
+		dst[off] = byte(int8(toFloat(p.Value)))
+		return off + 1
+	case TypeUInt8:
+		binary.LittleEndian.PutUint32(dst[13:17], 0)
+		dst[off] = byte(uint8(toFloat(p.Value)))
+		return off + 1
+	case TypeInt16:
+		binary.LittleEndian.PutUint32(dst[13:17], 0)
+		binary.LittleEndian.PutUint16(dst[off:off+2], uint16(int16(toFloat(p.Value))))
+		return off + 2
+	case TypeUInt16:
+		binary.LittleEndian.PutUint32(dst[13:17], 0)
+		binary.LittleEndian.PutUint16(dst[off:off+2], uint16(toFloat(p.Value)))
+		return off + 2
+	case TypeInt32:
+		binary.LittleEndian.PutUint32(dst[13:17], 0)
+		binary.LittleEndian.PutUint32(dst[off:off+4], uint32(int32(toFloat(p.Value))))
+		return off + 4
+	case TypeUInt32:
+		binary.LittleEndian.PutUint32(dst[13:17], 0)
+		binary.LittleEndian.PutUint32(dst[off:off+4], uint32(toFloat(p.Value)))
+		return off + 4
+	case TypeFloat32:
+		binary.LittleEndian.PutUint32(dst[13:17], 0)
+		binary.LittleEndian.PutUint32(dst[off:off+4], math.Float32bits(float32(toFloat(p.Value))))
+		return off + 4
+	case TypeFloat64:
+		binary.LittleEndian.PutUint32(dst[13:17], 0)
+		binary.LittleEndian.PutUint64(dst[off:off+8], math.Float64bits(toFloat(p.Value)))
+		return off + 8
+	case TypeString:
+		s, _ := p.Value.(string)
+		binary.LittleEndian.PutUint32(dst[13:17], uint32(len(s)))
+		copy(dst[off:off+len(s)], s)
+		return off + len(s)
+	default:
+		binary.LittleEndian.PutUint32(dst[13:17], 0)
+		return off
+	}
 }
 
 func DecodeSegmentRecord(buf []byte, offset int) (*Point, int, bool) {
@@ -143,49 +240,6 @@ func DecodeBlockIndex(buf []byte) []BlockIndexEntry {
 		})
 	}
 	return out
-}
-
-func appendTypedValue(dst []byte, tc ValueTypeCode, v any, udp bool) []byte {
-	switch tc {
-	case TypeInt8:
-		return append(dst, byte(int8(toFloat(v))))
-	case TypeUInt8:
-		return append(dst, byte(uint8(toFloat(v))))
-	case TypeInt16:
-		b := make([]byte, 2)
-		binary.LittleEndian.PutUint16(b, uint16(int16(toFloat(v))))
-		return append(dst, b...)
-	case TypeUInt16:
-		b := make([]byte, 2)
-		binary.LittleEndian.PutUint16(b, uint16(toFloat(v)))
-		return append(dst, b...)
-	case TypeInt32:
-		b := make([]byte, 4)
-		binary.LittleEndian.PutUint32(b, uint32(int32(toFloat(v))))
-		return append(dst, b...)
-	case TypeUInt32:
-		b := make([]byte, 4)
-		binary.LittleEndian.PutUint32(b, uint32(toFloat(v)))
-		return append(dst, b...)
-	case TypeFloat32:
-		b := make([]byte, 4)
-		binary.LittleEndian.PutUint32(b, math.Float32bits(float32(toFloat(v))))
-		return append(dst, b...)
-	case TypeFloat64:
-		b := make([]byte, 8)
-		binary.LittleEndian.PutUint64(b, math.Float64bits(toFloat(v)))
-		return append(dst, b...)
-	case TypeString:
-		s, _ := v.(string)
-		if udp {
-			b := make([]byte, 4)
-			binary.LittleEndian.PutUint32(b, uint32(len(s)))
-			dst = append(dst, b...)
-		}
-		return append(dst, []byte(s)...)
-	default:
-		return dst
-	}
 }
 
 func decodeTypedValue(tc ValueTypeCode, src []byte, udp bool) (any, int, error) {

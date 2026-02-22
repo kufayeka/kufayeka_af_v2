@@ -111,16 +111,16 @@ func (w *HistorianWriter) ingestBatchNoWAL(points []Point) error {
 				continue
 			}
 			if len(q.points) > 0 {
-				removed := EncodeSegmentRecord(q.points[0])
+				removed := SegmentRecordSize(q.points[0])
 				q.points = q.points[1:]
-				q.bytes -= len(removed)
+				q.bytes -= removed
 				if q.bytes < 0 {
 					q.bytes = 0
 				}
 				w.stats.DroppedPoints++
 			}
 		}
-		recLen := len(EncodeSegmentRecord(p))
+		recLen := SegmentRecordSize(p)
 		q.points = append(q.points, p)
 		q.bytes += recLen
 		w.stats.AcceptedPoints++
@@ -149,6 +149,7 @@ func (w *HistorianWriter) flushAllLocked() error {
 	type batch struct {
 		key    string
 		points []Point
+		bytes  int
 	}
 	batches := make([]batch, 0, len(w.queues))
 	w.mu.Lock()
@@ -156,16 +157,16 @@ func (w *HistorianWriter) flushAllLocked() error {
 		if len(q.points) == 0 {
 			continue
 		}
-		pts := make([]Point, len(q.points))
-		copy(pts, q.points)
-		q.points = q.points[:0]
+		pts := q.points
+		bytes := q.bytes
+		q.points = nil
 		q.bytes = 0
-		batches = append(batches, batch{key: k, points: pts})
+		batches = append(batches, batch{key: k, points: pts, bytes: bytes})
 	}
 	w.mu.Unlock()
 
 	for _, b := range batches {
-		if err := w.flushOne(b.key, b.points); err != nil {
+		if err := w.flushOne(b.key, b.points, b.bytes); err != nil {
 			return err
 		}
 	}
@@ -187,7 +188,7 @@ func (w *HistorianWriter) RunMaintenance(fn func() error) error {
 	return fn()
 }
 
-func (w *HistorianWriter) flushOne(key string, points []Point) error {
+func (w *HistorianWriter) flushOne(key string, points []Point, payloadBytes int) error {
 	day, hour, shard := parseQueueKey(key)
 	p := PartitionInfo{Day: day, Hour: hour}
 	segPath := SegmentPath(w.cfg.Storage.DataDir, p, shard)
@@ -198,25 +199,34 @@ func (w *HistorianWriter) flushOne(key string, points []Point) error {
 	if err := os.MkdirAll(filepath.Dir(idxPath), 0o755); err != nil {
 		return err
 	}
-	payload := make([]byte, 0, len(points)*32)
+	if payloadBytes <= 0 {
+		for i := range points {
+			payloadBytes += SegmentRecordSize(points[i])
+		}
+	}
+	payload := make([]byte, payloadBytes)
+	payloadOff := 0
 	minTs := int64(^uint64(0) >> 1)
 	maxTs := int64(-1 << 63)
 	minTag := uint32(^uint32(0))
 	maxTag := uint32(0)
-	for _, p := range points {
-		if p.TsEpoch < minTs {
-			minTs = p.TsEpoch
+	for _, point := range points {
+		if point.TsEpoch < minTs {
+			minTs = point.TsEpoch
 		}
-		if p.TsEpoch > maxTs {
-			maxTs = p.TsEpoch
+		if point.TsEpoch > maxTs {
+			maxTs = point.TsEpoch
 		}
-		if p.TagID < minTag {
-			minTag = p.TagID
+		if point.TagID < minTag {
+			minTag = point.TagID
 		}
-		if p.TagID > maxTag {
-			maxTag = p.TagID
+		if point.TagID > maxTag {
+			maxTag = point.TagID
 		}
-		payload = append(payload, EncodeSegmentRecord(p)...)
+		payloadOff += encodeSegmentRecordTo(payload[payloadOff:], point)
+	}
+	if payloadOff != len(payload) {
+		payload = payload[:payloadOff]
 	}
 	startOff := uint64(0)
 	if st, err := os.Stat(segPath); err == nil {
