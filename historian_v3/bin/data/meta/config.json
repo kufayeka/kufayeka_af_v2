@@ -16,8 +16,8 @@
     "timestampUnit": "us"
   },
   "flush": {
-    "flushIntervalMs": 5,
-    "flushBytes": 262144,
+    "flushIntervalMs": 100,
+    "flushBytes": 1048576,
     "maxQueuePoints": 200000,
     "backpressurePolicy": "drop_new"
   },
@@ -36,8 +36,8 @@
   },
   "fsync": {
     "walPolicy": "interval",
-    "walIntervalMs": 200,
+    "walIntervalMs": 500,
     "segmentPolicy": "interval",
-    "segmentIntervalMs": 500
+    "segmentIntervalMs": 1000
   }
 }

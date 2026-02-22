@@ -74,23 +74,53 @@ function createApiServer(runtime, options = {}) {
     };
   };
 
-  async function historianByPath(kind, requestUrl) {
-    const pathQuery = requestUrl.searchParams.get("path") || "";
-    if (!pathQuery) {
-      return { status: 400, body: { error: "Query parameter 'path' wajib diisi" } };
-    }
-    const matches = assetStore
+  function parsePathList(pathQueryRaw) {
+    return String(pathQueryRaw || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function resolvePathMatches(pathQuery) {
+    return assetStore
       .query(pathQuery)
       .filter((item) => item.kind === "attribute")
       .map((item) => ({
         path: item.path,
         assetId: item.assetId,
         attributeName: item.attributeName,
-        tagId: computeTagID(item.assetId, item.attributeName)
+        tagId: computeTagID(item.assetId, item.attributeName),
+        historianTargetId: item.historianTargetId || "default"
       }));
+  }
+
+  async function historianByPath(kind, requestUrl) {
+    const pathQueryRaw = requestUrl.searchParams.get("path") || "";
+    const pathQueries = parsePathList(pathQueryRaw);
+    if (pathQueries.length === 0) {
+      return { status: 400, body: { error: "Query parameter 'path' wajib diisi" } };
+    }
+
+    const allMatches = [];
+    for (const pathQuery of pathQueries) {
+      for (const item of resolvePathMatches(pathQuery)) {
+        allMatches.push(item);
+      }
+    }
+    const seen = new Set();
+    const matches = [];
+    for (const item of allMatches) {
+      const key = `${item.assetId}:${item.attributeName}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      matches.push(item);
+    }
 
     if (matches.length === 0) {
-      return { status: 404, body: { error: "No matching attribute path", path: pathQuery, matches: [] } };
+      return {
+        status: 404,
+        body: { error: "No matching attribute path", path: pathQueryRaw, paths: pathQueries, matches: [] }
+      };
     }
     const targetIds = matches
       .map((m) => String(m.historianTargetId || "default"))
@@ -144,7 +174,8 @@ function createApiServer(runtime, options = {}) {
     return {
       status: 200,
       body: {
-        path: pathQuery,
+        path: pathQueryRaw,
+        paths: pathQueries,
         matches,
         rows,
         truncated: upstreamJson.truncated === true,
@@ -152,19 +183,6 @@ function createApiServer(runtime, options = {}) {
         historianTargetId: target.id || "default"
       }
     };
-  }
-
-  function resolvePathMatches(pathQuery) {
-    return assetStore
-      .query(pathQuery)
-      .filter((item) => item.kind === "attribute")
-      .map((item) => ({
-        path: item.path,
-        assetId: item.assetId,
-        attributeName: item.attributeName,
-        tagId: computeTagID(item.assetId, item.attributeName),
-        historianTargetId: item.historianTargetId || "default"
-      }));
   }
 
   async function historianDeleteByMatches(matches, requestUrl) {

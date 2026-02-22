@@ -22,8 +22,8 @@ storage:
   timestampUnit: us   # us atau ns
 
 flush:
-  flushIntervalMs: 5       # interval flush queue ke disk
-  flushBytes: 256 * 1024   # flush jika buffer >= nilai ini
+  flushIntervalMs: 100       # interval flush queue ke disk
+  flushBytes: 1024 * 1024   # flush jika buffer >= nilai ini
   maxQueuePoints: 200000   # backpressure limit queue
   backpressurePolicy: drop_new # drop_new | drop_oldest
 
@@ -42,6 +42,6 @@ query:
 
 fsync:
   walPolicy: interval       # always | interval | off
-  walIntervalMs: 200        # dipakai saat walPolicy=interval
+  walIntervalMs: 500        # dipakai saat walPolicy=interval
   segmentPolicy: interval   # always | interval | off
-  segmentIntervalMs: 500    # dipakai saat segmentPolicy=interval
+  segmentIntervalMs: 1000    # dipakai saat segmentPolicy=interval

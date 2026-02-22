@@ -22,7 +22,7 @@ storage:
   timestampUnit: us   # us atau ns
 
 flush:
-  flushIntervalMs: 5       # interval flush queue ke disk
+  flushIntervalMs: 100       # interval flush queue ke disk
   flushBytes: 256 * 1024   # flush jika buffer >= nilai ini
   maxQueuePoints: 200000   # backpressure limit queue
   backpressurePolicy: drop_new # drop_new | drop_oldest
