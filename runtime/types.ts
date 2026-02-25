@@ -274,6 +274,7 @@ export interface EventStore {
     sortBy: string;
     sortDir: "ASC" | "DESC";
   };
+  shutdown?(): void;
 }
 
 export interface ProgramDefinition {

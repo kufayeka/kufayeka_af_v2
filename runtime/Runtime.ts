@@ -11,11 +11,27 @@ import type {
 interface RuntimeOptions {
   maxInflightPerNode?: number;
   maxQueuePerNode?: number;
+  nodeExecutionTimeoutMs?: number;
 }
 
 interface NodeExecutionState {
   inflight: number;
   queue: RuntimeMessage[];
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 class Runtime {
@@ -24,11 +40,14 @@ class Runtime {
   private readonly globalStore = new Map<string, unknown>();
   private readonly maxInflightPerNode: number;
   private readonly maxQueuePerNode: number;
+  private readonly nodeExecutionTimeoutMs: number;
   private readonly nodeState = new Map<string, NodeExecutionState>();
+  private shuttingDown = false;
 
   constructor(options: RuntimeOptions = {}) {
     this.maxInflightPerNode = options.maxInflightPerNode ?? 50;
     this.maxQueuePerNode = options.maxQueuePerNode ?? 5000;
+    this.nodeExecutionTimeoutMs = Math.max(0, Number(options.nodeExecutionTimeoutMs ?? 30000));
   }
 
   addNode(id: string, handler: RuntimeNodeHandler): void {
@@ -148,6 +167,7 @@ class Runtime {
   }
 
   private enqueueNodeMessage(nodeId: string, msg: RuntimeMessage): void {
+    if (this.shuttingDown) return;
     const state = this.getNodeState(nodeId);
     if (state.queue.length >= this.maxQueuePerNode) {
       console.warn(`Queue node "${nodeId}" penuh (${this.maxQueuePerNode}); msg dibuang`);
@@ -177,7 +197,15 @@ class Runtime {
             this.send(nodeId, outMsg);
           };
           const context = this.createNodeContext(nodeId);
-          await handler(msg, send, context);
+          if (this.nodeExecutionTimeoutMs > 0) {
+            await withTimeout(
+              Promise.resolve(handler(msg, send, context)),
+              this.nodeExecutionTimeoutMs,
+              `Node execution timeout after ${this.nodeExecutionTimeoutMs}ms`
+            );
+          } else {
+            await handler(msg, send, context);
+          }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           console.error(`Error di node "${nodeId}":`, message);
@@ -203,11 +231,19 @@ class Runtime {
   }
 
   send(fromId: string, msg: unknown): void {
+    if (this.shuttingDown) return;
     const normalized = this.normalizeMessage(msg);
     const nexts = this.wires.get(fromId) ?? [];
     for (const nextId of nexts) {
       const msgClone = structuredClone(normalized);
       this.enqueueNodeMessage(nextId, msgClone);
+    }
+  }
+
+  shutdown(): void {
+    this.shuttingDown = true;
+    for (const state of this.nodeState.values()) {
+      state.queue.length = 0;
     }
   }
 }

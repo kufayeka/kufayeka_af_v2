@@ -26,6 +26,21 @@ interface ScriptAction {
   templateBindingOverrides?: Record<string, Partial<VariableBinding>>;
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function coerceStaticValue(type: string, value: unknown): unknown {
   if (type === "number") return Number(value || 0);
   if (type === "boolean") {
@@ -132,6 +147,17 @@ ${script}
     };
 
     const bindings = await buildResolvedBindings(action, context, options);
-    await compiled(msg, send, context, helpers, action.config || {}, bindings);
+    const timeoutMs = Math.max(
+      0,
+      Number((action.config && action.config.timeoutMs) ?? process.env.RUNTIME_SCRIPT_TIMEOUT_MS ?? 0) || 0
+    );
+    const runPromise = Promise.resolve(
+      compiled(msg, send, context, helpers, action.config || {}, bindings)
+    ) as Promise<unknown>;
+    if (timeoutMs > 0) {
+      await withTimeout(runPromise, timeoutMs, `Script action "${action.id}" timeout after ${timeoutMs}ms`);
+    } else {
+      await runPromise;
+    }
   };
 }

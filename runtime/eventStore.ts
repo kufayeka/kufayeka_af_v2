@@ -461,6 +461,9 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
     deleteByPattern,
     get,
     query,
+    shutdown: () => {
+      db.close();
+    },
   };
 }
 
