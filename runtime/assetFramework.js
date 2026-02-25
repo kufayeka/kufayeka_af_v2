@@ -152,6 +152,21 @@ function createAssetFrameworkStore(initialSection = {}) {
     }
   }
 
+  function valuesLooselyEqual(left, right) {
+    if (valuesEqual(left, right)) return true;
+    const leftType = typeof left;
+    const rightType = typeof right;
+    if (leftType === "object" || rightType === "object") {
+      try {
+        return JSON.stringify(left) === JSON.stringify(right);
+      } catch {
+        return false;
+      }
+    }
+    // eslint-disable-next-line eqeqeq
+    return left == right;
+  }
+
   function buildEffectiveAttributeMap(asset, templateById) {
     const map = new Map();
 
@@ -449,6 +464,32 @@ function createAssetFrameworkStore(initialSection = {}) {
         });
       }
       return results;
+    },
+    findAttributesByValue(path, expectedValue, options = {}) {
+      const strict = options && options.strict === true;
+      const matches = resolve(path).filter((item) => item.kind === "attribute");
+      const filtered = matches.filter((item) =>
+        strict ? valuesEqual(item.value, expectedValue) : valuesLooselyEqual(item.value, expectedValue)
+      );
+      const assetsMap = new Map();
+      for (const item of filtered) {
+        if (assetsMap.has(item.assetId)) continue;
+        const pathSegments = splitPath(item.path);
+        const assetPath = pathSegments.slice(0, -1).join(".");
+        assetsMap.set(item.assetId, {
+          assetId: item.assetId,
+          path: assetPath
+        });
+      }
+      return {
+        path,
+        expectedValue,
+        strict,
+        count: filtered.length,
+        assetCount: assetsMap.size,
+        matches: filtered,
+        assets: Array.from(assetsMap.values())
+      };
     },
     getHierarchy(options) {
       return buildHierarchy(options);

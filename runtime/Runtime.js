@@ -79,6 +79,20 @@ class Runtime {
           if (!store || typeof store.setAttributes !== "function") return [];
           return store.setAttributes(items);
         },
+        findByValue: (path, expectedValue, options) => {
+          const store = getAssetStorage();
+          if (!store || typeof store.findAttributesByValue !== "function") {
+            return { path, expectedValue, strict: options?.strict === true, count: 0, assetCount: 0, matches: [], assets: [] };
+          }
+          return store.findAttributesByValue(path, expectedValue, options);
+        },
+        find: (path, expectedValue, options) => {
+          const store = getAssetStorage();
+          if (!store || typeof store.findAttributesByValue !== "function") {
+            return { path, expectedValue, strict: options?.strict === true, count: 0, assetCount: 0, matches: [], assets: [] };
+          }
+          return store.findAttributesByValue(path, expectedValue, options);
+        },
         hierarchy: (options) => {
           const store = getAssetStorage();
           if (!store || typeof store.getHierarchy !== "function") return [];

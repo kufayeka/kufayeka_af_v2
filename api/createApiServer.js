@@ -2,6 +2,7 @@ const http = require("node:http");
 const { ensureAssetStorage } = require("../runtime/assetStorage");
 const { ensureEventStore } = require("../runtime/eventStore");
 const { computeTagID } = require("../runtime/historianBridge");
+const { OPENAPI_RUNTIME_SPEC } = require("./openapiRuntimeSpec");
 
 /**
  * DEV CORS: allow all origins (no credentials).
@@ -58,6 +59,22 @@ function getKeyFromPath(urlPath) {
   const encodedKey = urlPath.slice("/api/global/".length);
   if (!encodedKey) return null;
   return decodeURIComponent(encodedKey);
+}
+
+function parseBoolean(value, fallback = false) {
+  if (value == null) return fallback;
+  const raw = String(value).trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+function parseFinderExpectedValue(rawValue) {
+  if (rawValue == null) return undefined;
+  const source = String(rawValue);
+  try {
+    return JSON.parse(source);
+  } catch {
+    return source;
+  }
 }
 
 function createApiServer(runtime, options = {}) {
@@ -260,6 +277,43 @@ function createApiServer(runtime, options = {}) {
 
     const requestUrl = new URL(req.url || "/", `http://${req.headers.host}`);
     const urlPath = requestUrl.pathname;
+
+    if (method === "GET" && (urlPath === "/docs/openapi.json" || urlPath === "/api/openapi.json")) {
+      sendJson(req, res, 200, OPENAPI_RUNTIME_SPEC);
+      return;
+    }
+
+    if (method === "GET" && (urlPath === "/docs" || urlPath === "/api/openapi")) {
+      const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kufayeka Runtime API Docs</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+    <style>
+      body { margin: 0; background: #fafafa; }
+      #swagger-ui { max-width: 1200px; margin: 0 auto; }
+    </style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script>
+      window.ui = SwaggerUIBundle({
+        url: "/docs/openapi.json",
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+        displayRequestDuration: true,
+        persistAuthorization: true
+      });
+    </script>
+  </body>
+</html>`;
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(html);
+      return;
+    }
 
     if (method === "GET" && urlPath === "/api/global") {
       sendJson(req, res, 200, { data: runtime.getGlobalEntries() });
@@ -465,6 +519,23 @@ function createApiServer(runtime, options = {}) {
         };
       });
       sendJson(req, res, 200, { path: pathQuery, count: matches.length, matches });
+      return;
+    }
+
+    if ((urlPath === "/api/assets/find" || urlPath === "/api/assets/find-by-value") && method === "GET") {
+      const pathQuery = requestUrl.searchParams.get("path") || "*.*.*";
+      const rawValue = requestUrl.searchParams.get("value");
+      if (rawValue == null) {
+        sendJson(req, res, 400, { error: "Query parameter 'value' wajib diisi" });
+        return;
+      }
+      const expectedValue = parseFinderExpectedValue(rawValue);
+      const strict = parseBoolean(requestUrl.searchParams.get("strict"), false);
+      const result =
+        typeof assetStore.findAttributesByValue === "function"
+          ? assetStore.findAttributesByValue(pathQuery, expectedValue, { strict })
+          : { path: pathQuery, expectedValue, strict, count: 0, assetCount: 0, matches: [], assets: [] };
+      sendJson(req, res, 200, result);
       return;
     }
 

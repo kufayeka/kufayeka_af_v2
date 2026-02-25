@@ -38,6 +38,7 @@ export default function StableMonaco({
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
   const isFocusedRef = useRef(false);
+  const suppressChangeRef = useRef(false);
   const bindingLibRef = useRef<{ dispose: () => void } | null>(null);
   const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
 
@@ -74,6 +75,19 @@ export default function StableMonaco({
     configureScriptEditorMonaco(monaco);
   };
 
+  const setModelValueSafely = (nextValue: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const model = editor.getModel();
+    const current = model?.getValue() ?? "";
+    if (current === nextValue) return;
+    suppressChangeRef.current = true;
+    model?.setValue(nextValue);
+    Promise.resolve().then(() => {
+      suppressChangeRef.current = false;
+    });
+  };
+
   useEffect(() => {
     const monaco = monacoRef.current;
     if (!monaco || profile !== "script") return;
@@ -97,25 +111,13 @@ export default function StableMonaco({
 
   // Always adopt external content when switching document path.
   useEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    const model = editor.getModel();
-    const current = model?.getValue() ?? "";
-    if (current !== value) {
-      model?.setValue(value);
-    }
+    setModelValueSafely(value);
   }, [path]);
 
   // Sync from parent only while editor is not focused to avoid cursor jump.
   useEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
     if (isFocusedRef.current) return;
-    const model = editor.getModel();
-    const current = model?.getValue() ?? "";
-    if (current !== value) {
-      model?.setValue(value);
-    }
+    setModelValueSafely(value);
   }, [value]);
 
   useEffect(() => {
@@ -143,7 +145,10 @@ export default function StableMonaco({
       defaultLanguage={language}
       defaultValue={value}
       onMount={onMount}
-      onChange={(next) => onChangeText(next ?? "")}
+      onChange={(next) => {
+        if (suppressChangeRef.current) return;
+        onChangeText(next ?? "");
+      }}
       options={mergedOptions}
     />
   );

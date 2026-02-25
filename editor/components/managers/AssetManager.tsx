@@ -541,6 +541,9 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         return normalized.assets.assets[0]?.id || "";
       });
       setExpandedKeys(normalized.assets.assets.map((asset) => `asset:${asset.id}`));
+      showNotice("success", `Reloaded ${normalized.assets.assets.length} assets from runtime`);
+    } catch (error) {
+      showNotice("error", `Reload failed: ${(error instanceof Error ? error.message : String(error))}`);
     } finally {
       setLoadingRuntime(false);
     }
@@ -731,10 +734,26 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
           <Paper sx={{ p: 1.25, maxHeight: "74vh", overflow: "auto" }}>
             <Box sx={{ display: "flex", gap: 0.75, mb: 1 }}>
-              <Button size="small" variant="contained" onClick={() => addAsset(null)}>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={() => {
+                  addAsset(null);
+                  showNotice("success", "Root asset created");
+                }}
+              >
                 Add Root
               </Button>
-              <Button size="small" variant="outlined" onClick={() => selectedAsset && addAsset(selectedAsset.id)} disabled={!selectedAsset}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => {
+                  if (!selectedAsset) return;
+                  addAsset(selectedAsset.id);
+                  showNotice("success", `Child asset created under "${selectedAsset.name}"`);
+                }}
+                disabled={!selectedAsset}
+              >
                 Add Child
               </Button>
               <Button
@@ -788,7 +807,9 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                       onClick={() => {
                         if (!selectedAsset) return;
                         if (!window.confirm(`Remove asset "${selectedAsset.name}" and all descendants?`)) return;
+                        const targetName = selectedAsset.name;
                         removeAsset(selectedAsset.id);
+                        showNotice("success", `Asset "${targetName}" removed`);
                       }}
                       disabled={!selectedAsset}
                     >
@@ -875,7 +896,10 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                     variant="outlined"
                     size="small"
                     sx={{ alignSelf: "flex-start" }}
-                    onClick={() => refreshAssetTemplateAttributes(selectedAsset.id)}
+                    onClick={() => {
+                      refreshAssetTemplateAttributes(selectedAsset.id);
+                      showNotice("success", `Attributes refreshed for "${selectedAsset.name}"`);
+                    }}
                   >
                     Refresh Attributes from Templates
                   </Button>
@@ -925,31 +949,41 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                               const fieldKey = `asset-attr:${selectedAsset.id}:${row.name}`;
                               const currentValue = serializeValue(row.value);
                               const draftValue = getDraft(fieldKey, currentValue);
-                              const isChanged = draftValue !== currentValue;
+                              const hasDraft = Object.prototype.hasOwnProperty.call(fieldDrafts, fieldKey);
 
                               return (
                                 <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
                                   <Button
                                     size="small"
                                     variant="contained"
-                                    disabled={!isChanged}
+                                    disabled={!hasDraft}
                                     onClick={() => {
-                                      const nextValue =
-                                        row.valueType === "custom"
-                                          ? parseMaybeJson(draftValue)
-                                          : parseByType(row.valueType, draftValue);
-                                      updateAssetWith(selectedAsset.id, (asset) => ({
-                                        ...asset,
-                                        attributes: {
-                                          ...asset.attributes,
-                                          [row.name]: { value: nextValue }
-                                        }
-                                      }));
-                                      setFieldDrafts((prev) => {
-                                        const cloned = { ...prev };
-                                        delete cloned[fieldKey];
-                                        return cloned;
-                                      });
+                                      try {
+                                        const nextValue =
+                                          row.valueType === "custom"
+                                            ? parseMaybeJson(draftValue)
+                                            : parseByType(row.valueType, draftValue);
+                                        updateAssetWith(selectedAsset.id, (asset) => ({
+                                          ...asset,
+                                          attributes: {
+                                            ...asset.attributes,
+                                            [row.name]: { value: nextValue }
+                                          }
+                                        }));
+                                        setFieldDrafts((prev) => {
+                                          const cloned = { ...prev };
+                                          delete cloned[fieldKey];
+                                          return cloned;
+                                        });
+                                        showNotice("success", `Applied value for ${row.name}`);
+                                      } catch (error) {
+                                        showNotice(
+                                          "error",
+                                          `Failed applying ${row.name}: ${
+                                            error instanceof Error ? error.message : String(error)
+                                          }`
+                                        );
+                                      }
                                     }}
                                   >
                                     Apply
@@ -993,7 +1027,14 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         <Box sx={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 1.25 }}>
           <Paper sx={{ p: 1.25, maxHeight: "74vh", overflow: "auto" }}>
             <Box sx={{ display: "flex", gap: 0.75, mb: 1 }}>
-              <Button size="small" variant="contained" onClick={addTemplate}>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={() => {
+                  addTemplate();
+                  showNotice("success", "Template created");
+                }}
+              >
                 Add Template
               </Button>
               <Button
@@ -1002,7 +1043,9 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                 onClick={() => {
                   if (!selectedTemplate) return;
                   if (!window.confirm(`Remove template "${selectedTemplate.name}"?`)) return;
+                  const targetName = selectedTemplate.name;
                   removeTemplate(selectedTemplate.id);
+                  showNotice("success", `Template "${targetName}" removed`);
                 }}
                 disabled={!selectedTemplate}
               >
@@ -1266,18 +1309,19 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                             >
                               Delete Historian
                             </Button>
-                            <Button
-                              size="small"
-                              color="error"
-                              onClick={() => {
-                                if (!window.confirm(`Remove template attribute "${attribute.name}"?`)) return;
-                                updateTemplateWith(selectedTemplate.id, (template) => ({
-                                  ...template,
-                                  attributes: template.attributes.filter((_item, itemIdx) => itemIdx !== idx)
-                                }));
-                              }}
-                            >
-                              Remove
+                              <Button
+                                size="small"
+                                color="error"
+                                onClick={() => {
+                                  if (!window.confirm(`Remove template attribute "${attribute.name}"?`)) return;
+                                  updateTemplateWith(selectedTemplate.id, (template) => ({
+                                    ...template,
+                                    attributes: template.attributes.filter((_item, itemIdx) => itemIdx !== idx)
+                                  }));
+                                  showNotice("success", `Template attribute "${attribute.name}" removed`);
+                                }}
+                              >
+                                Remove
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -1307,6 +1351,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         }
                       ]
                     }));
+                    showNotice("success", "Template attribute added");
                   }}
                 >
                   Add Attribute
@@ -1338,6 +1383,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                     enabled: true
                   };
                   updateHistorians([...historianTargets, next]);
+                  showNotice("success", `Historian target "${next.name}" created`);
                 }}
               >
                 Add Historian
@@ -1483,6 +1529,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                               }
                               if (!window.confirm(`Remove historian target "${target.name}"?`)) return;
                               updateHistorians(historianTargets.filter((_item, itemIdx) => itemIdx !== idx));
+                              showNotice("success", `Historian target "${target.name}" removed`);
                             }}
                           >
                             Remove

@@ -140,6 +140,32 @@ declare interface ScriptContext {
     getAll: (path: string) => AssetQueryMatch[];
     set: (path: string, value: any) => AssetQueryMatch[];
     setMany: (items: Array<{ path: string; value: any }>) => Array<{ path: string; count: number; matches: AssetQueryMatch[] }>;
+    findByValue: (
+      path: string,
+      expectedValue: any,
+      options?: { strict?: boolean }
+    ) => {
+      path: string;
+      expectedValue: any;
+      strict: boolean;
+      count: number;
+      assetCount: number;
+      matches: AssetQueryMatch[];
+      assets: Array<{ assetId: string; path: string }>;
+    };
+    find: (
+      path: string,
+      expectedValue: any,
+      options?: { strict?: boolean }
+    ) => {
+      path: string;
+      expectedValue: any;
+      strict: boolean;
+      count: number;
+      assetCount: number;
+      matches: AssetQueryMatch[];
+      assets: Array<{ assetId: string; path: string }>;
+    };
     hierarchy: (options?: { populateAttributes?: boolean }) => any[];
   };
   eventSys: {
@@ -248,6 +274,18 @@ declare const eventSys: ScriptContext["eventSys"];
         documentation: "Alias of context.asset.hierarchy(...)"
       },
       {
+        label: "asset.findByValue",
+        insertText: "asset.findByValue(${1:\"*.MachineSpeed\"}, ${2:10}, { strict: false })",
+        detail: "Find assets by attribute value",
+        documentation: "Return assets and matches for attributes with matching value."
+      },
+      {
+        label: "asset.find",
+        insertText: "asset.find(${1:\"*.MachineSpeed\"}, ${2:10}, { strict: false })",
+        detail: "Find assets by attribute value",
+        documentation: "Alias of asset.findByValue(...)."
+      },
+      {
         label: "global.get",
         insertText: "global.get(${1:key}, ${2:null})",
         detail: "Read runtime global",
@@ -300,6 +338,18 @@ declare const eventSys: ScriptContext["eventSys"];
         insertText: "context.asset.hierarchy({ populateAttributes: true })",
         detail: "Get asset hierarchy",
         documentation: "Returns tree hierarchy from asset storage."
+      },
+      {
+        label: "context.asset.findByValue",
+        insertText: "context.asset.findByValue(${1:\"*.MachineSpeed\"}, ${2:10}, { strict: false })",
+        detail: "Find assets by attribute value",
+        documentation: "Return assets and matches for attributes with matching value."
+      },
+      {
+        label: "context.asset.find",
+        insertText: "context.asset.find(${1:\"*.MachineSpeed\"}, ${2:10}, { strict: false })",
+        detail: "Find assets by attribute value",
+        documentation: "Alias of context.asset.findByValue(...)."
       },
       {
         label: "send",

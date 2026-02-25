@@ -307,7 +307,9 @@ export default function ActionManager({
   const templateScriptSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fieldSaveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const actionTypingUntilRef = useRef(0);
+  const actionTypingForIdRef = useRef("");
   const templateTypingUntilRef = useRef(0);
+  const templateTypingForIdRef = useRef("");
 
   const selectedAction = actions.find((item) => item.id === selectedActionId);
   const selectedTemplate = scriptTemplates.find((item) => item.id === selectedTemplateId);
@@ -344,7 +346,12 @@ export default function ActionManager({
       setActionScriptDraft("");
       return;
     }
-    if (Date.now() < actionTypingUntilRef.current) return;
+    if (
+      Date.now() < actionTypingUntilRef.current &&
+      actionTypingForIdRef.current === selectedAction.id
+    ) {
+      return;
+    }
     const next = getTemplateScriptForAction(selectedAction, scriptTemplates);
     setActionScriptDraft((prev) => (prev === next ? prev : next));
   }, [selectedAction?.id, selectedAction?.script, selectedAction?.templateId, scriptTemplates]);
@@ -354,7 +361,12 @@ export default function ActionManager({
       setTemplateScriptDraft("");
       return;
     }
-    if (Date.now() < templateTypingUntilRef.current) return;
+    if (
+      Date.now() < templateTypingUntilRef.current &&
+      templateTypingForIdRef.current === selectedTemplate.id
+    ) {
+      return;
+    }
     const next = selectedTemplate.script ?? "";
     setTemplateScriptDraft((prev) => (prev === next ? prev : next));
   }, [selectedTemplate?.id, selectedTemplate?.script]);
@@ -760,6 +772,7 @@ export default function ActionManager({
                     readOnly={!!selectedAction.templateId}
                     onChangeText={(next) => {
                       if (selectedAction.templateId) return;
+                      actionTypingForIdRef.current = selectedAction.id;
                       actionTypingUntilRef.current = Date.now() + 1000;
                       setActionScriptDraft(next);
                       scheduleSaveActionScript(selectedAction.id, next);
@@ -793,6 +806,7 @@ export default function ActionManager({
                         readOnly={!!selectedAction.templateId}
                         onChangeText={(next) => {
                           if (selectedAction.templateId) return;
+                          actionTypingForIdRef.current = selectedAction.id;
                           actionTypingUntilRef.current = Date.now() + 1000;
                           setActionScriptDraft(next);
                           scheduleSaveActionScript(selectedAction.id, next);
@@ -1140,6 +1154,7 @@ export default function ActionManager({
                     bindingNames={selectedTemplateBindingNames}
                     value={templateScriptDraft}
                     onChangeText={(next) => {
+                      templateTypingForIdRef.current = selectedTemplate.id;
                       templateTypingUntilRef.current = Date.now() + 1000;
                       setTemplateScriptDraft(next);
                       scheduleSaveTemplateScript(selectedTemplate.id, next);
@@ -1166,6 +1181,7 @@ export default function ActionManager({
                         bindingNames={selectedTemplateBindingNames}
                         value={templateScriptDraft}
                         onChangeText={(next) => {
+                          templateTypingForIdRef.current = selectedTemplate.id;
                           templateTypingUntilRef.current = Date.now() + 1000;
                           setTemplateScriptDraft(next);
                           scheduleSaveTemplateScript(selectedTemplate.id, next);
