@@ -95,6 +95,35 @@ interface MonitorLogEntry {
   [key: string]: unknown;
 }
 
+type QueryMode = "raw" | "range" | "last";
+type QueryTimeFmt = "epoch" | "iso";
+type QueryOrder = "asc" | "desc";
+
+interface HistorianQueryMatch {
+  path: string;
+  assetId: string;
+  attributeName: string;
+  tagId: number;
+  historianTargetId?: string;
+  type?: string;
+  unit?: string;
+  latestValue?: unknown;
+  latestTs?: string | null;
+  historianEnabled?: boolean;
+  historianTimeSourcePath?: string;
+}
+
+interface HistorianQueryResponse {
+  error?: string;
+  path?: string;
+  paths?: string[];
+  matches?: HistorianQueryMatch[];
+  rows?: Array<Record<string, unknown>>;
+  truncated?: boolean;
+  agg?: string;
+  historianTargetId?: string;
+}
+
 function makeId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 }
@@ -244,6 +273,21 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [monitorLogsKind, setMonitorLogsKind] = useState<MonitorLogsKind>("system");
   const [monitorLogsLimit, setMonitorLogsLimit] = useState(50);
   const [monitorError, setMonitorError] = useState("");
+  const [queryMode, setQueryMode] = useState<QueryMode>("raw");
+  const [queryPath, setQueryPath] = useState("");
+  const [queryFrom, setQueryFrom] = useState(() => {
+    const d = new Date(Date.now() - 60 * 60 * 1000);
+    return d.toISOString();
+  });
+  const [queryTo, setQueryTo] = useState(() => new Date().toISOString());
+  const [queryBucketMs, setQueryBucketMs] = useState("1000");
+  const [queryAgg, setQueryAgg] = useState("avg");
+  const [queryLimit, setQueryLimit] = useState("1000");
+  const [queryOrder, setQueryOrder] = useState<QueryOrder>("desc");
+  const [queryTime, setQueryTime] = useState<QueryTimeFmt>("iso");
+  const [queryLoading, setQueryLoading] = useState(false);
+  const [queryResult, setQueryResult] = useState<HistorianQueryResponse | null>(null);
+  const [queryError, setQueryError] = useState("");
   const fieldTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const runtimeApiBase = process.env.NEXT_PUBLIC_RUNTIME_API_BASE || "http://127.0.0.1:4000";
 
@@ -416,6 +460,12 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     return options;
   }, [assetById, assets.assets, templateById]);
 
+  useEffect(() => {
+    if (queryPath.trim()) return;
+    if (assetAttributePaths.length === 0) return;
+    setQueryPath(assetAttributePaths[0]);
+  }, [assetAttributePaths, queryPath]);
+
   const treeData = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     const childrenMap = buildChildrenMap(assets.assets);
@@ -571,6 +621,45 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     setMonitorTarget(target);
     setMonitorOpen(true);
     await loadMonitorData(target, monitorLogsKind, monitorLogsLimit);
+  };
+
+  const runQueryTester = async () => {
+    const path = queryPath.trim();
+    if (!path) {
+      setQueryError("Path wajib diisi. Bisa multi path dipisah koma.");
+      return;
+    }
+    setQueryLoading(true);
+    setQueryError("");
+    try {
+      const params = new URLSearchParams();
+      params.set("path", path);
+      params.set("time", queryTime);
+      if (queryMode !== "last") {
+        params.set("from", queryFrom.trim());
+        params.set("to", queryTo.trim());
+        params.set("order", queryOrder);
+      }
+      if (queryMode === "raw") {
+        params.set("limit", queryLimit.trim() || "1000");
+      }
+      if (queryMode === "range") {
+        params.set("bucketMs", queryBucketMs.trim() || "1000");
+        params.set("agg", queryAgg);
+      }
+      const res = await fetch(`${runtimeApiBase}/api/historian/${queryMode}?${params.toString()}`);
+      const json = (await readJsonLike(res)) as HistorianQueryResponse;
+      if (!res.ok) {
+        setQueryResult(json);
+        setQueryError(String(json.error || `Query failed (${res.status})`));
+        return;
+      }
+      setQueryResult(json);
+    } catch (error) {
+      setQueryError(`Query failed: ${(error as Error).message}`);
+    } finally {
+      setQueryLoading(false);
+    }
   };
 
   const deleteHistorianByPath = async (path: string) => {
@@ -810,62 +899,84 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         <TableRow key={row.name}>
                           <TableCell sx={{ fontFamily: "monospace" }}>{row.name}</TableCell>
                           <TableCell sx={{ minWidth: 280 }}>
-                            <TextField
-                              size="small"
-                              fullWidth
-                              value={getDraft(
-                                `asset-attr:${selectedAsset.id}:${row.name}`,
-                                serializeValue(row.value)
-                              )}
-                              onChange={(e) => {
-                                const raw = e.target.value;
-                                scheduleDraftCommit(
-                                  `asset-attr:${selectedAsset.id}:${row.name}`,
-                                  raw,
-                                  (committed) => {
-                                    const nextValue =
-                                      row.valueType === "custom"
-                                        ? parseMaybeJson(committed)
-                                        : parseByType(row.valueType, committed);
-                                    updateAssetWith(selectedAsset.id, (asset) => ({
-                                      ...asset,
-                                      attributes: {
-                                        ...asset.attributes,
-                                        [row.name]: { value: nextValue }
-                                      }
-                                    }));
-                                  }
-                                );
-                              }}
-                            />
+                            {(() => {
+                              const fieldKey = `asset-attr:${selectedAsset.id}:${row.name}`;
+                              const currentValue = serializeValue(row.value);
+                              const draftValue = getDraft(fieldKey, currentValue);
+                              return (
+                                <TextField
+                                  size="small"
+                                  fullWidth
+                                  value={draftValue}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    setFieldDrafts((prev) => ({ ...prev, [fieldKey]: raw }));
+                                  }}
+                                />
+                              );
+                            })()}
                           </TableCell>
                           <TableCell>{row.valueType}</TableCell>
                           <TableCell>{row.unit || "-"}</TableCell>
                           <TableCell>{row.historianEnabled ? "enabled" : "-"}</TableCell>
                           <TableCell>{row.source}{row.overridden ? " (override)" : ""}</TableCell>
                           <TableCell>
-                            {row.historianEnabled ? (
-                              <Button
-                                size="small"
-                                color="error"
-                                variant="outlined"
-                                onClick={() => {
-                                  const fullPath = `${selectedAssetPath}.${row.name}`;
-                                  if (
-                                    !window.confirm(
-                                      `Delete historian records for attribute "${fullPath}"? This cannot be undone.`
-                                    )
-                                  ) {
-                                    return;
-                                  }
-                                  void deleteHistorianByPath(fullPath);
-                                }}
-                              >
-                                Delete Historian
-                              </Button>
-                            ) : (
-                              "-"
-                            )}
+                            {(() => {
+                              const fieldKey = `asset-attr:${selectedAsset.id}:${row.name}`;
+                              const currentValue = serializeValue(row.value);
+                              const draftValue = getDraft(fieldKey, currentValue);
+                              const isChanged = draftValue !== currentValue;
+
+                              return (
+                                <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    disabled={!isChanged}
+                                    onClick={() => {
+                                      const nextValue =
+                                        row.valueType === "custom"
+                                          ? parseMaybeJson(draftValue)
+                                          : parseByType(row.valueType, draftValue);
+                                      updateAssetWith(selectedAsset.id, (asset) => ({
+                                        ...asset,
+                                        attributes: {
+                                          ...asset.attributes,
+                                          [row.name]: { value: nextValue }
+                                        }
+                                      }));
+                                      setFieldDrafts((prev) => {
+                                        const cloned = { ...prev };
+                                        delete cloned[fieldKey];
+                                        return cloned;
+                                      });
+                                    }}
+                                  >
+                                    Apply
+                                  </Button>
+                                  {row.historianEnabled ? (
+                                    <Button
+                                      size="small"
+                                      color="error"
+                                      variant="outlined"
+                                      onClick={() => {
+                                        const fullPath = `${selectedAssetPath}.${row.name}`;
+                                        if (
+                                          !window.confirm(
+                                            `Delete historian records for attribute "${fullPath}"? This cannot be undone.`
+                                          )
+                                        ) {
+                                          return;
+                                        }
+                                        void deleteHistorianByPath(fullPath);
+                                      }}
+                                    >
+                                      Delete Historian
+                                    </Button>
+                                  ) : null}
+                                </Box>
+                              );
+                            })()}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1207,180 +1318,377 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       )}
 
       {mainTab === 2 && (
-        <Paper sx={{ p: 1.25, minHeight: "74vh", overflow: "auto" }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Historian Targets
-            </Typography>
-            <Button
-              variant="contained"
-              size="small"
-              onClick={() => {
-                const next: HistorianTargetDefinition = {
-                  id: `hist_${Date.now()}`,
-                  name: `Historian ${historianTargets.length + 1}`,
-                  udpHost: "127.0.0.1",
-                  udpPort: 9900,
-                  httpBaseUrl: "http://127.0.0.1:8080",
-                  timestampUnit: "us",
-                  enabled: true
-                };
-                updateHistorians([...historianTargets, next]);
-              }}
-            >
-              Add Historian
-            </Button>
-          </Box>
-          <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1 }}>
-            <Table size="small" stickyHeader>
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 140 }}>ID</TableCell>
-                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 160 }}>Name</TableCell>
-                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 140 }}>UDP Host</TableCell>
-                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 110 }}>UDP Port</TableCell>
-                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 220 }}>HTTP Base URL</TableCell>
-                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 110 }}>TS Unit</TableCell>
-                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 110 }}>Enabled</TableCell>
-                  <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 260 }}>Action</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {historianTargets.map((target, idx) => (
-                  <TableRow key={`hist-target:${target.id}`}>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        value={target.id}
-                        disabled={target.id === "default"}
-                        onChange={(e) => {
-                          const id = e.target.value;
-                          updateHistorians(
-                            historianTargets.map((item, itemIdx) =>
-                              itemIdx === idx ? { ...item, id } : item
-                            )
-                          );
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        value={target.name}
-                        onChange={(e) => {
-                          const name = e.target.value;
-                          updateHistorians(
-                            historianTargets.map((item, itemIdx) =>
-                              itemIdx === idx ? { ...item, name } : item
-                            )
-                          );
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        value={target.udpHost}
-                        onChange={(e) => {
-                          const udpHost = e.target.value;
-                          updateHistorians(
-                            historianTargets.map((item, itemIdx) =>
-                              itemIdx === idx ? { ...item, udpHost } : item
-                            )
-                          );
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={target.udpPort}
-                        onChange={(e) => {
-                          const udpPort = Number(e.target.value) || 9900;
-                          updateHistorians(
-                            historianTargets.map((item, itemIdx) =>
-                              itemIdx === idx ? { ...item, udpPort } : item
-                            )
-                          );
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        value={target.httpBaseUrl}
-                        onChange={(e) => {
-                          const httpBaseUrl = e.target.value;
-                          updateHistorians(
-                            historianTargets.map((item, itemIdx) =>
-                              itemIdx === idx ? { ...item, httpBaseUrl } : item
-                            )
-                          );
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <FormControl size="small" sx={{ minWidth: 100 }}>
-                        <Select
-                          value={target.timestampUnit}
-                          onChange={(e: SelectChangeEvent<"us" | "ns">) => {
-                            const timestampUnit = e.target.value as "us" | "ns";
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+          <Paper sx={{ p: 1.25, overflow: "auto" }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                Historian Targets
+              </Typography>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={() => {
+                  const next: HistorianTargetDefinition = {
+                    id: `hist_${Date.now()}`,
+                    name: `Historian ${historianTargets.length + 1}`,
+                    udpHost: "127.0.0.1",
+                    udpPort: 9900,
+                    httpBaseUrl: "http://127.0.0.1:8080",
+                    timestampUnit: "us",
+                    enabled: true
+                  };
+                  updateHistorians([...historianTargets, next]);
+                }}
+              >
+                Add Historian
+              </Button>
+            </Box>
+            <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1, maxHeight: 340 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>ID</TableCell>
+                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 150 }}>Name</TableCell>
+                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 130 }}>UDP Host</TableCell>
+                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 100 }}>UDP Port</TableCell>
+                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 210 }}>HTTP Base URL</TableCell>
+                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 90 }}>TS Unit</TableCell>
+                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 90 }}>Enabled</TableCell>
+                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 220 }}>Action</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {historianTargets.map((target, idx) => (
+                    <TableRow key={`hist-target:${target.id}`}>
+                      <TableCell>
+                        <TextField
+                          size="small"
+                          value={target.id}
+                          disabled={target.id === "default"}
+                          onChange={(e) => {
+                            const id = e.target.value;
                             updateHistorians(
                               historianTargets.map((item, itemIdx) =>
-                                itemIdx === idx ? { ...item, timestampUnit } : item
+                                itemIdx === idx ? { ...item, id } : item
                               )
                             );
                           }}
-                        >
-                          <MenuItem value="us">us</MenuItem>
-                          <MenuItem value="ns">ns</MenuItem>
-                        </Select>
-                      </FormControl>
-                    </TableCell>
-                    <TableCell>
-                      <Checkbox
-                        checked={target.enabled !== false}
-                        onChange={(_e, checked) => {
-                          updateHistorians(
-                            historianTargets.map((item, itemIdx) =>
-                              itemIdx === idx ? { ...item, enabled: checked } : item
-                            )
-                          );
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => {
-                          void openMonitor(target);
-                        }}
-                      >
-                        Monitor
-                      </Button>
-                      <Button
-                        size="small"
-                        color="error"
-                        onClick={() => {
-                          if (target.id === "default") {
-                            showNotice("error", "default historian cannot be removed");
-                            return;
-                          }
-                          if (!window.confirm(`Remove historian target "${target.name}"?`)) return;
-                          updateHistorians(historianTargets.filter((_item, itemIdx) => itemIdx !== idx));
-                        }}
-                      >
-                        Remove
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          size="small"
+                          value={target.name}
+                          onChange={(e) => {
+                            const name = e.target.value;
+                            updateHistorians(
+                              historianTargets.map((item, itemIdx) =>
+                                itemIdx === idx ? { ...item, name } : item
+                              )
+                            );
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          size="small"
+                          value={target.udpHost}
+                          onChange={(e) => {
+                            const udpHost = e.target.value;
+                            updateHistorians(
+                              historianTargets.map((item, itemIdx) =>
+                                itemIdx === idx ? { ...item, udpHost } : item
+                              )
+                            );
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={target.udpPort}
+                          onChange={(e) => {
+                            const udpPort = Number(e.target.value) || 9900;
+                            updateHistorians(
+                              historianTargets.map((item, itemIdx) =>
+                                itemIdx === idx ? { ...item, udpPort } : item
+                              )
+                            );
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          size="small"
+                          value={target.httpBaseUrl}
+                          onChange={(e) => {
+                            const httpBaseUrl = e.target.value;
+                            updateHistorians(
+                              historianTargets.map((item, itemIdx) =>
+                                itemIdx === idx ? { ...item, httpBaseUrl } : item
+                              )
+                            );
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <FormControl size="small" sx={{ minWidth: 90 }}>
+                          <Select
+                            value={target.timestampUnit}
+                            onChange={(e: SelectChangeEvent<"us" | "ns">) => {
+                              const timestampUnit = e.target.value as "us" | "ns";
+                              updateHistorians(
+                                historianTargets.map((item, itemIdx) =>
+                                  itemIdx === idx ? { ...item, timestampUnit } : item
+                                )
+                              );
+                            }}
+                          >
+                            <MenuItem value="us">us</MenuItem>
+                            <MenuItem value="ns">ns</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </TableCell>
+                      <TableCell>
+                        <Checkbox
+                          checked={target.enabled !== false}
+                          onChange={(_e, checked) => {
+                            updateHistorians(
+                              historianTargets.map((item, itemIdx) =>
+                                itemIdx === idx ? { ...item, enabled: checked } : item
+                              )
+                            );
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => {
+                              void openMonitor(target);
+                            }}
+                          >
+                            Monitor
+                          </Button>
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={() => {
+                              if (target.id === "default") {
+                                showNotice("error", "default historian cannot be removed");
+                                return;
+                              }
+                              if (!window.confirm(`Remove historian target "${target.name}"?`)) return;
+                              updateHistorians(historianTargets.filter((_item, itemIdx) => itemIdx !== idx));
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+
+          <Paper sx={{ p: 1.25 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+              Query Tester
+            </Typography>
+            <Box sx={{ display: "grid", gridTemplateColumns: "180px 1fr 1fr", gap: 1, mb: 1 }}>
+              <FormControl size="small">
+                <InputLabel>Mode</InputLabel>
+                <Select
+                  label="Mode"
+                  value={queryMode}
+                  onChange={(e: SelectChangeEvent<QueryMode>) => setQueryMode(e.target.value as QueryMode)}
+                >
+                  <MenuItem value="raw">raw</MenuItem>
+                  <MenuItem value="range">range</MenuItem>
+                  <MenuItem value="last">last</MenuItem>
+                </Select>
+              </FormControl>
+              <Autocomplete
+                freeSolo
+                options={assetAttributePaths}
+                value={queryPath}
+                onInputChange={(_e, value) => setQueryPath(value)}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    size="small"
+                    label="Path (single/multi comma-separated)"
+                    placeholder="Jasuindo.Taiyo1.Machine Speed,Jasuindo.Taiyo1.Temperature"
+                  />
+                )}
+              />
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel>Order</InputLabel>
+                  <Select
+                    label="Order"
+                    value={queryOrder}
+                    onChange={(e: SelectChangeEvent<QueryOrder>) => setQueryOrder(e.target.value as QueryOrder)}
+                  >
+                    <MenuItem value="asc">asc</MenuItem>
+                    <MenuItem value="desc">desc</MenuItem>
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel>Time</InputLabel>
+                  <Select
+                    label="Time"
+                    value={queryTime}
+                    onChange={(e: SelectChangeEvent<QueryTimeFmt>) => setQueryTime(e.target.value as QueryTimeFmt)}
+                  >
+                    <MenuItem value="iso">iso</MenuItem>
+                    <MenuItem value="epoch">epoch</MenuItem>
+                  </Select>
+                </FormControl>
+                <TextField
+                  size="small"
+                  label="Limit"
+                  value={queryLimit}
+                  onChange={(e) => setQueryLimit(e.target.value)}
+                  disabled={queryMode !== "raw"}
+                />
+                <TextField
+                  size="small"
+                  label="Bucket ms"
+                  value={queryBucketMs}
+                  onChange={(e) => setQueryBucketMs(e.target.value)}
+                  disabled={queryMode !== "range"}
+                />
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel>Agg</InputLabel>
+                  <Select
+                    label="Agg"
+                    value={queryAgg}
+                    onChange={(e: SelectChangeEvent<string>) => setQueryAgg(e.target.value)}
+                    disabled={queryMode !== "range"}
+                  >
+                    <MenuItem value="min">min</MenuItem>
+                    <MenuItem value="max">max</MenuItem>
+                    <MenuItem value="avg">avg</MenuItem>
+                    <MenuItem value="first">first</MenuItem>
+                    <MenuItem value="last">last</MenuItem>
+                    <MenuItem value="count">count</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr auto auto", gap: 1, mb: 1 }}>
+              <TextField
+                size="small"
+                label="From (epoch or ISO)"
+                value={queryFrom}
+                onChange={(e) => setQueryFrom(e.target.value)}
+                disabled={queryMode === "last"}
+              />
+              <TextField
+                size="small"
+                label="To (epoch or ISO)"
+                value={queryTo}
+                onChange={(e) => setQueryTo(e.target.value)}
+                disabled={queryMode === "last"}
+              />
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => {
+                  const end = new Date();
+                  const start = new Date(end.getTime() - 15 * 60 * 1000);
+                  setQueryFrom(start.toISOString());
+                  setQueryTo(end.toISOString());
+                }}
+              >
+                Last 15m
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                disabled={queryLoading}
+                onClick={() => void runQueryTester()}
+              >
+                {queryLoading ? "Running..." : "Run Query"}
+              </Button>
+            </Box>
+
+            {queryError ? (
+              <Alert severity="error" sx={{ mb: 1 }}>
+                {queryError}
+              </Alert>
+            ) : null}
+
+            {queryResult ? (
+              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.25 }}>
+                <Paper sx={{ p: 1, border: "1px solid #dbe3ef" }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+                    Attribute Metadata
+                  </Typography>
+                  <TableContainer sx={{ maxHeight: 300 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Path</TableCell>
+                          <TableCell>Type</TableCell>
+                          <TableCell>Unit</TableCell>
+                          <TableCell>TagID</TableCell>
+                          <TableCell>Target</TableCell>
+                          <TableCell>Latest</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(queryResult.matches || []).map((m) => (
+                          <TableRow key={`query-match:${m.assetId}:${m.attributeName}`}>
+                            <TableCell sx={{ fontFamily: "monospace" }}>{m.path}</TableCell>
+                            <TableCell>{m.type || "-"}</TableCell>
+                            <TableCell>{m.unit || "-"}</TableCell>
+                            <TableCell>{m.tagId}</TableCell>
+                            <TableCell>{m.historianTargetId || "-"}</TableCell>
+                            <TableCell sx={{ fontFamily: "monospace" }}>
+                              {m.latestValue == null ? "-" : serializeValue(m.latestValue)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+                <Paper sx={{ p: 1, border: "1px solid #dbe3ef" }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+                    Query Result
+                  </Typography>
+                  <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 0.75 }}>
+                    <Typography variant="caption">rows: {(queryResult.rows || []).length}</Typography>
+                    <Typography variant="caption">truncated: {String(queryResult.truncated === true)}</Typography>
+                    <Typography variant="caption">agg: {queryResult.agg || "-"}</Typography>
+                    <Typography variant="caption">target: {queryResult.historianTargetId || "-"}</Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      maxHeight: 300,
+                      overflow: "auto",
+                      border: "1px solid #edf1f7",
+                      borderRadius: 1,
+                      p: 1,
+                      fontFamily: "monospace",
+                      fontSize: 12,
+                      whiteSpace: "pre-wrap"
+                    }}
+                  >
+                    {JSON.stringify(queryResult.rows || [], null, 2)}
+                  </Box>
+                </Paper>
+              </Box>
+            ) : null}
+          </Paper>
+        </Box>
       )}
     </Box>
     <Dialog open={monitorOpen} onClose={() => setMonitorOpen(false)} maxWidth="lg" fullWidth>

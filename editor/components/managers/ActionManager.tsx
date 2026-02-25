@@ -74,6 +74,29 @@ function defaultBinding(): ScriptVariableBindingDefinition {
   };
 }
 
+function getAssetPathOptions(assets: AssetFrameworkDefinition): string[] {
+  const byId = new Map(assets.assets.map((asset) => [asset.id, asset]));
+
+  const getPath = (assetId: string): string => {
+    const asset = byId.get(assetId);
+    if (!asset) return "";
+    const parts = [asset.name];
+    let parentId = asset.parentId;
+    while (parentId) {
+      const parent = byId.get(parentId);
+      if (!parent) break;
+      parts.unshift(parent.name);
+      parentId = parent.parentId;
+    }
+    return parts.join(".");
+  };
+
+  return assets.assets
+    .map((asset) => getPath(asset.id))
+    .filter((path) => path.length > 0)
+    .sort((a, b) => a.localeCompare(b));
+}
+
 function getAssetAttributeOptions(assets: AssetFrameworkDefinition): Array<{
   kind: "attribute";
   path: string;
@@ -168,6 +191,11 @@ function resolveAttributePath(
 ) {
   const found = options.find((item) => item.path === path);
   return found?.path || path;
+}
+
+function resolveAssetPath(path: string, options: string[]) {
+  const found = options.find((item) => item === path);
+  return found || path;
 }
 
 function buildHierarchyTree(actions: ActionDefinition[], search: string): DataNode[] {
@@ -284,30 +312,26 @@ export default function ActionManager({
   const selectedAction = actions.find((item) => item.id === selectedActionId);
   const selectedTemplate = scriptTemplates.find((item) => item.id === selectedTemplateId);
   const selectedActionTemplate = scriptTemplates.find((item) => item.id === selectedAction?.templateId);
+  const selectedActionBindingNames = useMemo(
+    () =>
+      (selectedActionTemplate?.variableBindings || [])
+        .map((binding) => String(binding.name || "").trim())
+        .filter((name) => name.length > 0),
+    [selectedActionTemplate?.variableBindings]
+  );
+  const selectedTemplateBindingNames = useMemo(
+    () =>
+      (selectedTemplate?.variableBindings || [])
+        .map((binding) => String(binding.name || "").trim())
+        .filter((name) => name.length > 0),
+    [selectedTemplate?.variableBindings]
+  );
   const hierarchyTree = useMemo(() => buildHierarchyTree(actions, search), [actions, search]);
+  const assetPaths = useMemo(() => getAssetPathOptions(assets), [assets]);
   const attributeOptions = useMemo(() => getAssetAttributeOptions(assets), [assets]);
   const assetAttributePaths = useMemo(
     () => attributeOptions.map((item) => item.path),
     [attributeOptions]
-  );
-  const actionEditorOptions = useMemo(
-    () => ({
-      minimap: { enabled: false },
-      fontSize: 14,
-      wordWrap: "on" as const,
-      scrollBeyondLastLine: false
-    }),
-    []
-  );
-  const jsonMiniOptions = useMemo(
-    () => ({
-      minimap: { enabled: false },
-      fontSize: 12,
-      lineNumbers: "off" as const,
-      wordWrap: "on" as const,
-      scrollBeyondLastLine: false
-    }),
-    []
   );
 
   const selectedFolderPath = useMemo(() => {
@@ -547,28 +571,41 @@ export default function ActionManager({
                                 <TableCell>{binding.name}</TableCell>
                                 <TableCell>{binding.source}</TableCell>
                                 <TableCell>
-                                  {effective.source === "attribute" ? (
+                                  {effective.source === "attribute" || effective.source === "asset" ? (
                                     <Autocomplete
                                       freeSolo
-                                      options={assetAttributePaths}
+                                      options={
+                                        effective.source === "asset" ? assetPaths : assetAttributePaths
+                                      }
                                       value={effective.attributePath ?? ""}
                                       disabled={!canOverride}
                                       onInputChange={(_e, value) => {
                                         if (!canOverride) return;
+                                        const isAsset = effective.source === "asset";
                                         onUpdateAction(selectedAction.id, {
                                           templateBindingOverrides: {
                                             ...(selectedAction.templateBindingOverrides || {}),
                                             [binding.name]: {
                                               ...binding,
                                               ...currentOverride,
-                                              source: "attribute",
-                                              attributePath: resolveAttributePath(value, attributeOptions)
+                                              source: isAsset ? "asset" : "attribute",
+                                              attributePath: isAsset
+                                                ? resolveAssetPath(value, assetPaths)
+                                                : resolveAttributePath(value, attributeOptions)
                                             }
                                           }
                                         });
                                       }}
                                       renderInput={(params) => (
-                                        <TextField {...params} size="small" placeholder="Jasuindo.Taiyo1.Operator" />
+                                        <TextField
+                                          {...params}
+                                          size="small"
+                                          placeholder={
+                                            effective.source === "asset"
+                                              ? "Jasuindo.Taiyo1"
+                                              : "Jasuindo.Taiyo1.Operator"
+                                          }
+                                        />
                                       )}
                                     />
                                   ) : effective.source === "static_boolean" ? (
@@ -623,6 +660,7 @@ export default function ActionManager({
                                         path={`action-binding-json:${selectedAction.id}:${binding.name}`}
                                         height="84px"
                                         language="json"
+                                        profile="jsonMini"
                                         readOnly={!canOverride}
                                         value={getMonacoFieldDraft(
                                           `action-binding-json:${selectedAction.id}:${binding.name}`,
@@ -631,7 +669,6 @@ export default function ActionManager({
                                               (effective.source === "static_array" ? [] : {})
                                           )
                                         )}
-                                        options={jsonMiniOptions}
                                         onChangeText={(next) => {
                                           if (!canOverride) return;
                                           scheduleMonacoFieldSave(
@@ -717,9 +754,10 @@ export default function ActionManager({
                     path={`action:${selectedAction.id}:${selectedAction.templateId || "none"}`}
                     height="calc(100vh - 410px)"
                     language="javascript"
+                    profile="script"
+                    bindingNames={selectedActionBindingNames}
                     value={actionScriptDraft}
                     readOnly={!!selectedAction.templateId}
-                    options={actionEditorOptions}
                     onChangeText={(next) => {
                       if (selectedAction.templateId) return;
                       actionTypingUntilRef.current = Date.now() + 1000;
@@ -749,9 +787,10 @@ export default function ActionManager({
                         path={`action-full:${selectedAction.id}:${selectedAction.templateId || "none"}`}
                         height="calc(100vh - 96px)"
                         language="javascript"
+                        profile="script"
+                        bindingNames={selectedActionBindingNames}
                         value={actionScriptDraft}
                         readOnly={!!selectedAction.templateId}
-                        options={actionEditorOptions}
                         onChangeText={(next) => {
                           if (selectedAction.templateId) return;
                           actionTypingUntilRef.current = Date.now() + 1000;
@@ -895,7 +934,9 @@ export default function ActionManager({
                                               attributePath:
                                                 e.target.value === "attribute"
                                                   ? resolveAttributePath(item.attributePath ?? "", attributeOptions)
-                                                  : item.attributePath
+                                                  : e.target.value === "asset"
+                                                    ? resolveAssetPath(item.attributePath ?? "", assetPaths)
+                                                    : item.attributePath
                                             }
                                           : item
                                       )
@@ -907,27 +948,42 @@ export default function ActionManager({
                                   <MenuItem value="static_boolean">static_boolean</MenuItem>
                                   <MenuItem value="static_array">static_array</MenuItem>
                                   <MenuItem value="static_object">static_object</MenuItem>
+                                  <MenuItem value="asset">asset</MenuItem>
                                   <MenuItem value="attribute">attribute</MenuItem>
                                 </Select>
                               </FormControl>
                             </TableCell>
                             <TableCell>
-                              {binding.source === "attribute" && (
+                              {(binding.source === "attribute" || binding.source === "asset") && (
                                 <Autocomplete
                                   freeSolo
-                                  options={assetAttributePaths}
+                                  options={binding.source === "asset" ? assetPaths : assetAttributePaths}
                                   value={binding.attributePath ?? ""}
                                   onInputChange={(_e, value) =>
                                     onUpdateScriptTemplate(selectedTemplate.id, {
                                       variableBindings: (selectedTemplate.variableBindings || []).map((item, itemIdx) =>
                                         itemIdx === index
-                                          ? { ...item, attributePath: resolveAttributePath(value, attributeOptions) }
+                                          ? {
+                                              ...item,
+                                              attributePath:
+                                                binding.source === "asset"
+                                                  ? resolveAssetPath(value, assetPaths)
+                                                  : resolveAttributePath(value, attributeOptions)
+                                            }
                                           : item
                                       )
                                     })
                                   }
                                   renderInput={(params) => (
-                                    <TextField {...params} size="small" placeholder="Jasuindo.Taiyo1.Operator" />
+                                    <TextField
+                                      {...params}
+                                      size="small"
+                                      placeholder={
+                                        binding.source === "asset"
+                                          ? "Jasuindo.Taiyo1"
+                                          : "Jasuindo.Taiyo1.Operator"
+                                      }
+                                    />
                                   )}
                                 />
                               )}
@@ -970,6 +1026,7 @@ export default function ActionManager({
                                       path={`template-binding-json:${selectedTemplate.id}:${index}`}
                                       height="80px"
                                       language="json"
+                                      profile="jsonMini"
                                       value={getMonacoFieldDraft(
                                         `template-binding-json:${selectedTemplate.id}:${index}`,
                                         serializeValue(
@@ -977,7 +1034,6 @@ export default function ActionManager({
                                             (binding.source === "static_array" ? [] : {})
                                         )
                                       )}
-                                      options={jsonMiniOptions}
                                       onChangeText={(next) => {
                                         scheduleMonacoFieldSave(
                                           `template-binding-json:${selectedTemplate.id}:${index}`,
@@ -1080,8 +1136,9 @@ export default function ActionManager({
                     path={`template:${selectedTemplate.id}`}
                     height="calc(100vh - 420px)"
                     language="javascript"
+                    profile="script"
+                    bindingNames={selectedTemplateBindingNames}
                     value={templateScriptDraft}
-                    options={actionEditorOptions}
                     onChangeText={(next) => {
                       templateTypingUntilRef.current = Date.now() + 1000;
                       setTemplateScriptDraft(next);
@@ -1105,8 +1162,9 @@ export default function ActionManager({
                         path={`template-full:${selectedTemplate.id}`}
                         height="calc(100vh - 96px)"
                         language="javascript"
+                        profile="script"
+                        bindingNames={selectedTemplateBindingNames}
                         value={templateScriptDraft}
-                        options={actionEditorOptions}
                         onChangeText={(next) => {
                           templateTypingUntilRef.current = Date.now() + 1000;
                           setTemplateScriptDraft(next);

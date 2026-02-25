@@ -21,9 +21,17 @@ function bindingSourceToStaticType(source) {
 
 async function resolveBindingValue(binding, context) {
   const source = binding?.source || "static_string";
+  const path = binding?.attributePath || "";
+
+  if (source === "asset") {
+    if (!path) return null;
+    const matches = context.asset.query(path).filter((item) => item.kind === "asset");
+    if (matches.length === 0) return null;
+    if (matches.length === 1) return matches[0];
+    return matches;
+  }
 
   if (source === "attribute") {
-    const path = binding?.attributePath || "";
     if (!path) return null;
     const matches = context.asset.query(path).filter((item) => item.kind === "attribute");
     if (matches.length === 0) return null;
@@ -70,6 +78,9 @@ function createScriptActionHandler(action, options = {}) {
   const script = (template && template.script) || action.script || "send(msg);";
   const scriptWithBindings = `
 const __bindings = bindings && typeof bindings === "object" ? bindings : {};
+const global = context && context.global ? context.global : null;
+const asset = context && context.asset ? context.asset : null;
+const eventSys = context && context.eventSys ? context.eventSys : null;
 with (__bindings) {
 ${script}
 }

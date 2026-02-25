@@ -3,6 +3,7 @@ const path = require("node:path");
 const createScriptActionHandler = require("./createScriptActionHandler");
 const { normalizeAssetSection } = require("./assetFramework");
 const { ensureAssetStorage } = require("./assetStorage");
+const { ensureEventStore } = require("./eventStore");
 
 function loadProgramFromFile(programPath) {
   const absolutePath = path.resolve(programPath);
@@ -142,6 +143,7 @@ function startTriggers(runtime, triggers = []) {
 
 function startProgram(runtime, program) {
   const assetStorage = ensureAssetStorage(runtime, normalizeAssetSection(program.assets || {}));
+  ensureEventStore(runtime);
   assetStorage.replace(normalizeAssetSection(program.assets || {}));
   runtime.setGlobal("scriptTemplates", Array.isArray(program.scriptTemplates) ? program.scriptTemplates : []);
   registerActions(runtime, program.actions || []);

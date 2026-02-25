@@ -43,6 +43,7 @@ class Runtime {
 
   createNodeContext(nodeId) {
     const getAssetStorage = () => this.getGlobal("assetStorage");
+    const getEventStore = () => this.getGlobal("eventStore");
 
     return {
       nodeId,
@@ -84,6 +85,29 @@ class Runtime {
           return store.getHierarchy(options);
         },
       },
+      eventSys: {
+        open: (eventPath, ts, context, notes, severity) => {
+          const store = getEventStore();
+          if (!store || typeof store.open !== "function") {
+            throw new Error("eventStore belum tersedia");
+          }
+          return store.open(eventPath, ts, context, notes, severity);
+        },
+        close: (pattern, ts, notes) => {
+          const store = getEventStore();
+          if (!store || typeof store.close !== "function") {
+            throw new Error("eventStore belum tersedia");
+          }
+          return store.close(pattern, ts, notes);
+        },
+        get: (pattern, from, to, status, contextFilters, options) => {
+          const store = getEventStore();
+          if (!store || typeof store.get !== "function") {
+            throw new Error("eventStore belum tersedia");
+          }
+          return store.get(pattern, from, to, status, contextFilters, options);
+        }
+      }
     };
   }
 

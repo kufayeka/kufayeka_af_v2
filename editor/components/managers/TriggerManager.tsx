@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Autocomplete,
   Box,
@@ -9,6 +10,9 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import Tree from "rc-tree";
+import type { DataNode, Key } from "rc-tree/lib/interface";
+import { AlarmClock, Eye, FolderTree } from "lucide-react";
 import type { TriggerDefinition } from "../../types/program";
 
 interface TriggerManagerProps {
@@ -23,6 +27,103 @@ interface TriggerManagerProps {
   onUpdateTriggerPayload: (id: string, rawPayload: string) => void;
 }
 
+function buildTriggerHierarchyTree(triggers: TriggerDefinition[], search: string): DataNode[] {
+  const keyword = search.trim().toLowerCase();
+  const filtered = keyword
+    ? triggers.filter((trigger) =>
+        `${trigger.id} ${trigger.label ?? ""} ${trigger.type} ${trigger.watchPath ?? ""}`
+          .toLowerCase()
+          .includes(keyword)
+      )
+    : triggers;
+
+  const categories: Array<{ type: TriggerDefinition["type"]; label: string; icon: ReactNode }> = [
+    { type: "interval", label: "Interval", icon: <AlarmClock size={15} /> },
+    { type: "watcher", label: "Watcher", icon: <Eye size={15} /> }
+  ];
+
+  const tree: DataNode[] = [];
+
+  for (const category of categories) {
+    const categoryTriggers = filtered.filter((trigger) => trigger.type === category.type);
+    const folderChildren = new Map<string, Set<string>>();
+    const triggerChildren = new Map<string, TriggerDefinition[]>();
+
+    const ensureFolder = (path: string) => {
+      if (!folderChildren.has(path)) folderChildren.set(path, new Set<string>());
+      if (!triggerChildren.has(path)) triggerChildren.set(path, []);
+    };
+
+    const rootPath = String(category.type);
+    ensureFolder(rootPath);
+
+    for (const trigger of categoryTriggers) {
+      const segments = trigger.id.split(".").filter(Boolean);
+      const folders = segments.slice(0, -1);
+      let parent: string = rootPath;
+      for (const folder of folders) {
+        const path = `${parent}.${folder}`;
+        ensureFolder(path);
+        folderChildren.get(parent)?.add(path);
+        parent = path;
+      }
+      triggerChildren.get(parent)?.push(trigger);
+    }
+
+    for (const [, list] of triggerChildren) {
+      list.sort((a, b) => a.id.localeCompare(b.id));
+    }
+
+    const walk = (path: string): DataNode[] => {
+      const childFolders = Array.from(folderChildren.get(path) || []).sort((a, b) => a.localeCompare(b));
+      const folderNodes: DataNode[] = childFolders.map((folderPath) => {
+        const label = folderPath.split(".").pop() || folderPath;
+        return {
+          key: `folder:${folderPath}`,
+          title: (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+              <FolderTree size={15} />
+              <Typography variant="body2">{label}</Typography>
+            </Box>
+          ),
+          children: walk(folderPath)
+        };
+      });
+
+      const triggerNodes: DataNode[] = (triggerChildren.get(path) || []).map((trigger) => ({
+        key: `trigger:${trigger.id}`,
+        title: (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+            {category.type === "interval" ? <AlarmClock size={15} /> : <Eye size={15} />}
+            <Typography variant="body2">{trigger.id.split(".").pop() || trigger.id}</Typography>
+            {!!trigger.label?.trim() && (
+              <Typography variant="caption" color="text.secondary">
+                {trigger.label}
+              </Typography>
+            )}
+          </Box>
+        ),
+        isLeaf: true
+      }));
+
+      return [...folderNodes, ...triggerNodes];
+    };
+
+    tree.push({
+      key: `category:${category.type}`,
+      title: (
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+          {category.icon}
+          <Typography variant="subtitle2">{category.label}</Typography>
+        </Box>
+      ),
+      children: walk(rootPath)
+    });
+  }
+
+  return tree;
+}
+
 export default function TriggerManager({
   triggers,
   watchPathOptions = [],
@@ -35,15 +136,25 @@ export default function TriggerManager({
   onUpdateTriggerPayload
 }: TriggerManagerProps) {
   const [search, setSearch] = useState("");
+  const [selectedTreeKey, setSelectedTreeKey] = useState("");
+  const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
   const selectedTrigger = triggers.find((item) => item.id === selectedTriggerId);
-  const filteredTriggers = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
-    if (!keyword) return triggers;
-    return triggers.filter((trigger) => {
-      const haystack = `${trigger.id} ${trigger.label ?? ""} ${trigger.type}`.toLowerCase();
-      return haystack.includes(keyword);
-    });
-  }, [search, triggers]);
+  const hierarchyTree = useMemo(() => buildTriggerHierarchyTree(triggers, search), [triggers, search]);
+
+  useEffect(() => {
+    const nextExpanded: Key[] = [];
+    const walk = (nodes: DataNode[]) => {
+      for (const node of nodes) {
+        const key = String(node.key || "");
+        if (key.startsWith("category:") || key.startsWith("folder:")) {
+          nextExpanded.push(node.key as Key);
+        }
+        if (node.children) walk(node.children as DataNode[]);
+      }
+    };
+    walk(hierarchyTree);
+    setExpandedKeys(nextExpanded);
+  }, [hierarchyTree]);
 
   return (
     <Box sx={{ p: 1.25, display: "grid", gridTemplateColumns: "320px 1fr", gap: 1.25 }}>
@@ -66,68 +177,30 @@ export default function TriggerManager({
         </Box>
         <Box
           sx={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 0.5, // 4px antar card
             overflow: "auto",
             maxHeight: "calc(100vh - 220px)"
           }}
         >
-          {filteredTriggers.map((trigger) => (
-            <Box
-              key={trigger.id}
-              sx={{
-                height: "fit-content",
-                p: 0.75,
-                display: "grid",
-                border: "1px solid #cbd5e1",
-                borderRadius: "3px",
-                borderColor: selectedTriggerId === trigger.id ? "#0f766e" : undefined,
-                cursor: "pointer"
-              }}
-              onClick={() => onSelectTrigger(trigger.id)}
-            >
-              <Typography variant="subtitle2">{trigger.id}</Typography>
-              {!!trigger.label?.trim() && (
-                <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                  {trigger.label}
-                </Typography>
-              )}
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                {trigger.type === "interval"
-                  ? `${trigger.type} / ${trigger.intervalMs} ms`
-                  : `${trigger.type} / ${trigger.watchPath || "*.*.*"}`}
-              </Typography>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <FormControlLabel
-                  sx={{ m: 0 }}
-                  control={
-                    <Switch
-                      size="small"
-                      checked={trigger.enabled !== false}
-                      onChange={(_e, checked) =>
-                        onUpdateTrigger(trigger.id, { enabled: checked })
-                      }
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  }
-                  label={<Typography variant="caption">Enabled</Typography>}
-                  onClick={(e) => e.stopPropagation()}
-                />
-                <Button
-                  size="small"
-                  color="error"
-                  sx={{ minWidth: 0, px: 0.5 }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemoveTrigger(trigger.id);
-                  }}
-                >
-                  Remove
-                </Button>
-              </Box>
-            </Box>
-          ))}
+          <Tree
+            treeData={hierarchyTree}
+            expandedKeys={expandedKeys}
+            selectedKeys={
+              selectedTriggerId
+                ? [`trigger:${selectedTriggerId}`]
+                : selectedTreeKey
+                  ? [selectedTreeKey]
+                  : []
+            }
+            onExpand={(keys) => setExpandedKeys(keys)}
+            onSelect={(keys) => {
+              const key = String(keys[0] || "");
+              if (!key) return;
+              setSelectedTreeKey(key);
+              if (key.startsWith("trigger:")) {
+                onSelectTrigger(key.slice("trigger:".length));
+              }
+            }}
+          />
         </Box>
       </Paper>
 
@@ -140,7 +213,17 @@ export default function TriggerManager({
 
         {selectedTrigger && (
           <Box sx={{ display: "grid", gap: 1.5 }}>
-            <Typography variant="h6">Trigger Detail</Typography>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Typography variant="h6">Trigger Detail</Typography>
+              <Button
+                size="small"
+                color="error"
+                variant="outlined"
+                onClick={() => onRemoveTrigger(selectedTrigger.id)}
+              >
+                Remove Trigger
+              </Button>
+            </Box>
             <TextField
               label="Trigger ID"
               value={selectedTrigger.id}

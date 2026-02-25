@@ -99,7 +99,9 @@ export function normalizeProgram(program: Program): Program {
     const rawSource = String(binding.source || "static_string");
     const staticType = String(binding.staticType || "string");
     const normalizedSource =
-      rawSource === "attribute" || rawSource === "assetAttribute"
+      rawSource === "asset"
+        ? "asset"
+        : rawSource === "attribute" || rawSource === "assetAttribute"
         ? "attribute"
         : rawSource === "static_number" ||
             rawSource === "static_string" ||

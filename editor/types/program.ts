@@ -14,6 +14,7 @@ export type AssetAttributeType =
   | "array"
   | "object";
 export type ScriptBindingSource =
+  | "asset"
   | "attribute"
   | "static_number"
   | "static_string"

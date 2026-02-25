@@ -13,8 +13,8 @@ function bootstrap() {
   startProgram(rt, program);
 
   const apiServer = createApiServer(rt, {
-    host: "127.0.0.1",
-    port: 4000,
+    host: process.env.RUNTIME_API_HOST || "0.0.0.0",
+    port: Number(process.env.RUNTIME_API_PORT || 4000),
   });
   apiServer.start();
 }

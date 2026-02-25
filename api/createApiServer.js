@@ -1,5 +1,6 @@
 const http = require("node:http");
 const { ensureAssetStorage } = require("../runtime/assetStorage");
+const { ensureEventStore } = require("../runtime/eventStore");
 const { computeTagID } = require("../runtime/historianBridge");
 
 /**
@@ -7,9 +8,16 @@ const { computeTagID } = require("../runtime/historianBridge");
  * Kalau butuh cookies/credentials, lihat catatan di bawah.
  */
 function setCorsHeaders(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  const origin = req.headers.origin ? String(req.headers.origin) : "*";
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS,PATCH");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With, X-CSRF-Token"
+  );
+  res.setHeader("Access-Control-Expose-Headers", "Content-Type, Content-Length");
+  res.setHeader("Access-Control-Allow-Private-Network", "true");
   // Optional caching preflight
   res.setHeader("Access-Control-Max-Age", "86400");
 }
@@ -56,6 +64,7 @@ function createApiServer(runtime, options = {}) {
   const port = options.port ?? 4000;
   const host = options.host ?? "0.0.0.0";
   const assetStore = ensureAssetStorage(runtime, runtime.getGlobal("assetFramework", {}));
+  const eventStore = ensureEventStore(runtime);
   const historianHttpBase = process.env.HISTORIAN_HTTP_BASE || "http://127.0.0.1:8080";
 
   const resolveHistorianTargetById = (targetId) => {
@@ -90,7 +99,13 @@ function createApiServer(runtime, options = {}) {
         assetId: item.assetId,
         attributeName: item.attributeName,
         tagId: computeTagID(item.assetId, item.attributeName),
-        historianTargetId: item.historianTargetId || "default"
+        historianTargetId: item.historianTargetId || "default",
+        type: item.type || "custom",
+        unit: item.unit || "",
+        latestValue: Object.prototype.hasOwnProperty.call(item, "value") ? item.value : null,
+        latestTs: item.ts || null,
+        historianEnabled: item.historianEnabled === true,
+        historianTimeSourcePath: item.historianTimeSourcePath || "",
       }));
   }
 
@@ -450,6 +465,131 @@ function createApiServer(runtime, options = {}) {
         };
       });
       sendJson(req, res, 200, { path: pathQuery, count: matches.length, matches });
+      return;
+    }
+
+    if (urlPath === "/api/events" && method === "GET") {
+      try {
+        const pattern = requestUrl.searchParams.get("pattern") || "*";
+        const from = requestUrl.searchParams.get("from") || "*";
+        const to = requestUrl.searchParams.get("to") || "*";
+        const status = requestUrl.searchParams.get("status") || "*";
+        const severity = requestUrl.searchParams.get("severity") || "*";
+        const limit = Number(requestUrl.searchParams.get("limit") || 1000);
+        const offset = Number(requestUrl.searchParams.get("offset") || 0);
+        const sortBy = requestUrl.searchParams.get("sortBy") || "start_ts";
+        const sortDir = requestUrl.searchParams.get("sortDir") || "desc";
+        const contextRaw = requestUrl.searchParams.get("context");
+        const contextFilters =
+          contextRaw && contextRaw.trim() ? JSON.parse(contextRaw) : {};
+        const result = eventStore.query(pattern, from, to, status, contextFilters, {
+          limit,
+          offset,
+          sortBy,
+          sortDir,
+          severity
+        });
+        sendJson(req, res, 200, {
+          count: result.rows.length,
+          total: result.total,
+          pattern,
+          from,
+          to,
+          status,
+          severity,
+          sortBy: result.sortBy,
+          sortDir: result.sortDir,
+          limit: result.limit,
+          offset: result.offset,
+          rows: result.rows
+        });
+      } catch (error) {
+        sendJson(req, res, 400, { error: error.message });
+      }
+      return;
+    }
+
+    if (urlPath === "/api/events/open" && method === "POST") {
+      try {
+        const body = await parseJsonBody(req);
+        const row = eventStore.open(
+          body.event_path || body.path,
+          body.start_ts || body.ts,
+          body.context || {},
+          body.notes_on_open || body.notes || "",
+          body.severity || "other"
+        );
+        sendJson(req, res, 200, { ok: true, row });
+      } catch (error) {
+        sendJson(req, res, 400, { error: error.message });
+      }
+      return;
+    }
+
+    if (urlPath === "/api/events/close" && method === "POST") {
+      try {
+        const body = await parseJsonBody(req);
+        const result = eventStore.close(
+          body.pattern || body.event_path || "*",
+          body.end_ts || body.ts,
+          body.notes_on_close || body.notes || ""
+        );
+        sendJson(req, res, 200, { ok: true, ...result });
+      } catch (error) {
+        sendJson(req, res, 400, { error: error.message });
+      }
+      return;
+    }
+
+    if (urlPath === "/api/events/close-id" && method === "POST") {
+      try {
+        const body = await parseJsonBody(req);
+        const result = eventStore.closeById(
+          body.id,
+          body.end_ts || body.ts,
+          body.notes_on_close || body.notes || ""
+        );
+        sendJson(req, res, 200, { ok: true, ...result });
+      } catch (error) {
+        sendJson(req, res, 400, { error: error.message });
+      }
+      return;
+    }
+
+    if (urlPath === "/api/events/ack-id" && method === "POST") {
+      try {
+        const body = await parseJsonBody(req);
+        const result = eventStore.acknowledgeById(body.id, body.acknowledged_ts || body.ts);
+        sendJson(req, res, 200, { ok: true, ...result });
+      } catch (error) {
+        sendJson(req, res, 400, { error: error.message });
+      }
+      return;
+    }
+
+    if (urlPath === "/api/events/by-id" && method === "DELETE") {
+      try {
+        const id = requestUrl.searchParams.get("id") || "";
+        const result = eventStore.deleteById(id);
+        sendJson(req, res, 200, { ok: true, ...result });
+      } catch (error) {
+        sendJson(req, res, 400, { error: error.message });
+      }
+      return;
+    }
+
+    if (urlPath === "/api/events" && method === "DELETE") {
+      try {
+        const pattern = requestUrl.searchParams.get("pattern") || "*";
+        const status = requestUrl.searchParams.get("status") || "*";
+        const from = requestUrl.searchParams.get("from") || "*";
+        const to = requestUrl.searchParams.get("to") || "*";
+        const severity = requestUrl.searchParams.get("severity") || "*";
+        const result = eventStore.deleteByPattern(pattern, status, from, to, severity);
+        sendJson(req, res, 200, { ok: true, ...result });
+      } catch (error) {
+        sendJson(req, res, 400, { error: error.message });
+      }
       return;
     }
 

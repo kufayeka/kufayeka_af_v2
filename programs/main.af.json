@@ -25,16 +25,38 @@
       "message": {
         "payload": 0
       }
+    },
+    {
+      "id": "trigger.watch_1771904609844",
+      "label": "[watch] Jasuindo.Taiyo1.Job Lifecycle",
+      "type": "watcher",
+      "enabled": true,
+      "intervalMs": 1000,
+      "watchPath": "Jasuindo.Taiyo1.Job Lifecycle",
+      "message": {
+        "payload": 0
+      }
+    },
+    {
+      "id": "trigger.watch_1771914410709",
+      "label": "[watch] Jasuindo.Taiyo2.Job Lifecycle",
+      "type": "watcher",
+      "enabled": true,
+      "intervalMs": 1000,
+      "watchPath": "Jasuindo.Taiyo2.Job Lifecycle",
+      "message": {
+        "payload": 0
+      }
     }
   ],
   "actions": [
     {
-      "id": "taiyo1.alarm.machineSpeed",
+      "id": "Taiyo1.Alarms.machineSpeed",
       "label": "",
       "type": "script",
       "enabled": true,
       "description": "",
-      "script": "if(MachinePresentValue.value > Threshold){\r\n    context.asset.set(MachineAlarmAttribute.path, `Oii ${OperatorName.value.label} bahaya!`);\r\n} else {\r\n    context.asset.set(MachineAlarmAttribute.path, \"No alarm.\");\r\n}\r\n\r\nsend(msg);",
+      "script": "const nowTs = msg.ts || helpers.now();\n\nconst eventPath = `${MachineAlarmAttribute.path}/Event/Alarm/MachineSpeedHigh`;\nconst speed = Number(MachinePresentValue?.value ?? 0);\nconst threshold = Number(Threshold ?? 0);\nconst operatorLabel = OperatorName?.value?.label ?? \"-\";\n\nconst openRows = eventSys.get(`${eventPath}*`, \"*\", \"*\", \"open\", {}, { limit: 1 });\n\nif (speed > threshold) {\n\n  asset.set(MachineAlarmAttribute.path, `Oii ${operatorLabel} bahaya!`);\n\n  if (openRows.length === 0) {\n    eventSys.open(eventPath,nowTs,{operatorLabel,speed,threshold},`Machine speed ${speed} > threshold ${threshold}`,\"low\");\n  }\n\n} else {\n\n  asset.set(MachineAlarmAttribute.path, \"No alarm.\");\n\n  if (openRows.length > 0) {\n    eventSys.close(`${eventPath}*`,nowTs,`Machine speed ${speed} <= threshold ${threshold}`);\n  }\n}\n\nsend(msg);",
       "templateId": "template.script_1771609498627",
       "templateBindingOverrides": {
         "MachineAlarmAttribute": {
@@ -61,12 +83,12 @@
       }
     },
     {
-      "id": "taiyo2.alarm.machineSpeed",
+      "id": "Taiyo2.Alarms.machineSpeed",
       "label": "",
       "type": "script",
       "enabled": true,
       "description": "",
-      "script": "if(MachinePresentValue.value > Threshold){\r\n    context.asset.set(MachineAlarmAttribute.path, `Oii ${OperatorName.value.label} bahaya!`);\r\n} else {\r\n    context.asset.set(MachineAlarmAttribute.path, \"No alarm.\");\r\n}\r\n\r\nsend(msg);",
+      "script": "const nowTs = msg.ts || helpers.now();\n\nconst eventPath = `${MachineAlarmAttribute.path}/Event/Alarm/MachineSpeedHigh`;\nconst speed = Number(MachinePresentValue?.value ?? 0);\nconst threshold = Number(Threshold ?? 0);\nconst operatorLabel = OperatorName?.value?.label ?? \"-\";\n\nconst openRows = eventSys.get(`${eventPath}*`, \"*\", \"*\", \"open\", {}, { limit: 1 });\n\nif (speed > threshold) {\n\n  asset.set(MachineAlarmAttribute.path, `Oii ${operatorLabel} bahaya!`);\n\n  if (openRows.length === 0) {\n    eventSys.open(eventPath,nowTs,{operatorLabel,speed,threshold},`Machine speed ${speed} > threshold ${threshold}`,\"low\");\n  }\n\n} else {\n\n  asset.set(MachineAlarmAttribute.path, \"No alarm.\");\n\n  if (openRows.length > 0) {\n    eventSys.close(`${eventPath}*`,nowTs,`Machine speed ${speed} <= threshold ${threshold}`);\n  }\n}\n\nsend(msg);",
       "templateId": "template.script_1771609498627",
       "templateBindingOverrides": {
         "MachineAlarmAttribute": {
@@ -93,31 +115,118 @@
       }
     },
     {
-      "id": "taiyo1.alarm.test",
+      "id": "Taiyo1.Events.jobLifecycle",
       "label": "",
       "type": "script",
       "enabled": true,
       "description": "",
-      "script": "helpers.log(binding_1);\r\nhelpers.log(binding_2);\r\nhelpers.log(binding_3);\r\nhelpers.log(binding_4);\r\n\r\nsend(msg);\r\n\r\n// ini test",
-      "templateBindingOverrides": {},
-      "templateId": "template.script_1771688695001"
+      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = eventSys.get(`${assetPath}/Job/${workOrderAttribute}/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventPath = `${assetPath}/Job/${workOrderAttribute}/Lifecycle/`;\r\n\r\nhelpers.log(\"execute\");\r\n\r\n// TOLAK LANSUNG JIKA WO KOSONG / \"-\" DAN BERIKAN ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) { \r\n  \r\n  asset.set(alarmAttributePath, `!!!Wo belum terisi!!!`);\r\n  helpers.log(\"wo belum terisi!\")\r\n  send(msg);\r\n    \r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);   \r\n\r\n}\r\n\r\n// BUAT EVENT SESUAI LIFECYCLE\r\nif (jobLifecycleAttribute === \"load\"){\r\n\r\n  if (openedEvents.length === 0) {\r\n\r\n    eventSys.open(`${eventPath}Running`,timestamp,{},`WO ${workOrderAttribute} loaded`,\"info\");\r\n    helpers.log(\"job loaded\")\r\n\r\n  }\r\n\r\n} else if (jobLifecycleAttribute === \"unload\"){\r\n\r\n  if (openedEvents.length > 0) {\r\n\r\n    eventSys.close(`${eventPath}Running`,timestamp,`WO ${workOrderAttribute} unloaded`);\r\n    asset.set(WorkOrderAttribute?.path||\"-\", `-`);\r\n    helpers.log(\"job unloaded\")\r\n\r\n  }\r\n}\r\n\r\nsend(msg);",
+      "templateId": "template.script_1771898442157",
+      "templateBindingOverrides": {
+        "AssetPath": {
+          "name": "AssetPath",
+          "source": "static_string",
+          "staticValue": "Jasuindo.Taiyo1",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        "JobLifecycleAttribute": {
+          "name": "JobLifecycleAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo1.Job Lifecycle",
+          "allowOverride": true
+        },
+        "WorkOrderAttribute": {
+          "name": "WorkOrderAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo1.Work Order",
+          "allowOverride": true
+        },
+        "OperatorAttribute": {
+          "name": "OperatorAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo1.Operator",
+          "allowOverride": true
+        },
+        "AlarmAttribute": {
+          "name": "AlarmAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo1.Job Lifecycle Alarm",
+          "allowOverride": true
+        }
+      }
+    },
+    {
+      "id": "Taiyo2.Events.jobLifecycle",
+      "label": "",
+      "type": "script",
+      "enabled": true,
+      "description": "",
+      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = eventSys.get(`${assetPath}/Job/${workOrderAttribute}/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventPath = `${assetPath}/Job/${workOrderAttribute}/Lifecycle/`;\r\n\r\nhelpers.log(\"execute\");\r\n\r\n// TOLAK LANSUNG JIKA WO KOSONG / \"-\" DAN BERIKAN ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) { \r\n  \r\n  asset.set(alarmAttributePath, `!!!Wo belum terisi!!!`);\r\n  helpers.log(\"wo belum terisi!\")\r\n  send(msg);\r\n    \r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);   \r\n\r\n}\r\n\r\n// BUAT EVENT SESUAI LIFECYCLE\r\nif (jobLifecycleAttribute === \"load\"){\r\n\r\n  if (openedEvents.length === 0) {\r\n\r\n    eventSys.open(`${eventPath}Running`,timestamp,{},`WO ${workOrderAttribute} loaded`,\"info\");\r\n    helpers.log(\"job loaded\")\r\n\r\n  }\r\n\r\n} else if (jobLifecycleAttribute === \"unload\"){\r\n\r\n  if (openedEvents.length > 0) {\r\n\r\n    eventSys.close(`${eventPath}Running`,timestamp,`WO ${workOrderAttribute} unloaded`);\r\n    asset.set(WorkOrderAttribute?.path||\"-\", `-`);\r\n    helpers.log(\"job unloaded\")\r\n\r\n  }\r\n}\r\n\r\nsend(msg);",
+      "templateId": "template.script_1771898442157",
+      "templateBindingOverrides": {
+        "JobLifecycleAttribute": {
+          "name": "JobLifecycleAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo2.Job Lifecycle",
+          "allowOverride": true
+        },
+        "WorkOrderAttribute": {
+          "name": "WorkOrderAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo2.Work Order",
+          "allowOverride": true
+        },
+        "OperatorAttribute": {
+          "name": "OperatorAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo2.Operator",
+          "allowOverride": true
+        },
+        "AssetPath": {
+          "name": "AssetPath",
+          "source": "static_string",
+          "staticValue": "Jasuindo.Taiyo2",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        "AlarmAttribute": {
+          "name": "AlarmAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Taiyo2.Job Lifecycle Alarm",
+          "allowOverride": true
+        }
+      }
     }
   ],
   "flows": {
     "links": [
       {
         "from": "trigger.watch_1771610722257",
-        "to": "taiyo1.alarm.machineSpeed",
+        "to": "Taiyo1.Alarms.machineSpeed",
         "enabled": true
       },
       {
         "from": "trigger.watch_1771642652068",
-        "to": "taiyo2.alarm.machineSpeed",
+        "to": "Taiyo2.Alarms.machineSpeed",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1771642652068",
-        "to": "taiyo1.alarm.test",
+        "from": "trigger.watch_1771904609844",
+        "to": "Taiyo1.Events.jobLifecycle",
+        "enabled": true
+      },
+      {
+        "from": "trigger.watch_1771914410709",
+        "to": "Taiyo2.Events.jobLifecycle",
         "enabled": true
       }
     ],
@@ -146,25 +255,41 @@
         "x": 1260,
         "y": 270
       },
-      "taiyo1.alarm.machineSpeed": {
-        "x": 760,
+      "trigger.watch_1771610722257": {
+        "x": 280,
         "y": 150
       },
-      "trigger.watch_1771610722257": {
-        "x": 270,
-        "y": 170
-      },
       "trigger.watch_1771642652068": {
-        "x": 270,
-        "y": 270
-      },
-      "taiyo2.alarm.machineSpeed": {
-        "x": 760,
-        "y": 240
+        "x": 280,
+        "y": 250
       },
       "taiyo1.alarm.test": {
         "x": 710,
         "y": 320
+      },
+      "Taiyo1.Alarms.machineSpeed": {
+        "x": 760,
+        "y": 150
+      },
+      "trigger.watch_1771904609844": {
+        "x": 380,
+        "y": 390
+      },
+      "Taiyo1.Events.jobLifecycle": {
+        "x": 900,
+        "y": 390
+      },
+      "Taiyo2.Alarms.machineSpeed": {
+        "x": 760,
+        "y": 240
+      },
+      "trigger.watch_1771914410709": {
+        "x": 380,
+        "y": 480
+      },
+      "Taiyo2.Events.jobLifecycle": {
+        "x": 900,
+        "y": 480
       }
     }
   },
@@ -194,8 +319,8 @@
             "value": 100
           },
           "Timestamp": {
-            "value": "2026-02-22T03:54:43.999Z",
-            "ts": "2026-02-22T03:54:43.895Z"
+            "value": 1771986476538,
+            "ts": "2026-02-25T02:27:56.040Z"
           }
         }
       },
@@ -216,17 +341,29 @@
           },
           "Alarm": {
             "value": "No alarm.",
-            "ts": "2026-02-22T03:28:03.903Z"
+            "ts": "2026-02-24T04:31:23.607Z"
           },
           "Machine Speed": {
-            "value": 47,
-            "ts": "2026-02-22T03:28:04.901Z"
+            "value": 7,
+            "ts": "2026-02-24T04:31:23.605Z"
           },
           "Machine Condition": {
             "value": {
               "label": "Working",
               "value": "working"
             }
+          },
+          "Job Lifecycle": {
+            "value": "unload",
+            "ts": "2026-02-25T01:51:19.609Z"
+          },
+          "Work Order": {
+            "value": "-",
+            "ts": "2026-02-25T01:51:19.628Z"
+          },
+          "Job Lifecycle Alarm": {
+            "value": "-",
+            "ts": "2026-02-24T04:37:19.329Z"
           }
         }
       },
@@ -247,17 +384,25 @@
           },
           "Alarm": {
             "value": "No alarm.",
-            "ts": "2026-02-22T03:28:05.432Z"
+            "ts": "2026-02-24T04:07:37.374Z"
           },
           "Machine Speed": {
-            "value": 27,
-            "ts": "2026-02-22T03:28:05.395Z"
+            "value": 32,
+            "ts": "2026-02-24T04:07:37.371Z"
           },
           "Machine Condition": {
             "value": {
               "label": "Working",
               "value": "working"
             }
+          },
+          "Work Order": {
+            "value": "-",
+            "ts": "2026-02-25T01:51:16.155Z"
+          },
+          "Job Lifecycle": {
+            "value": "unload",
+            "ts": "2026-02-25T01:51:16.144Z"
           }
         }
       }
@@ -327,8 +472,8 @@
             "valueType": "int16",
             "default": 0,
             "unit": "meter/minute",
-            "historianEnabled": true,
-            "historianTimeSourcePath": "Jasuindo.Timestamp",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
             "historianTargetId": "default",
             "dashboardVisible": false,
             "dashboardEditable": true,
@@ -396,6 +541,126 @@
           {
             "enabled": true,
             "name": "Alarm",
+            "valueType": "string",
+            "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Work Order",
+            "valueType": "string",
+            "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Job Lifecycle",
+            "valueType": "string",
+            "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Job Activity",
+            "valueType": "string",
+            "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Job Lifecycle Alarm",
+            "valueType": "string",
+            "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Job Activity Alarm",
             "valueType": "string",
             "default": "-",
             "unit": "",
@@ -687,7 +952,7 @@
       "id": "template.script_1771609498627",
       "name": "TaiyoMachineSpeedAlarm",
       "description": "",
-      "script": "if(MachinePresentValue.value > Threshold){\r\n    context.asset.set(MachineAlarmAttribute.path, `Oii ${OperatorName.value.label} bahaya!`);\r\n} else {\r\n    context.asset.set(MachineAlarmAttribute.path, \"No alarm.\");\r\n}\r\n\r\nsend(msg);",
+      "script": "const nowTs = msg.ts || helpers.now();\n\nconst eventPath = `${MachineAlarmAttribute.path}/Event/Alarm/MachineSpeedHigh`;\nconst speed = Number(MachinePresentValue?.value ?? 0);\nconst threshold = Number(Threshold ?? 0);\nconst operatorLabel = OperatorName?.value?.label ?? \"-\";\n\nconst openRows = eventSys.get(`${eventPath}*`, \"*\", \"*\", \"open\", {}, { limit: 1 });\n\nif (speed > threshold) {\n\n  asset.set(MachineAlarmAttribute.path, `Oii ${operatorLabel} bahaya!`);\n\n  if (openRows.length === 0) {\n    eventSys.open(eventPath,nowTs,{operatorLabel,speed,threshold},`Machine speed ${speed} > threshold ${threshold}`,\"low\");\n  }\n\n} else {\n\n  asset.set(MachineAlarmAttribute.path, \"No alarm.\");\n\n  if (openRows.length > 0) {\n    eventSys.close(`${eventPath}*`,nowTs,`Machine speed ${speed} <= threshold ${threshold}`);\n  }\n}\n\nsend(msg);",
       "variableBindings": [
         {
           "name": "MachineAlarmAttribute",
@@ -720,38 +985,52 @@
       ]
     },
     {
-      "id": "template.script_1771688695001",
-      "name": "trtirjt",
+      "id": "template.script_1771898442157",
+      "name": "TaiyoJobLifecycleEvent",
       "description": "",
-      "script": "helpers.log(binding_1);\r\nhelpers.log(binding_2);\r\nhelpers.log(binding_3);\r\nhelpers.log(binding_4);\r\n\r\nsend(msg);\r\n\r\n// ini test",
+      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = eventSys.get(`${assetPath}/Job/${workOrderAttribute}/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventPath = `${assetPath}/Job/${workOrderAttribute}/Lifecycle/`;\r\n\r\nhelpers.log(\"execute\");\r\n\r\n// TOLAK LANSUNG JIKA WO KOSONG / \"-\" DAN BERIKAN ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) { \r\n  \r\n  asset.set(alarmAttributePath, `!!!Wo belum terisi!!!`);\r\n  helpers.log(\"wo belum terisi!\")\r\n  send(msg);\r\n    \r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);   \r\n\r\n}\r\n\r\n// BUAT EVENT SESUAI LIFECYCLE\r\nif (jobLifecycleAttribute === \"load\"){\r\n\r\n  if (openedEvents.length === 0) {\r\n\r\n    eventSys.open(`${eventPath}Running`,timestamp,{},`WO ${workOrderAttribute} loaded`,\"info\");\r\n    helpers.log(\"job loaded\")\r\n\r\n  }\r\n\r\n} else if (jobLifecycleAttribute === \"unload\"){\r\n\r\n  if (openedEvents.length > 0) {\r\n\r\n    eventSys.close(`${eventPath}Running`,timestamp,`WO ${workOrderAttribute} unloaded`);\r\n    asset.set(WorkOrderAttribute?.path||\"-\", `-`);\r\n    helpers.log(\"job unloaded\")\r\n\r\n  }\r\n}\r\n\r\nsend(msg);",
       "variableBindings": [
         {
-          "name": "binding_1",
-          "source": "static_string",
-          "staticValue": "halooo",
-          "attributePath": "",
-          "allowOverride": false
-        },
-        {
-          "name": "binding_2",
-          "source": "static_string",
-          "staticValue": "guten abend!",
-          "attributePath": "",
-          "allowOverride": false
-        },
-        {
-          "name": "binding_3",
+          "name": "JobLifecycleAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo1.Alarm",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "WorkOrderAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "OperatorAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "Timestamp",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.Timestamp",
           "allowOverride": false
         },
         {
-          "name": "binding_4",
+          "name": "AssetPath",
+          "source": "static_string",
+          "staticValue": "Jasuindo.TaiyoX",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "AlarmAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo2.Alarm",
-          "allowOverride": false
+          "attributePath": "",
+          "allowOverride": true
         }
       ]
     }

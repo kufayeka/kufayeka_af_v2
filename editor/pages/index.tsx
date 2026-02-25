@@ -14,6 +14,8 @@ import TriggerManager from "../components/managers/TriggerManager";
 import ActionManager from "../components/managers/ActionManager";
 import FlowManager from "../components/managers/FlowManager";
 import AssetManager from "../components/managers/AssetManager";
+import EventManager from "../components/managers/EventManager";
+import DocsManager from "../components/managers/DocsManager";
 import {
   normalizeProgram,
   parseMaybeJson,
@@ -623,6 +625,8 @@ export default function HomePage() {
           <Tab label="Action Script Manager" />
           <Tab label="Flow Manager" />
           <Tab label="Asset Manager" />
+          <Tab label="Event" />
+          <Tab label="Docs" />
         </Tabs>
       </AppBar>
 
@@ -679,6 +683,8 @@ export default function HomePage() {
           />
         )}
         {tab === 3 && <AssetManager assets={program.assets} onChange={updateAssets} />}
+        {tab === 4 && <EventManager />}
+        {tab === 5 && <DocsManager />}
       </Box>
     </Box>
   );

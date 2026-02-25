@@ -1,6 +1,8 @@
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import type { AppProps } from "next/app";
 import "rc-tree/assets/index.css";
+import "github-markdown-css/github-markdown.css";
+import "highlight.js/styles/github.css";
 
 const theme = createTheme({
   typography: {
