@@ -1,6 +1,32 @@
-const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+import type { RuntimeNodeContext, RuntimeNodeHandler } from "./types";
 
-function coerceStaticValue(type, value) {
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
+  ...args: string[]
+) => (...args: unknown[]) => Promise<unknown>;
+
+interface VariableBinding {
+  name?: string;
+  source?: string;
+  attributePath?: string;
+  staticValue?: unknown;
+  allowOverride?: boolean;
+}
+
+interface ScriptTemplate {
+  id: string;
+  script?: string;
+  variableBindings?: VariableBinding[];
+}
+
+interface ScriptAction {
+  id: string;
+  templateId?: string;
+  script?: string;
+  config?: Record<string, unknown>;
+  templateBindingOverrides?: Record<string, Partial<VariableBinding>>;
+}
+
+function coerceStaticValue(type: string, value: unknown): unknown {
   if (type === "number") return Number(value || 0);
   if (type === "boolean") {
     if (typeof value === "boolean") return value;
@@ -11,7 +37,7 @@ function coerceStaticValue(type, value) {
   return value == null ? "" : String(value);
 }
 
-function bindingSourceToStaticType(source) {
+function bindingSourceToStaticType(source: string): string {
   if (source === "static_number") return "number";
   if (source === "static_boolean") return "boolean";
   if (source === "static_array") return "array";
@@ -19,7 +45,7 @@ function bindingSourceToStaticType(source) {
   return "string";
 }
 
-async function resolveBindingValue(binding, context) {
+async function resolveBindingValue(binding: VariableBinding, context: RuntimeNodeContext): Promise<unknown> {
   const source = binding?.source || "static_string";
   const path = binding?.attributePath || "";
 
@@ -40,12 +66,15 @@ async function resolveBindingValue(binding, context) {
   }
 
   const staticType = bindingSourceToStaticType(source);
-  const staticValue = binding?.staticValue;
-  return coerceStaticValue(staticType, staticValue);
+  return coerceStaticValue(staticType, binding?.staticValue);
 }
 
-async function buildResolvedBindings(action, context, options = {}) {
-  const templateById = options.templateById || new Map();
+async function buildResolvedBindings(
+  action: ScriptAction,
+  context: RuntimeNodeContext,
+  options: { templateById?: Map<string, ScriptTemplate> } = {}
+): Promise<Record<string, unknown>> {
+  const templateById = options.templateById || new Map<string, ScriptTemplate>();
   const template = action.templateId ? templateById.get(action.templateId) : null;
   const bindings = Array.isArray(template?.variableBindings) ? template.variableBindings : [];
   const overrideMap =
@@ -53,27 +82,26 @@ async function buildResolvedBindings(action, context, options = {}) {
       ? action.templateBindingOverrides
       : {};
 
-  const resolved = {};
+  const resolved: Record<string, unknown> = {};
   for (const binding of bindings) {
     const key = String(binding?.name || "").trim();
     if (!key) continue;
     const overrideCandidate = overrideMap[key];
     const canOverride = binding.allowOverride === true;
-    const effectiveBinding =
+    const effectiveBinding: VariableBinding =
       canOverride && overrideCandidate && typeof overrideCandidate === "object"
-        ? {
-            ...binding,
-            ...overrideCandidate,
-            name: key
-          }
+        ? { ...binding, ...overrideCandidate, name: key }
         : binding;
     resolved[key] = await resolveBindingValue(effectiveBinding, context);
   }
   return resolved;
 }
 
-function createScriptActionHandler(action, options = {}) {
-  const templateById = options.templateById || new Map();
+export default function createScriptActionHandler(
+  action: ScriptAction,
+  options: { templateById?: Map<string, ScriptTemplate> } = {}
+): RuntimeNodeHandler {
+  const templateById = options.templateById || new Map<string, ScriptTemplate>();
   const template = action.templateId ? templateById.get(action.templateId) : null;
   const script = (template && template.script) || action.script || "send(msg);";
   const scriptWithBindings = `
@@ -97,9 +125,9 @@ ${script}
 
   return async (msg, send, context) => {
     const helpers = {
-      log: (...args) => console.log(`[${action.id}]`, ...args),
-      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-      fetch: (...args) => fetch(...args),
+      log: (...args: unknown[]) => console.log(`[${action.id}]`, ...args),
+      sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+      fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
       now: () => new Date().toISOString(),
     };
 
@@ -107,5 +135,3 @@ ${script}
     await compiled(msg, send, context, helpers, action.config || {}, bindings);
   };
 }
-
-module.exports = createScriptActionHandler;

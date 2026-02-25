@@ -1,4 +1,4 @@
-const OPENAPI_RUNTIME_SPEC = {
+export const OPENAPI_RUNTIME_SPEC = {
   openapi: "3.0.3",
   info: {
     title: "Kufayeka Runtime API",
@@ -249,36 +249,78 @@ const OPENAPI_RUNTIME_SPEC = {
     },
     schemas: {
       ErrorResponse: { type: "object", required: ["error"], properties: { error: { type: "string" } } },
-      AssetSystemState: { type: "object", properties: { assets: { type: "array", items: { type: "object", additionalProperties: true } }, attributeTemplates: { type: "array", items: { type: "object", additionalProperties: true } }, historians: { type: "array", items: { type: "object", additionalProperties: true } } } },
-      AssetSystemResponse: { type: "object", properties: { data: { $ref: "#/components/schemas/AssetSystemState" } } },
-      AssetHierarchyResponse: { type: "object", properties: { populated: { type: "boolean" }, count: { type: "integer" }, data: { type: "array", items: { type: "object", additionalProperties: true } } } },
-      AssetQueryResponse: { type: "object", properties: { path: { type: "string" }, count: { type: "integer" }, matches: { type: "array", items: { type: "object", additionalProperties: true } } } },
-      AssetFinderResponse: { type: "object", properties: { path: { type: "string" }, expectedValue: {}, strict: { type: "boolean" }, count: { type: "integer" }, assetCount: { type: "integer" }, matches: { type: "array", items: { type: "object", additionalProperties: true } }, assets: { type: "array", items: { type: "object", properties: { assetId: { type: "string" }, path: { type: "string" } } } } } },
-      SetAttributeValueRequest: { type: "object", required: ["value"], properties: { value: {} } },
-      AttributeMatchesResponse: { type: "object", properties: { path: { type: "string" }, count: { type: "integer" }, matches: { type: "array", items: { type: "object", additionalProperties: true } } } },
-      BatchSetRequest: { type: "object", properties: { items: { type: "array", items: { type: "object", required: ["path", "value"], properties: { path: { type: "string" }, value: {} } } } } },
-      BatchSetResponse: { type: "object", properties: { count: { type: "integer" }, results: { type: "array", items: { type: "object", additionalProperties: true } } } },
-      OpenEventRequest: { type: "object", properties: { event_path: { type: "string" }, path: { type: "string" }, start_ts: { type: "string", format: "date-time" }, ts: { type: "string", format: "date-time" }, context: { type: "object", additionalProperties: true }, notes_on_open: { type: "string" }, notes: { type: "string" }, severity: { type: "string" } } },
-      OpenEventResponse: { type: "object", properties: { ok: { type: "boolean" }, row: { type: "object", additionalProperties: true } } },
+      JsonValue: {
+        nullable: true,
+        oneOf: [
+          { type: "string" },
+          { type: "number" },
+          { type: "boolean" },
+          { type: "array", items: { $ref: "#/components/schemas/JsonValue" } },
+          { type: "object", additionalProperties: { $ref: "#/components/schemas/JsonValue" } }
+        ]
+      },
+      HistorianTarget: {
+        type: "object",
+        required: ["id", "name", "udpHost", "udpPort", "httpBaseUrl", "timestampUnit", "enabled"],
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          udpHost: { type: "string" },
+          udpPort: { type: "integer" },
+          httpBaseUrl: { type: "string" },
+          timestampUnit: { type: "string", enum: ["us", "ns"] },
+          enabled: { type: "boolean" }
+        }
+      },
+      AssetTemplateAttribute: {
+        type: "object",
+        required: ["enabled", "name", "valueType", "unit", "historianEnabled", "historianTargetId"],
+        properties: {
+          enabled: { type: "boolean" },
+          name: { type: "string" },
+          valueType: { type: "string", enum: ["int8", "uint8", "int16", "uint16", "int32", "uint32", "float32", "float64", "boolean", "string", "array", "object"] },
+          default: { $ref: "#/components/schemas/JsonValue" },
+          unit: { type: "string" },
+          historianEnabled: { type: "boolean" },
+          historianTimeSourcePath: { type: "string" },
+          historianTargetId: { type: "string" },
+          dashboardVisible: { type: "boolean" },
+          dashboardEditable: { type: "boolean" }
+        }
+      },
+      AttributeTemplate: { type: "object", required: ["id", "name", "attributes"], properties: { id: { type: "string" }, name: { type: "string" }, attributes: { type: "array", items: { $ref: "#/components/schemas/AssetTemplateAttribute" } } } },
+      AssetDefinition: { type: "object", required: ["id", "name", "parentId", "templateIds", "attributes"], properties: { id: { type: "string" }, name: { type: "string" }, parentId: { type: "string", nullable: true }, templateIds: { type: "array", items: { type: "string" } }, attributes: { type: "object", additionalProperties: { $ref: "#/components/schemas/JsonValue" } } } },
+      AssetSystemState: { type: "object", required: ["assets", "attributeTemplates", "historians"], properties: { assets: { type: "array", items: { $ref: "#/components/schemas/AssetDefinition" } }, attributeTemplates: { type: "array", items: { $ref: "#/components/schemas/AttributeTemplate" } }, historians: { type: "array", items: { $ref: "#/components/schemas/HistorianTarget" } } } },
+      AssetSystemResponse: { type: "object", required: ["data"], properties: { data: { $ref: "#/components/schemas/AssetSystemState" } } },
+      AttributeQueryMatch: { type: "object", required: ["kind", "path", "assetId", "attributeName", "tagId"], properties: { kind: { type: "string", enum: ["attribute"] }, path: { type: "string" }, assetId: { type: "string" }, attributeName: { type: "string" }, value: { $ref: "#/components/schemas/JsonValue" }, ts: { type: "string", nullable: true }, type: { type: "string" }, unit: { type: "string" }, historianEnabled: { type: "boolean" }, historianTimeSourcePath: { type: "string" }, historianTargetId: { type: "string" }, tagId: { type: "integer" } } },
+      AssetQueryMatch: { type: "object", required: ["kind", "path", "assetId", "value"], properties: { kind: { type: "string", enum: ["asset"] }, path: { type: "string" }, assetId: { type: "string" }, value: { $ref: "#/components/schemas/AssetDefinition" } } },
+      AssetHierarchyResponse: { type: "object", required: ["populated", "count", "data"], properties: { populated: { type: "boolean" }, count: { type: "integer" }, data: { type: "array", items: { type: "object", additionalProperties: true } } } },
+      AssetQueryResponse: { type: "object", required: ["path", "count", "matches"], properties: { path: { type: "string" }, count: { type: "integer" }, matches: { type: "array", items: { oneOf: [{ $ref: "#/components/schemas/AssetQueryMatch" }, { $ref: "#/components/schemas/AttributeQueryMatch" }] } } } },
+      AssetFinderResponse: { type: "object", required: ["path", "strict", "count", "assetCount", "matches", "assets"], properties: { path: { type: "string" }, expectedValue: { $ref: "#/components/schemas/JsonValue" }, strict: { type: "boolean" }, count: { type: "integer" }, assetCount: { type: "integer" }, matches: { type: "array", items: { $ref: "#/components/schemas/AttributeQueryMatch" } }, assets: { type: "array", items: { type: "object", required: ["assetId", "path"], properties: { assetId: { type: "string" }, path: { type: "string" } } } } } },
+      SetAttributeValueRequest: { type: "object", required: ["value"], properties: { value: { $ref: "#/components/schemas/JsonValue" } } },
+      AttributeMatchesResponse: { type: "object", required: ["path", "count", "matches"], properties: { path: { type: "string" }, count: { type: "integer" }, matches: { type: "array", items: { $ref: "#/components/schemas/AttributeQueryMatch" } } } },
+      BatchSetRequest: { type: "object", required: ["items"], properties: { items: { type: "array", items: { type: "object", required: ["path", "value"], properties: { path: { type: "string" }, value: { $ref: "#/components/schemas/JsonValue" } } } } } },
+      BatchSetResponse: { type: "object", required: ["count", "results"], properties: { count: { type: "integer" }, results: { type: "array", items: { type: "object", required: ["path", "count", "matches"], properties: { path: { type: "string" }, count: { type: "integer" }, matches: { type: "array", items: { $ref: "#/components/schemas/AttributeQueryMatch" } } } } } } },
+      EventRow: { type: "object", required: ["id", "event_path", "start_ts", "status", "severity", "context", "is_acknowledge"], properties: { id: { type: "string" }, event_path: { type: "string" }, start_ts: { type: "string", format: "date-time" }, end_ts: { type: "string", format: "date-time", nullable: true }, status: { type: "string", enum: ["open", "closed"] }, severity: { type: "string", enum: ["other", "info", "low", "medium", "high", "critical"] }, context: { type: "object", additionalProperties: { $ref: "#/components/schemas/JsonValue" } }, is_acknowledge: { type: "boolean" }, acknowledged_ts: { type: "string", format: "date-time", nullable: true }, notes_on_open: { type: "string", nullable: true }, notes_on_close: { type: "string", nullable: true } } },
+      OpenEventRequest: { type: "object", properties: { event_path: { type: "string" }, path: { type: "string" }, start_ts: { type: "string", format: "date-time" }, ts: { type: "string", format: "date-time" }, context: { type: "object", additionalProperties: { $ref: "#/components/schemas/JsonValue" } }, notes_on_open: { type: "string" }, notes: { type: "string" }, severity: { type: "string", enum: ["other", "info", "low", "medium", "high", "critical"] } } },
+      OpenEventResponse: { type: "object", required: ["ok", "row"], properties: { ok: { type: "boolean" }, row: { $ref: "#/components/schemas/EventRow" } } },
       CloseEventsRequest: { type: "object", properties: { pattern: { type: "string" }, event_path: { type: "string" }, end_ts: { type: "string", format: "date-time" }, ts: { type: "string", format: "date-time" }, notes_on_close: { type: "string" }, notes: { type: "string" } } },
       CloseByIdRequest: { type: "object", required: ["id"], properties: { id: { type: "string" }, end_ts: { type: "string", format: "date-time" }, ts: { type: "string", format: "date-time" }, notes_on_close: { type: "string" }, notes: { type: "string" } } },
-      CloseEventsResponse: { type: "object", properties: { ok: { type: "boolean" }, pattern: { type: "string" }, id: { type: "string" }, closedCount: { type: "integer" }, ts: { type: "string", format: "date-time" }, notes_on_close: { type: "string", nullable: true } } },
+      CloseEventsResponse: { type: "object", required: ["ok", "closedCount", "ts"], properties: { ok: { type: "boolean" }, pattern: { type: "string" }, id: { type: "string" }, closedCount: { type: "integer" }, ts: { type: "string", format: "date-time" }, notes_on_close: { type: "string", nullable: true } } },
       AckByIdRequest: { type: "object", required: ["id"], properties: { id: { type: "string" }, acknowledged_ts: { type: "string", format: "date-time" }, ts: { type: "string", format: "date-time" } } },
-      AckByIdResponse: { type: "object", properties: { ok: { type: "boolean" }, id: { type: "string" }, acknowledgedCount: { type: "integer" }, acknowledged_ts: { type: "string", format: "date-time" } } },
-      DeleteByIdResponse: { type: "object", properties: { ok: { type: "boolean" }, id: { type: "string" }, deletedCount: { type: "integer" } } },
-      DeleteEventsResponse: { type: "object", properties: { ok: { type: "boolean" }, pattern: { type: "string" }, status: { type: "string" }, severity: { type: "string" }, deletedCount: { type: "integer" } } },
-      EventsQueryResponse: { type: "object", properties: { count: { type: "integer" }, total: { type: "integer" }, pattern: { type: "string" }, from: { type: "string" }, to: { type: "string" }, status: { type: "string" }, severity: { type: "string" }, sortBy: { type: "string" }, sortDir: { type: "string" }, limit: { type: "integer" }, offset: { type: "integer" }, rows: { type: "array", items: { type: "object", additionalProperties: true } } } },
-      HistorianQueryResponse: { type: "object", properties: { path: { type: "string" }, paths: { type: "array", items: { type: "string" } }, matches: { type: "array", items: { type: "object", additionalProperties: true } }, rows: { type: "array", items: { type: "object", additionalProperties: true } }, truncated: { type: "boolean" }, agg: { type: "string", nullable: true }, historianTargetId: { type: "string" } } },
-      HistorianTargetsResponse: { type: "object", properties: { count: { type: "integer" }, targets: { type: "array", items: { type: "object", additionalProperties: true } }, bridgeStats: { type: "object", additionalProperties: true } } },
-      HistorianTagsResponse: { type: "object", properties: { path: { type: "string" }, count: { type: "integer" }, matches: { type: "array", items: { type: "object", additionalProperties: true } } } },
-      HistorianDeleteResponse: { type: "object", properties: { ok: { type: "boolean" }, message: { type: "string" }, deletedRecords: { type: "integer" }, touchedSegments: { type: "integer" }, historianTargetId: { type: "string" }, matches: { type: "array", items: { type: "object", additionalProperties: true } } } },
-      GlobalEntriesResponse: { type: "object", properties: { data: { type: "object", additionalProperties: true } } },
-      GlobalValueResponse: { type: "object", properties: { key: { type: "string" }, value: {} } },
-      SetGlobalValueRequest: { type: "object", required: ["value"], properties: { value: {} } },
-      DeleteGlobalResponse: { type: "object", properties: { key: { type: "string" }, deleted: { type: "boolean" } } }
+      AckByIdResponse: { type: "object", required: ["ok", "id", "acknowledgedCount", "acknowledged_ts"], properties: { ok: { type: "boolean" }, id: { type: "string" }, acknowledgedCount: { type: "integer" }, acknowledged_ts: { type: "string", format: "date-time" } } },
+      DeleteByIdResponse: { type: "object", required: ["ok", "id", "deletedCount"], properties: { ok: { type: "boolean" }, id: { type: "string" }, deletedCount: { type: "integer" } } },
+      DeleteEventsResponse: { type: "object", required: ["ok", "pattern", "status", "severity", "deletedCount"], properties: { ok: { type: "boolean" }, pattern: { type: "string" }, status: { type: "string" }, severity: { type: "string" }, deletedCount: { type: "integer" } } },
+      EventsQueryResponse: { type: "object", required: ["count", "total", "rows"], properties: { count: { type: "integer" }, total: { type: "integer" }, pattern: { type: "string" }, from: { type: "string" }, to: { type: "string" }, status: { type: "string" }, severity: { type: "string" }, sortBy: { type: "string" }, sortDir: { type: "string" }, limit: { type: "integer" }, offset: { type: "integer" }, rows: { type: "array", items: { $ref: "#/components/schemas/EventRow" } } } },
+      HistorianPathMatch: { type: "object", required: ["path", "assetId", "attributeName", "tagId", "historianTargetId"], properties: { path: { type: "string" }, assetId: { type: "string" }, attributeName: { type: "string" }, tagId: { type: "integer" }, historianTargetId: { type: "string" }, type: { type: "string" }, unit: { type: "string" }, latestValue: { $ref: "#/components/schemas/JsonValue" }, latestTs: { type: "string", nullable: true }, historianEnabled: { type: "boolean" }, historianTimeSourcePath: { type: "string" } } },
+      HistorianQueryResponse: { type: "object", required: ["path", "paths", "matches", "rows", "truncated", "historianTargetId"], properties: { path: { type: "string" }, paths: { type: "array", items: { type: "string" } }, matches: { type: "array", items: { $ref: "#/components/schemas/HistorianPathMatch" } }, rows: { type: "array", items: { type: "object", additionalProperties: { $ref: "#/components/schemas/JsonValue" } } }, truncated: { type: "boolean" }, agg: { type: "string", nullable: true }, historianTargetId: { type: "string" } } },
+      HistorianTargetsResponse: { type: "object", required: ["count", "targets", "bridgeStats"], properties: { count: { type: "integer" }, targets: { type: "array", items: { $ref: "#/components/schemas/HistorianTarget" } }, bridgeStats: { type: "object", additionalProperties: true } } },
+      HistorianTagsResponse: { type: "object", required: ["path", "count", "matches"], properties: { path: { type: "string" }, count: { type: "integer" }, matches: { type: "array", items: { $ref: "#/components/schemas/HistorianPathMatch" } } } },
+      HistorianDeleteResponse: { type: "object", required: ["ok", "message", "deletedRecords", "touchedSegments", "historianTargetId", "matches"], properties: { ok: { type: "boolean" }, message: { type: "string" }, deletedRecords: { type: "integer" }, touchedSegments: { type: "integer" }, historianTargetId: { type: "string" }, matches: { type: "array", items: { $ref: "#/components/schemas/HistorianPathMatch" } }, path: { type: "string" }, templateId: { type: "string" }, attributeName: { type: "string" } } },
+      GlobalEntriesResponse: { type: "object", required: ["data"], properties: { data: { type: "object", additionalProperties: { $ref: "#/components/schemas/JsonValue" } } } },
+      GlobalValueResponse: { type: "object", required: ["key", "value"], properties: { key: { type: "string" }, value: { $ref: "#/components/schemas/JsonValue" } } },
+      SetGlobalValueRequest: { type: "object", required: ["value"], properties: { value: { $ref: "#/components/schemas/JsonValue" } } },
+      DeleteGlobalResponse: { type: "object", required: ["key", "deleted"], properties: { key: { type: "string" }, deleted: { type: "boolean" } } }
     }
   }
-};
-
-module.exports = { OPENAPI_RUNTIME_SPEC };
-
+} as const;

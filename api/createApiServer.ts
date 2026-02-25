@@ -1,14 +1,20 @@
-const http = require("node:http");
-const { ensureAssetStorage } = require("../runtime/assetStorage");
-const { ensureEventStore } = require("../runtime/eventStore");
-const { computeTagID } = require("../runtime/historianBridge");
-const { OPENAPI_RUNTIME_SPEC } = require("./openapiRuntimeSpec");
+import http, { IncomingMessage, ServerResponse } from "node:http";
+import Runtime from "../runtime/Runtime";
+import { ensureAssetStorage } from "../runtime/assetStorage";
+import { ensureEventStore } from "../runtime/eventStore";
+import { computeTagID } from "../runtime/historianBridge";
+import { OPENAPI_RUNTIME_SPEC } from "./openapiRuntimeSpec";
+import type { AttributeQueryMatch, AssetStore, HistorianTarget } from "../runtime/types";
 
 /**
  * DEV CORS: allow all origins (no credentials).
  * Kalau butuh cookies/credentials, lihat catatan di bawah.
  */
-function setCorsHeaders(req, res) {
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function setCorsHeaders(req: IncomingMessage, res: ServerResponse): void {
   const origin = req.headers.origin ? String(req.headers.origin) : "*";
   res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Vary", "Origin");
@@ -23,18 +29,18 @@ function setCorsHeaders(req, res) {
   res.setHeader("Access-Control-Max-Age", "86400");
 }
 
-function sendJson(req, res, statusCode, data) {
+function sendJson(req: IncomingMessage, res: ServerResponse, statusCode: number, data: unknown): void {
   setCorsHeaders(req, res);
   res.writeHead(statusCode, { "content-type": "application/json" });
   res.end(JSON.stringify(data));
 }
 
-function parseJsonBody(req) {
+function parseJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let raw = "";
 
-    req.on("data", (chunk) => {
-      raw += chunk;
+    req.on("data", (chunk: Buffer) => {
+      raw += chunk.toString("utf8");
     });
 
     req.on("end", () => {
@@ -45,7 +51,7 @@ function parseJsonBody(req) {
 
       try {
         resolve(JSON.parse(raw));
-      } catch (error) {
+      } catch (_error) {
         reject(new Error("Body JSON tidak valid"));
       }
     });
@@ -54,20 +60,20 @@ function parseJsonBody(req) {
   });
 }
 
-function getKeyFromPath(urlPath) {
+function getKeyFromPath(urlPath: string): string | null {
   if (!urlPath.startsWith("/api/global/")) return null;
   const encodedKey = urlPath.slice("/api/global/".length);
   if (!encodedKey) return null;
   return decodeURIComponent(encodedKey);
 }
 
-function parseBoolean(value, fallback = false) {
+function parseBoolean(value: string | null, fallback = false): boolean {
   if (value == null) return fallback;
   const raw = String(value).trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
-function parseFinderExpectedValue(rawValue) {
+function parseFinderExpectedValue(rawValue: string | null): unknown {
   if (rawValue == null) return undefined;
   const source = String(rawValue);
   try {
@@ -77,14 +83,28 @@ function parseFinderExpectedValue(rawValue) {
   }
 }
 
-function createApiServer(runtime, options = {}) {
+export default function createApiServer(runtime: Runtime, options: { port?: number; host?: string } = {}) {
   const port = options.port ?? 4000;
   const host = options.host ?? "0.0.0.0";
   const assetStore = ensureAssetStorage(runtime, runtime.getGlobal("assetFramework", {}));
   const eventStore = ensureEventStore(runtime);
   const historianHttpBase = process.env.HISTORIAN_HTTP_BASE || "http://127.0.0.1:8080";
 
-  const resolveHistorianTargetById = (targetId) => {
+  type ResolvedPathMatch = {
+    path: string;
+    assetId: string;
+    attributeName: string;
+    tagId: number;
+    historianTargetId: string;
+    type: string;
+    unit: string;
+    latestValue: unknown;
+    latestTs: string | null;
+    historianEnabled: boolean;
+    historianTimeSourcePath: string;
+  };
+
+  const resolveHistorianTargetById = (targetId: string): HistorianTarget => {
     const state = assetStore.getState();
     const list = Array.isArray(state.historians) ? state.historians : [];
     const found = list.find((h) => h && h.id === targetId);
@@ -100,17 +120,17 @@ function createApiServer(runtime, options = {}) {
     };
   };
 
-  function parsePathList(pathQueryRaw) {
+  function parsePathList(pathQueryRaw: string): string[] {
     return String(pathQueryRaw || "")
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
   }
 
-  function resolvePathMatches(pathQuery) {
+  function resolvePathMatches(pathQuery: string): ResolvedPathMatch[] {
     return assetStore
       .query(pathQuery)
-      .filter((item) => item.kind === "attribute")
+      .filter((item): item is AttributeQueryMatch => item.kind === "attribute")
       .map((item) => ({
         path: item.path,
         assetId: item.assetId,
@@ -126,21 +146,21 @@ function createApiServer(runtime, options = {}) {
       }));
   }
 
-  async function historianByPath(kind, requestUrl) {
+  async function historianByPath(kind: "raw" | "range" | "last", requestUrl: URL): Promise<{ status: number; body: unknown }> {
     const pathQueryRaw = requestUrl.searchParams.get("path") || "";
     const pathQueries = parsePathList(pathQueryRaw);
     if (pathQueries.length === 0) {
       return { status: 400, body: { error: "Query parameter 'path' wajib diisi" } };
     }
 
-    const allMatches = [];
+    const allMatches: ResolvedPathMatch[] = [];
     for (const pathQuery of pathQueries) {
       for (const item of resolvePathMatches(pathQuery)) {
         allMatches.push(item);
       }
     }
     const seen = new Set();
-    const matches = [];
+    const matches: ResolvedPathMatch[] = [];
     for (const item of allMatches) {
       const key = `${item.assetId}:${item.attributeName}`;
       if (seen.has(key)) continue;
@@ -186,7 +206,7 @@ function createApiServer(runtime, options = {}) {
 
     const upstreamUrl = `${baseUrl}/hist/${kind}?${params.toString()}`;
     const upstreamRes = await fetch(upstreamUrl);
-    const upstreamJson = await upstreamRes.json();
+    const upstreamJson = (await upstreamRes.json()) as { rows?: Array<Record<string, unknown>>; truncated?: boolean; agg?: string };
     if (!upstreamRes.ok) {
       return { status: upstreamRes.status, body: upstreamJson };
     }
@@ -194,7 +214,7 @@ function createApiServer(runtime, options = {}) {
     const tagToPath = new Map(matches.map((item) => [`tag${item.tagId}`, item.path]));
     const rows = Array.isArray(upstreamJson.rows)
       ? upstreamJson.rows.map((row) => {
-          const next = { time: row.time };
+          const next: Record<string, unknown> = { time: row.time };
           for (const [key, value] of Object.entries(row)) {
             if (key === "time") continue;
             next[tagToPath.get(key) || key] = value;
@@ -217,7 +237,7 @@ function createApiServer(runtime, options = {}) {
     };
   }
 
-  async function historianDeleteByMatches(matches, requestUrl) {
+  async function historianDeleteByMatches(matches: ResolvedPathMatch[], requestUrl: URL): Promise<{ status: number; body: unknown }> {
     const targetIds = matches
       .map((m) => String(m.historianTargetId || "default"))
       .filter((v, i, arr) => arr.indexOf(v) === i);
@@ -235,7 +255,7 @@ function createApiServer(runtime, options = {}) {
     if (uniqueTagIds.length === 0) {
       return { status: 404, body: { error: "No matching historian tags", matches: [] } };
     }
-    const payload = { tagIds: uniqueTagIds };
+    const payload: { tagIds: number[]; from?: string; to?: string } = { tagIds: uniqueTagIds };
     const from = requestUrl.searchParams.get("from");
     const to = requestUrl.searchParams.get("to");
     if (from) payload.from = from;
@@ -330,8 +350,8 @@ function createApiServer(runtime, options = {}) {
         const body = await parseJsonBody(req);
         const next = assetStore.replace(body);
         sendJson(req, res, 200, { data: next });
-      } catch (error) {
-        sendJson(req, res, 400, { error: error.message });
+      } catch (error: unknown) {
+        sendJson(req, res, 400, { error: getErrorMessage(error) });
       }
       return;
     }
@@ -346,8 +366,8 @@ function createApiServer(runtime, options = {}) {
         const body = await parseJsonBody(req);
         const next = assetStore.replace(body);
         sendJson(req, res, 200, { data: next });
-      } catch (error) {
-        sendJson(req, res, 400, { error: error.message });
+      } catch (error: unknown) {
+        sendJson(req, res, 400, { error: getErrorMessage(error) });
       }
       return;
     }
@@ -369,8 +389,8 @@ function createApiServer(runtime, options = {}) {
       try {
         const result = await historianByPath("raw", requestUrl);
         sendJson(req, res, result.status, result.body);
-      } catch (error) {
-        sendJson(req, res, 502, { error: `Historian upstream error: ${error.message}` });
+      } catch (error: unknown) {
+        sendJson(req, res, 502, { error: `Historian upstream error: ${getErrorMessage(error)}` });
       }
       return;
     }
@@ -379,8 +399,8 @@ function createApiServer(runtime, options = {}) {
       try {
         const result = await historianByPath("range", requestUrl);
         sendJson(req, res, result.status, result.body);
-      } catch (error) {
-        sendJson(req, res, 502, { error: `Historian upstream error: ${error.message}` });
+      } catch (error: unknown) {
+        sendJson(req, res, 502, { error: `Historian upstream error: ${getErrorMessage(error)}` });
       }
       return;
     }
@@ -389,8 +409,8 @@ function createApiServer(runtime, options = {}) {
       try {
         const result = await historianByPath("last", requestUrl);
         sendJson(req, res, result.status, result.body);
-      } catch (error) {
-        sendJson(req, res, 502, { error: `Historian upstream error: ${error.message}` });
+      } catch (error: unknown) {
+        sendJson(req, res, 502, { error: `Historian upstream error: ${getErrorMessage(error)}` });
       }
       return;
     }
@@ -414,8 +434,8 @@ function createApiServer(runtime, options = {}) {
         const upstream = await fetch(`${baseUrl}/metrics`);
         const payload = await upstream.json();
         sendJson(req, res, upstream.ok ? 200 : upstream.status, payload);
-      } catch (error) {
-        sendJson(req, res, 502, { error: `Historian metrics upstream error: ${error.message}` });
+      } catch (error: unknown) {
+        sendJson(req, res, 502, { error: `Historian metrics upstream error: ${getErrorMessage(error)}` });
       }
       return;
     }
@@ -430,8 +450,8 @@ function createApiServer(runtime, options = {}) {
         const upstream = await fetch(`${baseUrl}/logs?kind=${encodeURIComponent(kind)}&limit=${encodeURIComponent(limit)}`);
         const payload = await upstream.json();
         sendJson(req, res, upstream.ok ? 200 : upstream.status, payload);
-      } catch (error) {
-        sendJson(req, res, 502, { error: `Historian logs upstream error: ${error.message}` });
+      } catch (error: unknown) {
+        sendJson(req, res, 502, { error: `Historian logs upstream error: ${getErrorMessage(error)}` });
       }
       return;
     }
@@ -445,12 +465,13 @@ function createApiServer(runtime, options = {}) {
         }
         const matches = resolvePathMatches(pathQuery);
         const result = await historianDeleteByMatches(matches, requestUrl);
+        const responseBody = typeof result.body === "object" && result.body ? (result.body as Record<string, unknown>) : {};
         sendJson(req, res, result.status, {
-          ...result.body,
+          ...responseBody,
           path: pathQuery
         });
-      } catch (error) {
-        sendJson(req, res, 502, { error: `Historian delete upstream error: ${error.message}` });
+      } catch (error: unknown) {
+        sendJson(req, res, 502, { error: `Historian delete upstream error: ${getErrorMessage(error)}` });
       }
       return;
     }
@@ -465,7 +486,7 @@ function createApiServer(runtime, options = {}) {
         }
         const state = assetStore.getState();
         const byId = new Map((state.assets || []).map((asset) => [asset.id, asset]));
-        const getPath = (assetId) => {
+        const getPath = (assetId: string): string => {
           const asset = byId.get(assetId);
           if (!asset) return "";
           const parts = [asset.name];
@@ -478,14 +499,14 @@ function createApiServer(runtime, options = {}) {
           }
           return parts.join(".");
         };
-        const pathMatches = [];
+        const pathMatches: ResolvedPathMatch[] = [];
         for (const asset of state.assets || []) {
           if (!Array.isArray(asset.templateIds) || !asset.templateIds.includes(templateId)) continue;
           const path = `${getPath(asset.id)}.${attributeName}`;
           const resolved = resolvePathMatches(path);
           for (const item of resolved) pathMatches.push(item);
         }
-        const dedup = [];
+        const dedup: ResolvedPathMatch[] = [];
         const seen = new Set();
         for (const m of pathMatches) {
           const key = `${m.assetId}:${m.attributeName}`;
@@ -494,13 +515,14 @@ function createApiServer(runtime, options = {}) {
           dedup.push(m);
         }
         const result = await historianDeleteByMatches(dedup, requestUrl);
+        const responseBody = typeof result.body === "object" && result.body ? (result.body as Record<string, unknown>) : {};
         sendJson(req, res, result.status, {
-          ...result.body,
+          ...responseBody,
           templateId,
           attributeName
         });
-      } catch (error) {
-        sendJson(req, res, 502, { error: `Historian delete upstream error: ${error.message}` });
+      } catch (error: unknown) {
+        sendJson(req, res, 502, { error: `Historian delete upstream error: ${getErrorMessage(error)}` });
       }
       return;
     }
@@ -574,8 +596,8 @@ function createApiServer(runtime, options = {}) {
           offset: result.offset,
           rows: result.rows
         });
-      } catch (error) {
-        sendJson(req, res, 400, { error: error.message });
+      } catch (error: unknown) {
+        sendJson(req, res, 400, { error: getErrorMessage(error) });
       }
       return;
     }
@@ -584,15 +606,15 @@ function createApiServer(runtime, options = {}) {
       try {
         const body = await parseJsonBody(req);
         const row = eventStore.open(
-          body.event_path || body.path,
-          body.start_ts || body.ts,
-          body.context || {},
-          body.notes_on_open || body.notes || "",
-          body.severity || "other"
+          String(body.event_path || body.path || ""),
+          body.start_ts ? String(body.start_ts) : body.ts ? String(body.ts) : undefined,
+          (body.context && typeof body.context === "object" ? (body.context as Record<string, unknown>) : {}),
+          String(body.notes_on_open || body.notes || ""),
+          String(body.severity || "other")
         );
         sendJson(req, res, 200, { ok: true, row });
-      } catch (error) {
-        sendJson(req, res, 400, { error: error.message });
+      } catch (error: unknown) {
+        sendJson(req, res, 400, { error: getErrorMessage(error) });
       }
       return;
     }
@@ -601,13 +623,13 @@ function createApiServer(runtime, options = {}) {
       try {
         const body = await parseJsonBody(req);
         const result = eventStore.close(
-          body.pattern || body.event_path || "*",
-          body.end_ts || body.ts,
-          body.notes_on_close || body.notes || ""
+          String(body.pattern || body.event_path || "*"),
+          body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : undefined,
+          String(body.notes_on_close || body.notes || "")
         );
         sendJson(req, res, 200, { ok: true, ...result });
-      } catch (error) {
-        sendJson(req, res, 400, { error: error.message });
+      } catch (error: unknown) {
+        sendJson(req, res, 400, { error: getErrorMessage(error) });
       }
       return;
     }
@@ -616,13 +638,13 @@ function createApiServer(runtime, options = {}) {
       try {
         const body = await parseJsonBody(req);
         const result = eventStore.closeById(
-          body.id,
-          body.end_ts || body.ts,
-          body.notes_on_close || body.notes || ""
+          String(body.id || ""),
+          body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : undefined,
+          String(body.notes_on_close || body.notes || "")
         );
         sendJson(req, res, 200, { ok: true, ...result });
-      } catch (error) {
-        sendJson(req, res, 400, { error: error.message });
+      } catch (error: unknown) {
+        sendJson(req, res, 400, { error: getErrorMessage(error) });
       }
       return;
     }
@@ -630,10 +652,13 @@ function createApiServer(runtime, options = {}) {
     if (urlPath === "/api/events/ack-id" && method === "POST") {
       try {
         const body = await parseJsonBody(req);
-        const result = eventStore.acknowledgeById(body.id, body.acknowledged_ts || body.ts);
+        const result = eventStore.acknowledgeById(
+          String(body.id || ""),
+          body.acknowledged_ts ? String(body.acknowledged_ts) : body.ts ? String(body.ts) : undefined
+        );
         sendJson(req, res, 200, { ok: true, ...result });
-      } catch (error) {
-        sendJson(req, res, 400, { error: error.message });
+      } catch (error: unknown) {
+        sendJson(req, res, 400, { error: getErrorMessage(error) });
       }
       return;
     }
@@ -643,8 +668,8 @@ function createApiServer(runtime, options = {}) {
         const id = requestUrl.searchParams.get("id") || "";
         const result = eventStore.deleteById(id);
         sendJson(req, res, 200, { ok: true, ...result });
-      } catch (error) {
-        sendJson(req, res, 400, { error: error.message });
+      } catch (error: unknown) {
+        sendJson(req, res, 400, { error: getErrorMessage(error) });
       }
       return;
     }
@@ -658,8 +683,8 @@ function createApiServer(runtime, options = {}) {
         const severity = requestUrl.searchParams.get("severity") || "*";
         const result = eventStore.deleteByPattern(pattern, status, from, to, severity);
         sendJson(req, res, 200, { ok: true, ...result });
-      } catch (error) {
-        sendJson(req, res, 400, { error: error.message });
+      } catch (error: unknown) {
+        sendJson(req, res, 400, { error: getErrorMessage(error) });
       }
       return;
     }
@@ -669,7 +694,10 @@ function createApiServer(runtime, options = {}) {
       const matches = resolvePathMatches(pathQuery).map((item) => {
         const origin = assetStore
           .query(item.path)
-          .find((x) => x.kind === "attribute" && x.assetId === item.assetId && x.attributeName === item.attributeName);
+          .find(
+            (x): x is AttributeQueryMatch =>
+              x.kind === "attribute" && x.assetId === item.assetId && x.attributeName === item.attributeName
+          );
         return {
           ...item,
           type: origin?.type,
@@ -718,8 +746,8 @@ function createApiServer(runtime, options = {}) {
               tagId: computeTagID(item.assetId, item.attributeName),
             })),
           });
-        } catch (error) {
-          sendJson(req, res, 400, { error: error.message });
+        } catch (error: unknown) {
+          sendJson(req, res, 400, { error: getErrorMessage(error) });
         }
         return;
       }
@@ -740,8 +768,8 @@ function createApiServer(runtime, options = {}) {
             })),
           })),
         });
-      } catch (error) {
-        sendJson(req, res, 400, { error: error.message });
+      } catch (error: unknown) {
+        sendJson(req, res, 400, { error: getErrorMessage(error) });
       }
       return;
     }
@@ -771,8 +799,8 @@ function createApiServer(runtime, options = {}) {
 
         const value = runtime.setGlobal(key, body.value);
         sendJson(req, res, 200, { key, value });
-      } catch (error) {
-        sendJson(req, res, 400, { error: error.message });
+      } catch (error: unknown) {
+        sendJson(req, res, 400, { error: getErrorMessage(error) });
       }
       return;
     }
@@ -794,7 +822,7 @@ function createApiServer(runtime, options = {}) {
       return server;
     },
     stop() {
-      return new Promise((resolve, reject) => {
+      return new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {
             reject(error);
@@ -806,5 +834,3 @@ function createApiServer(runtime, options = {}) {
     },
   };
 }
-
-module.exports = createApiServer;
