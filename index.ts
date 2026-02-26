@@ -30,17 +30,22 @@ async function bootstrap(): Promise<void> {
     if (isShuttingDown) return;
     isShuttingDown = true;
     console.log(`[runtime] shutdown signal: ${signal}`);
-
-    try {
-      await rt.shutdown();
-    } catch (error) {
-      console.error("[runtime] runtime shutdown error:", getErrorMessage(error));
-    }
+    const hardExitTimer = setTimeout(() => {
+      console.error("[runtime] forced shutdown timeout reached (8000ms)");
+      process.exit(1);
+    }, 8000);
+    hardExitTimer.unref?.();
 
     try {
       stopProgram();
     } catch (error) {
       console.error("[runtime] stop program error:", getErrorMessage(error));
+    }
+
+    try {
+      await rt.shutdown();
+    } catch (error) {
+      console.error("[runtime] runtime shutdown error:", getErrorMessage(error));
     }
 
     try {
@@ -67,6 +72,7 @@ async function bootstrap(): Promise<void> {
       }
     }
 
+    clearTimeout(hardExitTimer);
     process.exit(exitCode);
   };
 

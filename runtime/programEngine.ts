@@ -86,6 +86,7 @@ function startIntervalTrigger(runtime: Runtime, trigger: ProgramTrigger): () => 
     msg._trigger = { id: trigger.id, type: "interval", ts: new Date().toISOString() };
     runtime.send(trigger.id, msg);
   }, intervalMs);
+  timer.unref?.();
   return () => clearInterval(timer);
 }
 

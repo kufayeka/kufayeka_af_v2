@@ -1,6 +1,6 @@
 import http from "node:http";
+import type { Socket } from "node:net";
 import express, { Request, Response } from "express";
-import cors from "cors";
 import Runtime from "../runtime/Runtime";
 import { ensureAssetStorage } from "../runtime/assetStorage";
 import { ensureEventStore } from "../runtime/eventStore";
@@ -38,6 +38,7 @@ function queryString(req: Request, key: string): string | undefined {
 export default function createApiServer(runtime: Runtime, options: { port?: number; host?: string } = {}) {
   const port = options.port ?? 4000;
   const host = options.host ?? "0.0.0.0";
+  const preferredCorsOrigin = "http://192.168.68.99:3333";
   const assetStore = ensureAssetStorage(runtime, runtime.getGlobal("assetFramework", {}));
   const eventStore = ensureEventStore(runtime);
   const historianHttpBase = process.env.HISTORIAN_HTTP_BASE || "http://127.0.0.1:8080";
@@ -236,18 +237,27 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   }
 
   const app = express();
-  app.use(
-    cors({
-      origin: "*",
-      methods: ["GET", "PUT", "POST", "DELETE", "OPTIONS", "PATCH"],
-      allowedHeaders: "*",
-      exposedHeaders: "*",
-      maxAge: 86400
-    })
-  );
   app.use((req, res, next) => {
-    void req;
+    const requestOrigin = req.header("origin");
+    if (requestOrigin === preferredCorsOrigin) {
+      res.setHeader("Access-Control-Allow-Origin", preferredCorsOrigin);
+    } else if (requestOrigin && requestOrigin.trim()) {
+      // Open for all browser origins by reflecting current Origin.
+      res.setHeader("Access-Control-Allow-Origin", requestOrigin);
+    } else {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    }
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS,PATCH");
+    res.setHeader("Access-Control-Allow-Headers", req.header("access-control-request-headers") || "*");
+    res.setHeader("Access-Control-Expose-Headers", "*");
     res.setHeader("Access-Control-Allow-Private-Network", "true");
+    res.setHeader("Access-Control-Max-Age", "86400");
+    if (req.method === "OPTIONS") {
+      res.status(204).end();
+      return;
+    }
     next();
   });
   app.use(express.json({ limit: "10mb" }));
@@ -652,6 +662,14 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
           res.status(400).json({ error: "Body must include a 'value' field" });
           return;
         }
+        const existingMatches = assetStore.query(pathQuery).filter((item) => item.kind === "attribute");
+        if (existingMatches.length === 0) {
+          res.status(404).json({
+            error: "Attribute path not found. Write rejected to prevent creating non-template attribute.",
+            path: pathQuery
+          });
+          return;
+        }
         const matches = assetStore.setAttribute(pathQuery, body.value);
         res.status(200).json({
           path: pathQuery,
@@ -677,6 +695,26 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     try {
       const body = (req.body || {}) as { items?: Array<{ path: string; value: unknown }> };
       const items = Array.isArray(body.items) ? body.items : [];
+      const invalidPaths: string[] = [];
+      for (const item of items) {
+        if (!item || typeof item !== "object") continue;
+        if (!Object.prototype.hasOwnProperty.call(item, "path")) continue;
+        if (!Object.prototype.hasOwnProperty.call(item, "value")) continue;
+        const pathValue = String(item.path || "");
+        if (!pathValue) {
+          invalidPaths.push(pathValue);
+          continue;
+        }
+        const matches = assetStore.query(pathValue).filter((x) => x.kind === "attribute");
+        if (matches.length === 0) invalidPaths.push(pathValue);
+      }
+      if (invalidPaths.length > 0) {
+        res.status(404).json({
+          error: "One or more attribute paths were not found. Batch write rejected; no updates applied.",
+          invalidPaths
+        });
+        return;
+      }
       const results = assetStore.setAttributes(items);
       res.status(200).json({
         count: results.length,
@@ -735,11 +773,16 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   });
 
   let server: http.Server | null = null;
+  const sockets = new Set<Socket>();
 
   return {
     start() {
       server = app.listen(port, host, () => {
         console.log(`Global store API is running at http://${host}:${port}`);
+      });
+      server.on("connection", (socket: Socket) => {
+        sockets.add(socket);
+        socket.on("close", () => sockets.delete(socket));
       });
       return server;
     },
@@ -749,11 +792,23 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
           resolve();
           return;
         }
-        server.close((error) => {
+        const activeServer = server;
+        const forceCloseTimer = setTimeout(() => {
+          for (const socket of sockets) {
+            socket.destroy();
+          }
+        }, 1000);
+        forceCloseTimer.unref?.();
+        activeServer.close((error) => {
+          clearTimeout(forceCloseTimer);
           if (error) {
             reject(error);
             return;
           }
+          for (const socket of sockets) {
+            socket.destroy();
+          }
+          sockets.clear();
           server = null;
           resolve();
         });

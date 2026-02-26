@@ -54,7 +54,7 @@
       "type": "watcher_set",
       "enabled": true,
       "intervalMs": 1000,
-      "watchPath": "Jasuindo.Taiyo2.Job Lifecycle",
+      "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle",
       "message": {
         "payload": 0
       }
@@ -65,7 +65,18 @@
       "type": "watcher_set",
       "enabled": true,
       "intervalMs": 1000,
-      "watchPath": "Jasuindo.Taiyo1.Job Lifecycle",
+      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
+      "message": {
+        "payload": 0
+      }
+    },
+    {
+      "id": "trigger.tick_1772113072548",
+      "label": "500ms",
+      "type": "interval",
+      "enabled": true,
+      "intervalMs": 500,
+      "watchPath": "",
       "message": {
         "payload": 0
       }
@@ -73,84 +84,18 @@
   ],
   "actions": [
     {
-      "id": "Taiyo1.Alarms.machineSpeed",
+      "id": "Taiyo1.Events.JobLifecycle",
       "label": "",
       "type": "script",
       "enabled": true,
       "description": "",
-      "script": "const nowTs = msg.ts || helpers.now();\n\nconst eventPath = `${MachineAlarmAttribute.path}/Event/Alarm/MachineSpeedHigh`;\nconst speed = Number(MachinePresentValue?.value ?? 0);\nconst threshold = Number(Threshold ?? 0);\nconst operatorLabel = OperatorName?.value?.label ?? \"-\";\n\nconst openRows = eventSys.get(`${eventPath}*`, \"*\", \"*\", \"open\", {}, { limit: 1 });\n\nif (speed > threshold) {\n\n  asset.set(MachineAlarmAttribute.path, `Oii ${operatorLabel} bahaya!`);\n\n  if (openRows.length === 0) {\n    eventSys.open(eventPath,nowTs,{operatorLabel,speed,threshold},`Machine speed ${speed} > threshold ${threshold}`,\"low\");\n  }\n\n} else {\n\n  asset.set(MachineAlarmAttribute.path, \"No alarm.\");\n\n  if (openRows.length > 0) {\n    eventSys.close(`${eventPath}*`,nowTs,`Machine speed ${speed} <= threshold ${threshold}`);\n  }\n}\n\nsend(msg);",
-      "templateId": "template.script_1771609498627",
-      "templateBindingOverrides": {
-        "MachineAlarmAttribute": {
-          "name": "MachineAlarmAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo1.Alarm",
-          "allowOverride": true
-        },
-        "MachinePresentValue": {
-          "name": "MachinePresentValue",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo1.Machine Speed",
-          "allowOverride": true
-        },
-        "OperatorName": {
-          "name": "OperatorName",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo1.Operator",
-          "allowOverride": true
-        }
-      },
-      "allowNodeDuplication": true
-    },
-    {
-      "id": "Taiyo2.Alarms.machineSpeed",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "description": "",
-      "script": "const nowTs = msg.ts || helpers.now();\n\nconst eventPath = `${MachineAlarmAttribute.path}/Event/Alarm/MachineSpeedHigh`;\nconst speed = Number(MachinePresentValue?.value ?? 0);\nconst threshold = Number(Threshold ?? 0);\nconst operatorLabel = OperatorName?.value?.label ?? \"-\";\n\nconst openRows = eventSys.get(`${eventPath}*`, \"*\", \"*\", \"open\", {}, { limit: 1 });\n\nif (speed > threshold) {\n\n  asset.set(MachineAlarmAttribute.path, `Oii ${operatorLabel} bahaya!`);\n\n  if (openRows.length === 0) {\n    eventSys.open(eventPath,nowTs,{operatorLabel,speed,threshold},`Machine speed ${speed} > threshold ${threshold}`,\"low\");\n  }\n\n} else {\n\n  asset.set(MachineAlarmAttribute.path, \"No alarm.\");\n\n  if (openRows.length > 0) {\n    eventSys.close(`${eventPath}*`,nowTs,`Machine speed ${speed} <= threshold ${threshold}`);\n  }\n}\n\nsend(msg);",
-      "templateId": "template.script_1771609498627",
-      "templateBindingOverrides": {
-        "MachineAlarmAttribute": {
-          "name": "MachineAlarmAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo2.Alarm",
-          "allowOverride": true
-        },
-        "MachinePresentValue": {
-          "name": "MachinePresentValue",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo2.Machine Speed",
-          "allowOverride": true
-        },
-        "OperatorName": {
-          "name": "OperatorName",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo2.Operator",
-          "allowOverride": true
-        }
-      },
-      "allowNodeDuplication": true
-    },
-    {
-      "id": "Taiyo1.Events.jobLifecycle",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventPath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  send(msg);\r\n\r\n}\r\n\r\n// CREATE EVENT BASED ON LIFECYCLE\r\nif (jobLifecycleAttribute === \"load\") {\r\n\r\n  if (openedEvents.length === 0) {\r\n\r\n    eventSys.open(`${ eventPath }Running`, timestamp, {}, `${ workOrderAttribute } loaded`, \"info\");\r\n\r\n  }\r\n\r\n} else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n  if (openedEvents.length > 0) {\r\n\r\n    eventSys.close(`${ eventPath }Running`, timestamp, `${ workOrderAttribute } unloaded`);\r\n    asset.set(workOrderAttributePath, `-`);\r\n\r\n  }\r\n  \r\n}\r\n\r\n\r\nsend(msg);",
+      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventPath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  send(msg);\r\n\r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);\r\n\r\n}\r\n\r\n// CREATE EVENT BASED ON LIFECYCLE\r\nif (jobLifecycleAttribute === \"load\") {\r\n\r\n  if (openedEvents.length === 0) {\r\n\r\n    eventSys.open(`${ eventPath }Running`, timestamp, {}, `${ workOrderAttribute } loaded`, \"info\");\r\n\r\n  }\r\n\r\n} else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n  if (openedEvents.length > 0) {\r\n\r\n    eventSys.close(`${ eventPath }Running`, timestamp, `${ workOrderAttribute } unloaded`);\r\n    asset.set(workOrderAttributePath, `-`);\r\n\r\n  }\r\n  \r\n}\r\n\r\n\r\nsend(msg);",
       "templateId": "template.script_1771898442157",
       "templateBindingOverrides": {
         "AssetPath": {
           "name": "AssetPath",
           "source": "static_string",
-          "staticValue": "Jasuindo.Taiyo1",
+          "staticValue": "Jasuindo.OffsetPrinter.Taiyo1",
           "attributePath": "",
           "allowOverride": true
         },
@@ -158,67 +103,67 @@
           "name": "JobLifecycleAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo1.Job Lifecycle",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
           "allowOverride": true
         },
         "WorkOrderAttribute": {
           "name": "WorkOrderAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo1.Work Order",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order",
           "allowOverride": true
         },
         "OperatorAttribute": {
           "name": "OperatorAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo1.Operator",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Operator",
           "allowOverride": true
         },
         "AlarmAttribute": {
           "name": "AlarmAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo1.Job Lifecycle Alarm",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle Alarm",
           "allowOverride": true
         }
       },
       "allowNodeDuplication": true
     },
     {
-      "id": "Taiyo2.Events.jobLifecycle",
+      "id": "Taiyo2.Events.JobLifecycle",
       "label": "",
       "type": "script",
       "enabled": true,
       "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventPath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  send(msg);\r\n\r\n}\r\n\r\n// CREATE EVENT BASED ON LIFECYCLE\r\nif (jobLifecycleAttribute === \"load\") {\r\n\r\n  if (openedEvents.length === 0) {\r\n\r\n    eventSys.open(`${ eventPath }Running`, timestamp, {}, `${ workOrderAttribute } loaded`, \"info\");\r\n\r\n  }\r\n\r\n} else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n  if (openedEvents.length > 0) {\r\n\r\n    eventSys.close(`${ eventPath }Running`, timestamp, `${ workOrderAttribute } unloaded`);\r\n    asset.set(workOrderAttributePath, `-`);\r\n\r\n  }\r\n  \r\n}\r\n\r\n\r\nsend(msg);",
+      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventPath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  send(msg);\r\n\r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);\r\n\r\n}\r\n\r\n// CREATE EVENT BASED ON LIFECYCLE\r\nif (jobLifecycleAttribute === \"load\") {\r\n\r\n  if (openedEvents.length === 0) {\r\n\r\n    eventSys.open(`${ eventPath }Running`, timestamp, {}, `${ workOrderAttribute } loaded`, \"info\");\r\n\r\n  }\r\n\r\n} else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n  if (openedEvents.length > 0) {\r\n\r\n    eventSys.close(`${ eventPath }Running`, timestamp, `${ workOrderAttribute } unloaded`);\r\n    asset.set(workOrderAttributePath, `-`);\r\n\r\n  }\r\n  \r\n}\r\n\r\n\r\nsend(msg);",
       "templateId": "template.script_1771898442157",
       "templateBindingOverrides": {
         "JobLifecycleAttribute": {
           "name": "JobLifecycleAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo2.Job Lifecycle",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle",
           "allowOverride": true
         },
         "WorkOrderAttribute": {
           "name": "WorkOrderAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo2.Work Order",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order",
           "allowOverride": true
         },
         "OperatorAttribute": {
           "name": "OperatorAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo2.Operator",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Operator",
           "allowOverride": true
         },
         "AssetPath": {
           "name": "AssetPath",
           "source": "static_string",
-          "staticValue": "Jasuindo.Taiyo2",
+          "staticValue": "Jasuindo.OffsetPrinter.Taiyo2",
           "attributePath": "",
           "allowOverride": true
         },
@@ -226,53 +171,47 @@
           "name": "AlarmAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.Taiyo2.Job Lifecycle Alarm",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle Alarm",
           "allowOverride": true
         }
       },
       "allowNodeDuplication": true
     },
     {
-      "id": "scripts.debug",
+      "id": "Scripts.debug",
       "label": "",
       "type": "script",
       "enabled": true,
       "description": "",
-      "script": "helpers.log(\"msg:\", msg.payload);",
+      "script": "helpers.log(\"msg:\", msg);",
       "templateBindingOverrides": {},
       "allowNodeDuplication": true
+    },
+    {
+      "id": "Taiyo1.Events.DetectJobLifecycle",
+      "label": "",
+      "type": "script",
+      "enabled": true,
+      "allowNodeDuplication": true,
+      "description": "",
+      "script": "send(msg);"
     }
   ],
   "flows": {
     "links": [
       {
-        "from": "trigger.watch_1771610722257",
-        "to": "Taiyo1.Alarms.machineSpeed",
+        "from": "trigger.tick_1772113072548",
+        "to": "Taiyo1.Events.DetectJobLifecycle",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1771642652068",
-        "to": "Taiyo2.Alarms.machineSpeed",
+        "from": "Taiyo1.Events.DetectJobLifecycle",
+        "to": "Taiyo1.Events.JobLifecycle",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1772017836959",
-        "to": "Taiyo2.Events.jobLifecycle",
-        "enabled": true
-      },
-      {
-        "from": "trigger.watch_1772017838146",
-        "to": "Taiyo1.Events.jobLifecycle",
-        "enabled": true
-      },
-      {
-        "from": "trigger.watch_1772017838146",
-        "to": "scripts.debug",
-        "enabled": true
-      },
-      {
-        "from": "trigger.watch_1772017836959",
-        "to": "scripts.debug",
+        "from": "Taiyo1.Events.DetectJobLifecycle",
+        "to": "Taiyo2.Events.JobLifecycle",
         "enabled": true
       }
     ],
@@ -301,45 +240,29 @@
         "x": 1260,
         "y": 270
       },
-      "trigger.watch_1771610722257": {
-        "x": 280,
-        "y": 150
-      },
-      "trigger.watch_1771642652068": {
-        "x": 280,
-        "y": 250
-      },
       "taiyo1.alarm.test": {
         "x": 710,
         "y": 320
       },
-      "Taiyo1.Alarms.machineSpeed": {
-        "x": 760,
-        "y": 150
+      "trigger.tick_1772113072548": {
+        "x": 360,
+        "y": 310
       },
-      "Taiyo1.Events.jobLifecycle": {
-        "x": 1160,
+      "Scripts.debug": {
+        "x": 890,
+        "y": 740
+      },
+      "Taiyo1.Events.DetectJobLifecycle": {
+        "x": 810,
+        "y": 310
+      },
+      "Taiyo1.Events.JobLifecycle": {
+        "x": 1580,
+        "y": 290
+      },
+      "Taiyo2.Events.JobLifecycle": {
+        "x": 1500,
         "y": 410
-      },
-      "Taiyo2.Alarms.machineSpeed": {
-        "x": 1130,
-        "y": 260
-      },
-      "Taiyo2.Events.jobLifecycle": {
-        "x": 1160,
-        "y": 480
-      },
-      "trigger.watch_1772017838146": {
-        "x": 330,
-        "y": 430
-      },
-      "trigger.watch_1772017836959": {
-        "x": 330,
-        "y": 550
-      },
-      "scripts.debug": {
-        "x": 1090,
-        "y": 550
       }
     }
   },
@@ -369,15 +292,15 @@
             "value": 100
           },
           "Timestamp": {
-            "value": 1772075105013,
-            "ts": "2026-02-26T03:05:03.893Z"
+            "value": 1772114508474,
+            "ts": "2026-02-26T14:01:47.887Z"
           }
         }
       },
       {
         "id": "asset_1771561995737_511",
         "name": "Taiyo1",
-        "parentId": "asset_1771561990565_180",
+        "parentId": "asset_1772088636848_239",
         "templateIds": [
           "template_1771523720677_855",
           "template_1771522392767_162"
@@ -390,8 +313,8 @@
             }
           },
           "Alarm": {
-            "value": "No alarm.",
-            "ts": "2026-02-24T04:31:23.607Z"
+            "value": "-",
+            "ts": "2026-02-26T13:56:04.017Z"
           },
           "Machine Speed": {
             "value": 7,
@@ -404,23 +327,27 @@
             }
           },
           "Job Lifecycle": {
-            "value": "unload",
-            "ts": "2026-02-26T02:45:16.078Z"
+            "value": "load",
+            "ts": "2026-02-26T14:01:46.733Z"
           },
           "Work Order": {
-            "value": "-",
-            "ts": "2026-02-26T02:45:16.080Z"
+            "value": "WO-2026-0012",
+            "ts": "2026-02-26T14:01:46.733Z"
           },
           "Job Lifecycle Alarm": {
             "value": "!!!Work order is empty!!!",
             "ts": "2026-02-26T03:01:22.611Z"
+          },
+          "Job Activity Alarm": {
+            "value": "-",
+            "ts": "2026-02-26T14:01:47.090Z"
           }
         }
       },
       {
         "id": "asset_1771562520927_537",
         "name": "Taiyo2",
-        "parentId": "asset_1771561990565_180",
+        "parentId": "asset_1772088636848_239",
         "templateIds": [
           "template_1771523720677_855",
           "template_1771522392767_162"
@@ -448,17 +375,24 @@
           },
           "Work Order": {
             "value": "-",
-            "ts": "2026-02-26T02:44:55.815Z"
+            "ts": "2026-02-26T13:44:53.911Z"
           },
           "Job Lifecycle": {
             "value": "unload",
-            "ts": "2026-02-26T02:44:55.807Z"
+            "ts": "2026-02-26T13:44:53.679Z"
           },
           "Job Lifecycle Alarm": {
             "value": "!!!Work order is empty!!!",
             "ts": "2026-02-25T13:30:46.223Z"
           }
         }
+      },
+      {
+        "id": "asset_1772088636848_239",
+        "name": "OffsetPrinter",
+        "parentId": "asset_1771561990565_180",
+        "templateIds": [],
+        "attributes": {}
       }
     ],
     "attributeTemplates": [
@@ -1044,7 +978,7 @@
       "id": "template.script_1771898442157",
       "name": "TaiyoJobLifecycleEvent",
       "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventPath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  send(msg);\r\n\r\n}\r\n\r\n// CREATE EVENT BASED ON LIFECYCLE\r\nif (jobLifecycleAttribute === \"load\") {\r\n\r\n  if (openedEvents.length === 0) {\r\n\r\n    eventSys.open(`${ eventPath }Running`, timestamp, {}, `${ workOrderAttribute } loaded`, \"info\");\r\n\r\n  }\r\n\r\n} else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n  if (openedEvents.length > 0) {\r\n\r\n    eventSys.close(`${ eventPath }Running`, timestamp, `${ workOrderAttribute } unloaded`);\r\n    asset.set(workOrderAttributePath, `-`);\r\n\r\n  }\r\n  \r\n}\r\n\r\n\r\nsend(msg);",
+      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventPath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  send(msg);\r\n\r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);\r\n\r\n}\r\n\r\n// CREATE EVENT BASED ON LIFECYCLE\r\nif (jobLifecycleAttribute === \"load\") {\r\n\r\n  if (openedEvents.length === 0) {\r\n\r\n    eventSys.open(`${ eventPath }Running`, timestamp, {}, `${ workOrderAttribute } loaded`, \"info\");\r\n\r\n  }\r\n\r\n} else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n  if (openedEvents.length > 0) {\r\n\r\n    eventSys.close(`${ eventPath }Running`, timestamp, `${ workOrderAttribute } unloaded`);\r\n    asset.set(workOrderAttributePath, `-`);\r\n\r\n  }\r\n  \r\n}\r\n\r\n\r\nsend(msg);",
       "variableBindings": [
         {
           "name": "JobLifecycleAttribute",

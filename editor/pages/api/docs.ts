@@ -16,9 +16,24 @@ type DocsApiResponse =
   | { error: string };
 
 function setOpenCors(res: NextApiResponse): void {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const preferredCorsOrigin = "http://192.168.68.99:3333";
+  const requestOrigin =
+    typeof res.req?.headers.origin === "string" ? res.req.headers.origin : undefined;
+  if (requestOrigin === preferredCorsOrigin) {
+    res.setHeader("Access-Control-Allow-Origin", preferredCorsOrigin);
+  } else if (requestOrigin && requestOrigin.trim()) {
+    res.setHeader("Access-Control-Allow-Origin", requestOrigin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS,PATCH");
-  res.setHeader("Access-Control-Allow-Headers", "*");
+  const requestHeaders =
+    typeof res.req?.headers["access-control-request-headers"] === "string"
+      ? res.req.headers["access-control-request-headers"]
+      : "*";
+  res.setHeader("Access-Control-Allow-Headers", requestHeaders);
   res.setHeader("Access-Control-Expose-Headers", "*");
   res.setHeader("Access-Control-Allow-Private-Network", "true");
   res.setHeader("Access-Control-Max-Age", "86400");
