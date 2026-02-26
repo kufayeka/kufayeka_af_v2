@@ -15,6 +15,15 @@ type DocsApiResponse =
   | { docs: DocItem[]; root: string }
   | { error: string };
 
+function setOpenCors(res: NextApiResponse): void {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS,PATCH");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  res.setHeader("Access-Control-Expose-Headers", "*");
+  res.setHeader("Access-Control-Allow-Private-Network", "true");
+  res.setHeader("Access-Control-Max-Age", "86400");
+}
+
 function toPosixPath(input: string): string {
   return input.split(path.sep).join("/");
 }
@@ -43,6 +52,12 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<DocsApiResponse>
 ): Promise<void> {
+  setOpenCors(res);
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
     res.status(405).json({ error: "Method not allowed" });
@@ -88,4 +103,3 @@ export default async function handler(
     res.status(500).json({ error: message });
   }
 }
-

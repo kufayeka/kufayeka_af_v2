@@ -56,7 +56,7 @@ function toIsoTs(ts: unknown): string {
   const date = parseDateLike(ts);
   if (!date) return new Date().toISOString();
   if (Number.isNaN(date.getTime())) {
-    throw new Error(`Timestamp tidak valid: ${String(ts)}`);
+    throw new Error(`Invalid timestamp: ${String(ts)}`);
   }
   return date.toISOString();
 }
@@ -66,7 +66,7 @@ function parseIsoTs(ts: unknown, fallback: string | null = null): string | null 
   const date = parseDateLike(ts);
   if (!date) return fallback;
   if (Number.isNaN(date.getTime())) {
-    throw new Error(`Timestamp tidak valid: ${String(ts)}`);
+    throw new Error(`Invalid timestamp: ${String(ts)}`);
   }
   return date.toISOString();
 }
@@ -88,13 +88,13 @@ export function wildcardToSqlLike(pattern: unknown): string {
 function normalizeStatus(status: unknown): string {
   if (!status || status === "*") return "*";
   const value = String(status).trim().toLowerCase();
-  if (!VALID_STATUS.has(value)) throw new Error(`Status tidak valid: ${String(status)}`);
+  if (!VALID_STATUS.has(value)) throw new Error(`Invalid status: ${String(status)}`);
   return value;
 }
 
 function normalizeSeverity(severity: unknown): EventRow["severity"] {
   const value = String(severity || "other").trim().toLowerCase() as EventRow["severity"];
-  if (!VALID_SEVERITY.has(value)) throw new Error(`Severity tidak valid: ${String(severity)}`);
+  if (!VALID_SEVERITY.has(value)) throw new Error(`Invalid severity: ${String(severity)}`);
   return value;
 }
 
@@ -109,13 +109,13 @@ function normalizeSortDir(sortDir: unknown): "ASC" | "DESC" {
 
 function toJsonPath(key: unknown): string {
   const raw = String(key || "").trim();
-  if (!raw) throw new Error("Context filter key wajib diisi");
+  if (!raw) throw new Error("Context filter key is required");
   if (raw.startsWith("$")) return raw;
   const parts = raw
     .split(".")
     .map((part) => part.trim())
     .filter(Boolean);
-  if (parts.length === 0) throw new Error("Context filter key wajib diisi");
+  if (parts.length === 0) throw new Error("Context filter key is required");
   return `$.${parts.join(".")}`;
 }
 
@@ -126,7 +126,7 @@ function normalizeContextFilters(contextFilters: unknown): NormalizedContextFilt
     return {
       op: "AND",
       conditions: contextFilters.map((item) => {
-        if (!item || typeof item !== "object") throw new Error("Context filter array harus berisi object");
+        if (!item || typeof item !== "object") throw new Error("Context filter array must contain objects");
         const src = item as Record<string, unknown>;
         return {
           path: toJsonPath(src.path || src.key),
@@ -142,7 +142,7 @@ function normalizeContextFilters(contextFilters: unknown): NormalizedContextFilt
     if (Array.isArray(src.conditions)) {
       const op = String(src.op || "AND").toUpperCase() === "OR" ? "OR" : "AND";
       const conditions = src.conditions.map((item) => {
-        if (!item || typeof item !== "object") throw new Error("Setiap context condition harus object");
+        if (!item || typeof item !== "object") throw new Error("Each context condition must be an object");
         const condition = item as Record<string, unknown>;
         return {
           path: toJsonPath(condition.path || condition.key),
@@ -163,7 +163,7 @@ function normalizeContextFilters(contextFilters: unknown): NormalizedContextFilt
     };
   }
 
-  throw new Error("contextFilters tidak valid");
+  throw new Error("Invalid contextFilters");
 }
 
 function mapRow(row: Record<string, unknown>): EventRow {
@@ -329,7 +329,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
 
   const open: EventStore["open"] = (eventPath, ts, context = {}, notesOnOpen = "", severity = "other") => {
     const normalizedPath = String(eventPath || "").trim();
-    if (!normalizedPath) throw new Error("event_path wajib diisi");
+    if (!normalizedPath) throw new Error("event_path is required");
     const eventContext = context && typeof context === "object" ? context : {};
     const normalizedNotes = notesOnOpen == null ? null : String(notesOnOpen);
     const row = {
@@ -373,7 +373,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
 
   const closeById: EventStore["closeById"] = (id, ts, notesOnClose = "") => {
     const normalizedId = String(id || "").trim();
-    if (!normalizedId) throw new Error("id wajib diisi");
+    if (!normalizedId) throw new Error("id is required");
     const normalizedTs = toIsoTs(ts);
     const normalizedNotes = notesOnClose == null ? null : String(notesOnClose);
     const result = db
@@ -393,7 +393,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
 
   const acknowledgeById: EventStore["acknowledgeById"] = (id, ts) => {
     const normalizedId = String(id || "").trim();
-    if (!normalizedId) throw new Error("id wajib diisi");
+    if (!normalizedId) throw new Error("id is required");
     const normalizedTs = toIsoTs(ts);
     const result = db.prepare("UPDATE events SET is_acknowledge = 1, acknowledged_ts = ? WHERE id = ?;").run(normalizedTs, normalizedId);
     return {
@@ -405,7 +405,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
 
   const deleteById: EventStore["deleteById"] = (id) => {
     const normalizedId = String(id || "").trim();
-    if (!normalizedId) throw new Error("id wajib diisi");
+    if (!normalizedId) throw new Error("id is required");
     const result = db.prepare("DELETE FROM events WHERE id = ?;").run(normalizedId);
     return { id: normalizedId, deletedCount: Number(result.changes || 0) };
   };

@@ -142,17 +142,17 @@ class Runtime {
       eventSys: {
         open: (eventPath, ts, context, notes, severity) => {
           const store = getEventStore();
-          if (!store) throw new Error("eventStore belum tersedia");
+          if (!store) throw new Error("eventStore is not available");
           return store.open(eventPath, ts, context, notes, severity);
         },
         close: (pattern, ts, notes) => {
           const store = getEventStore();
-          if (!store) throw new Error("eventStore belum tersedia");
+          if (!store) throw new Error("eventStore is not available");
           return store.close(pattern, ts, notes);
         },
         get: (pattern, from, to, status, contextFilters, options) => {
           const store = getEventStore();
-          if (!store) throw new Error("eventStore belum tersedia");
+          if (!store) throw new Error("eventStore is not available");
           return store.get(pattern, from, to, status, contextFilters, options);
         },
       },
@@ -170,7 +170,7 @@ class Runtime {
     if (this.shuttingDown) return;
     const state = this.getNodeState(nodeId);
     if (state.queue.length >= this.maxQueuePerNode) {
-      console.warn(`Queue node "${nodeId}" penuh (${this.maxQueuePerNode}); msg dibuang`);
+      console.warn(`Node queue "${nodeId}" is full (${this.maxQueuePerNode}); dropping message`);
       return;
     }
     state.queue.push(msg);
@@ -181,7 +181,7 @@ class Runtime {
     const state = this.getNodeState(nodeId);
     const handler = this.nodes.get(nodeId);
     if (!handler) {
-      console.warn(`Node "${nodeId}" tidak ditemukan`);
+      console.warn(`Node "${nodeId}" not found`);
       state.queue.length = 0;
       return;
     }
@@ -208,7 +208,7 @@ class Runtime {
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          console.error(`Error di node "${nodeId}":`, message);
+          console.error(`Error in node "${nodeId}":`, message);
         } finally {
           state.inflight -= 1;
           this.drainNodeQueue(nodeId);
@@ -240,7 +240,7 @@ class Runtime {
     }
   }
 
-  shutdown(): void {
+  async shutdown(): Promise<void> {
     this.shuttingDown = true;
     for (const state of this.nodeState.values()) {
       state.queue.length = 0;

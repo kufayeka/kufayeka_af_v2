@@ -32,7 +32,7 @@ async function bootstrap(): Promise<void> {
     console.log(`[runtime] shutdown signal: ${signal}`);
 
     try {
-      rt.shutdown();
+      await rt.shutdown();
     } catch (error) {
       console.error("[runtime] runtime shutdown error:", getErrorMessage(error));
     }

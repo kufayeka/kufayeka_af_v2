@@ -274,7 +274,7 @@ export default function HomePage() {
 
   const addTriggerWithType = (type: TriggerDefinition["type"]): void => {
     const id =
-      type === "watcher"
+      type !== "interval"
         ? `trigger.watch_${Date.now()}`
         : `trigger.tick_${Date.now()}`;
     const next: TriggerDefinition = {
@@ -283,7 +283,7 @@ export default function HomePage() {
       type,
       enabled: true,
       intervalMs: 1000,
-      watchPath: type === "watcher" ? "*.*.*" : "",
+      watchPath: type !== "interval" ? "*.*.*" : "",
       message: { payload: 0 }
     };
     applyProgramUpdate((prev) => ({ ...prev, triggers: [...prev.triggers, next] }));
@@ -302,12 +302,56 @@ export default function HomePage() {
       label: "",
       type: "script",
       enabled: true,
+      allowNodeDuplication: true,
       description: "",
       script: "send(msg);"
     };
     latestActionScriptsRef.current[id] = next.script;
     applyProgramUpdate((prev) => ({ ...prev, actions: [...prev.actions, next] }));
     setSelectedActionId(id);
+  };
+
+  const duplicateAction = (id: string): void => {
+    const source = program.actions.find((item) => item.id === id);
+    if (!source) return;
+    if (source.allowNodeDuplication === false) {
+      setStatus(`Duplicate blocked: action "${source.id}" does not allow node duplication`);
+      return;
+    }
+
+    const sourceTemplate = source.templateId
+      ? program.scriptTemplates.find((item) => item.id === source.templateId)
+      : null;
+    if (sourceTemplate && sourceTemplate.allowActionDuplication === false) {
+      setStatus(`Duplicate blocked: template "${sourceTemplate.name}" does not allow action duplication`);
+      return;
+    }
+
+    const segments = source.id.split(".").filter(Boolean);
+    const leaf = segments.length > 0 ? segments[segments.length - 1] : source.id;
+    const baseParent = segments.slice(0, -1).join(".");
+    const copyLeaf = `${leaf}_copy`;
+    let candidateId = baseParent ? `${baseParent}.${copyLeaf}` : copyLeaf;
+    let seq = 2;
+    const idSet = new Set(program.actions.map((item) => item.id));
+    while (idSet.has(candidateId)) {
+      candidateId = baseParent ? `${baseParent}.${copyLeaf}_${seq}` : `${copyLeaf}_${seq}`;
+      seq += 1;
+    }
+
+    const next: ActionDefinition = {
+      ...structuredClone(source),
+      id: candidateId,
+      label: source.label ? `${source.label} (Copy)` : ""
+    };
+    latestActionScriptsRef.current[candidateId] = next.script || "";
+
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      actions: [...prev.actions, next]
+    }));
+    setSelectedActionId(candidateId);
+    setStatus(`Action duplicated: ${candidateId}`);
   };
 
   const removeTrigger = (id: string): void => {
@@ -432,6 +476,15 @@ export default function HomePage() {
       const template = nextTemplateId
         ? program.scriptTemplates.find((item) => item.id === nextTemplateId)
         : null;
+      if (
+        nextTemplateId &&
+        template &&
+        template.allowActionDuplication === false &&
+        program.actions.some((item) => item.id !== id && item.templateId === nextTemplateId)
+      ) {
+        setStatus(`Template "${template.name}" is singleton and already used by another action`);
+        return;
+      }
       const current = program.actions.find((item) => item.id === id);
       resolvedPatch.script = template ? template.script : patch.script ?? current?.script ?? "";
       resolvedPatch.templateBindingOverrides = nextTemplateId ? current?.templateBindingOverrides || {} : {};
@@ -450,6 +503,7 @@ export default function HomePage() {
       name: `Script Template ${program.scriptTemplates.length + 1}`,
       description: "",
       script: "send(msg);",
+      allowActionDuplication: true,
       variableBindings: []
     };
     applyProgramUpdate((prev) => ({
@@ -469,6 +523,14 @@ export default function HomePage() {
     id: string,
     patch: Partial<ScriptTemplateDefinition>
   ): void => {
+    if (patch.allowActionDuplication === false) {
+      const usageCount = program.actions.filter((action) => action.templateId === id).length;
+      if (usageCount > 1) {
+        const templateName = program.scriptTemplates.find((item) => item.id === id)?.name || id;
+        setStatus(`Cannot disable duplication: template "${templateName}" is used by ${usageCount} actions`);
+        return;
+      }
+    }
     applyProgramUpdate((prev) => {
       const nextScriptTemplates = upsertById(prev.scriptTemplates, id, patch);
       const updatedTemplate = nextScriptTemplates.find((item) => item.id === id);
@@ -652,6 +714,7 @@ export default function HomePage() {
             selectedActionId={selectedActionId}
             onSelectAction={setSelectedActionId}
             onAddAction={addAction}
+            onDuplicateAction={duplicateAction}
             onRemoveAction={removeAction}
             onRenameAction={renameAction}
             onUpdateAction={updateAction}

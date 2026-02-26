@@ -173,7 +173,7 @@ export default function EventManager() {
     });
 
   const deleteAll = async () => {
-    const confirmed = window.confirm("Delete all events sesuai filter saat ini?");
+    const confirmed = window.confirm("Delete all events matching the current filter?");
     if (!confirmed) return;
     await runRowAction(async () => {
       const url = new URL(RUNTIME_EVENT_API);
@@ -195,7 +195,7 @@ export default function EventManager() {
   useEffect(() => {
     const timer = setInterval(() => {
       loadRows();
-    }, 5000);
+    }, 2000);
     return () => clearInterval(timer);
   }, [queryUrl]);
 
@@ -454,3 +454,4 @@ export default function EventManager() {
     </Box>
   );
 }
+

@@ -54,12 +54,27 @@ type SyncResponse =
   | { ok: true; path: string; runtimeUrl: string; program: Program }
   | { error: string };
 
+function setOpenCors(res: NextApiResponse): void {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS,PATCH");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  res.setHeader("Access-Control-Expose-Headers", "*");
+  res.setHeader("Access-Control-Allow-Private-Network", "true");
+  res.setHeader("Access-Control-Max-Age", "86400");
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<SyncResponse>
 ) {
+  setOpenCors(res);
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+
   if (req.method !== "POST") {
-    res.status(405).json({ error: `Method ${req.method} tidak didukung` });
+    res.status(405).json({ error: `Method ${req.method} is not supported` });
     return;
   }
 
@@ -84,7 +99,7 @@ export default async function handler(
       data?: Program["assets"];
     };
     if (!runtimeData.data || typeof runtimeData.data !== "object") {
-      res.status(502).json({ error: "Runtime API tidak mengembalikan data assets valid" });
+      res.status(502).json({ error: "Runtime API did not return valid assets data" });
       return;
     }
 

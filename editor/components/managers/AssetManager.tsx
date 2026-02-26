@@ -289,7 +289,13 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [queryResult, setQueryResult] = useState<HistorianQueryResponse | null>(null);
   const [queryError, setQueryError] = useState("");
   const fieldTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const runtimeApiBase = process.env.NEXT_PUBLIC_RUNTIME_API_BASE || "http://127.0.0.1:4000";
+  const runtimeApiBase = useMemo(() => {
+    if (process.env.NEXT_PUBLIC_RUNTIME_API_BASE) return process.env.NEXT_PUBLIC_RUNTIME_API_BASE;
+    if (typeof window !== "undefined") {
+      return `${window.location.protocol}//${window.location.hostname}:4000`;
+    }
+    return "http://127.0.0.1:4000";
+  }, []);
 
   const assetById = useMemo(() => new Map(assets.assets.map((asset) => [asset.id, asset])), [assets.assets]);
   const templateById = useMemo(
@@ -629,7 +635,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const runQueryTester = async () => {
     const path = queryPath.trim();
     if (!path) {
-      setQueryError("Path wajib diisi. Bisa multi path dipisah koma.");
+      setQueryError("Path is required. You can pass multiple paths separated by commas.");
       return;
     }
     setQueryLoading(true);
@@ -790,7 +796,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
           <Paper sx={{ p: 1.25, minHeight: "74vh", overflow: "auto" }}>
             {!selectedAsset ? (
               <Typography variant="body2" color="text.secondary">
-                Pilih asset di panel kiri.
+                Select an asset from the left panel.
               </Typography>
             ) : (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
@@ -1070,7 +1076,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
           <Paper sx={{ p: 1.25, minHeight: "74vh", overflow: "auto" }}>
             {!selectedTemplate ? (
               <Typography variant="body2" color="text.secondary">
-                Pilih template di panel kiri.
+                Select a template from the left panel.
               </Typography>
             ) : (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>

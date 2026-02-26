@@ -1,54 +1,42 @@
 # Flow Manager Manual
 
-Panduan penggunaan tab **Flow Manager**.
+This document explains how to use the Flow Manager tab.
 
-## 1) Konsep
+## Overview
 
-- Trigger node: sumber event (`trigger.*`)
-- Action node: script eksekusi (`aa.bb.cc.dd` atau id action lain)
-- Link/wire: koneksi `from -> to`
+Flow Manager is used to define action-to-action links and execution flow.
 
-## 2) Cara Buat Koneksi
+## Core Concepts
 
-### Via diagram (Node-RED style)
+- Action node: executable unit in flow.
+- Link: directed edge from one action to another.
+- Trigger: entry point that emits messages to actions.
 
-1. Klik port **OUT** (kanan) node sumber.
-2. Klik port **IN** (kiri) node tujuan.
-3. Wire otomatis ditambahkan.
+## Basic Usage
 
-### Via Connection Manager table
+1. Select a source action.
+2. Select a target action.
+3. Create a link.
+4. Save the program.
 
-1. Pilih `From`.
-2. Pilih `To`.
-3. Klik `Add`.
+## Canvas Interaction
 
-## 3) Drag Node & Layout
+- Use `+`, `-`, and `Reset` for zoom.
+- Drag empty canvas area to pan.
+- Move nodes using drag handles.
 
-- Node bisa dipindah dari handle `move`.
-- Posisi snap ke grid.
-- Posisi disimpan di `flows.nodePositions`.
+## Editing Links
 
-## 4) Zoom dan Pan
+- Select a link to inspect details.
+- Use `Remove` to delete the selected link.
 
-- `+`, `-`, `Reset` untuk zoom.
-- Drag area kosong canvas untuk pan.
+## Naming Rules
 
-## 5) Edit Link
+Action IDs are used as node IDs in the flow graph.
+Renaming an action ID updates link references automatically.
 
-Di tabel link:
+## Recommendations
 
-- Ubah `From`/`To` inline.
-- Toggle `Enabled`.
-- `Remove` untuk hapus link.
-
-## 6) Penamaan Node Action Hierarchy
-
-Action id dipakai sebagai node id di flow.
-
-Contoh:
-
-- `ppic.line1.prepare`
-- `ppic.line1.validate`
-- `maintenance.taiyo1.calibrate`
-
-Rename action id otomatis update referensi link yang sudah ada.
+- Keep flow paths readable and modular.
+- Prefer explicit branch actions over deeply nested script logic.
+- Validate trigger coverage after any link changes.

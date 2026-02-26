@@ -23,14 +23,14 @@ const fn2Node: RuntimeNodeHandler = async (msg, send) => {
   try {
     const remoteValue = await readAssetValue();
     msg.payload = { calculated, remoteValue };
-    console.log("fn2: berhasil ambil data async I/O");
+    console.log("fn2: async I/O data fetched successfully");
   } catch (error) {
     msg.payload = {
       calculated,
       remoteValue: null,
       error: error instanceof Error ? error.message : String(error),
     };
-    console.error("fn2: gagal ambil data async I/O:", error instanceof Error ? error.message : String(error));
+    console.error("fn2: failed to fetch async I/O data:", error instanceof Error ? error.message : String(error));
   }
 
   send(msg);

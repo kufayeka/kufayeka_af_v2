@@ -1,4 +1,8 @@
-export type TriggerType = "interval" | "watcher";
+export type TriggerType =
+  | "interval"
+  | "watcher_set"
+  | "watcher_valuechange"
+  | "watcher_valuechange_with_trigger";
 export type ActionType = "script";
 export type AssetAttributeType =
   | "int8"
@@ -87,6 +91,7 @@ export interface ActionDefinition {
   label?: string;
   type: ActionType;
   enabled: boolean;
+  allowNodeDuplication?: boolean;
   description?: string;
   templateId?: string;
   templateBindingOverrides?: Record<string, ScriptVariableBindingDefinition>;
@@ -106,6 +111,7 @@ export interface ScriptTemplateDefinition {
   name: string;
   description?: string;
   script: string;
+  allowActionDuplication?: boolean;
   variableBindings?: ScriptVariableBindingDefinition[];
 }
 

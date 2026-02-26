@@ -43,6 +43,7 @@ interface ActionManagerProps {
   selectedActionId: string;
   onSelectAction: (id: string) => void;
   onAddAction: (parentPath?: string) => void;
+  onDuplicateAction: (id: string) => void;
   onRemoveAction: (id: string) => void;
   onRenameAction: (oldId: string, newId: string) => void;
   onUpdateAction: (id: string, patch: Partial<ActionDefinition>) => void;
@@ -286,6 +287,7 @@ export default function ActionManager({
   selectedActionId,
   onSelectAction,
   onAddAction,
+  onDuplicateAction,
   onRemoveAction,
   onRenameAction,
   onUpdateAction,
@@ -314,6 +316,10 @@ export default function ActionManager({
   const selectedAction = actions.find((item) => item.id === selectedActionId);
   const selectedTemplate = scriptTemplates.find((item) => item.id === selectedTemplateId);
   const selectedActionTemplate = scriptTemplates.find((item) => item.id === selectedAction?.templateId);
+  const isTemplateDuplicationBlocked =
+    !!selectedActionTemplate && selectedActionTemplate.allowActionDuplication === false;
+  const isActionDuplicationBlocked = selectedAction?.allowNodeDuplication === false;
+  const isSelectedActionDuplicationBlocked = isTemplateDuplicationBlocked || isActionDuplicationBlocked;
   const selectedActionBindingNames = useMemo(
     () =>
       (selectedActionTemplate?.variableBindings || [])
@@ -450,9 +456,19 @@ export default function ActionManager({
         <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
           <Paper variant="outlined" sx={{ p: 1, display: "grid", gridTemplateRows: "auto 1fr", gap: 1 }}>
             <Box sx={{ display: "grid", gap: 0.75 }}>
-              <Button fullWidth variant="outlined" onClick={() => onAddAction(selectedFolderPath || undefined)}>
-                Add Action Script
-              </Button>
+              <Box sx={{ display: "grid", gap: 0.75, gridTemplateColumns: "1fr 1fr" }}>
+                <Button fullWidth variant="outlined" onClick={() => onAddAction(selectedFolderPath || undefined)}>
+                  Add Action
+                </Button>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  disabled={!selectedAction || isSelectedActionDuplicationBlocked}
+                  onClick={() => selectedAction && onDuplicateAction(selectedAction.id)}
+                >
+                  Duplicate
+                </Button>
+              </Box>
               <TextField
                 size="small"
                 label="Search Script Hierarchy"
@@ -487,7 +503,7 @@ export default function ActionManager({
           <Paper variant="outlined" sx={{ p: 1.25, minHeight: "calc(100vh - 220px)" }}>
             {!selectedAction && (
               <Typography variant="body2" color="text.secondary">
-                Pilih action script di panel hierarchy kiri.
+                Select an action script from the left hierarchy panel.
               </Typography>
             )}
             {selectedAction && (
@@ -497,7 +513,7 @@ export default function ActionManager({
                   label="Action Name (Hierarchy Path)"
                   value={selectedAction.id}
                   onChange={(e) => onRenameAction(selectedAction.id, e.target.value)}
-                  helperText="Contoh: areaA.line1.printer.offset.startup"
+                  helperText="Example: areaA.line1.printer.offset.startup"
                 />
 
                 <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, maxHeight: 260 }}>
@@ -558,7 +574,7 @@ export default function ActionManager({
             </TableContainer>
 
                 <Typography variant="caption" color="text.secondary">
-                  Jika template dipilih, script action otomatis mengikuti template dan update real-time saat template berubah.
+                  If a template is selected, the action script follows the template and updates in real time when the template changes.
                 </Typography>
                 {selectedActionTemplate && (
                   <Box sx={{ display: "grid", gap: 0.75 }}>
@@ -738,6 +754,14 @@ export default function ActionManager({
                 <Box sx={{ display: "flex", gap: 0.75 }}>
                   <Button
                     size="small"
+                    variant="outlined"
+                    disabled={isSelectedActionDuplicationBlocked}
+                    onClick={() => onDuplicateAction(selectedAction.id)}
+                  >
+                    Duplicate Action
+                  </Button>
+                  <Button
+                    size="small"
                     color="error"
                     variant="outlined"
                     onClick={() => onRemoveAction(selectedAction.id)}
@@ -756,6 +780,20 @@ export default function ActionManager({
                   }
                   label="Action Enabled"
                 />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={selectedAction.allowNodeDuplication !== false}
+                      onChange={(_event, checked) =>
+                        onUpdateAction(selectedAction.id, { allowNodeDuplication: checked })
+                      }
+                    />
+                  }
+                  label="Allow Node Duplication"
+                />
+                <Typography variant="caption" color="text.secondary">
+                  If disabled, this action cannot be duplicated from the action list.
+                </Typography>
                 <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
                   <Button size="small" variant="outlined" onClick={() => setMaxEditor(true)}>
                     Maximize Editor
@@ -781,7 +819,7 @@ export default function ActionManager({
                 </Box>
                 {selectedAction.templateId && (
                   <Typography variant="caption" color="text.secondary">
-                    Script dikunci karena action ini pakai template. Ubah script dari tab Script Template.
+                    Script is locked because this action uses a template. Edit it from the Script Template tab.
                   </Typography>
                 )}
 
@@ -864,7 +902,7 @@ export default function ActionManager({
           <Paper variant="outlined" sx={{ p: 1.25, minHeight: "calc(100vh - 220px)" }}>
             {!selectedTemplate && (
               <Typography variant="body2" color="text.secondary">
-                Pilih script template di panel kiri.
+                Select a script template from the left panel.
               </Typography>
             )}
             {selectedTemplate && (
@@ -884,6 +922,20 @@ export default function ActionManager({
                     onUpdateScriptTemplate(selectedTemplate.id, { description: e.target.value })
                   }
                 />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={selectedTemplate.allowActionDuplication !== false}
+                      onChange={(_event, checked) =>
+                        onUpdateScriptTemplate(selectedTemplate.id, { allowActionDuplication: checked })
+                      }
+                    />
+                  }
+                  label="Allow Action Duplication"
+                />
+                <Typography variant="caption" color="text.secondary">
+                  If disabled, this template can only be used by one action and actions using it cannot be duplicated.
+                </Typography>
 
                 <Box sx={{ display: "grid", gap: 0.75 }}>
                   <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1123,7 +1175,7 @@ export default function ActionManager({
                           <TableRow>
                             <TableCell colSpan={5}>
                               <Typography variant="caption" color="text.secondary">
-                                Belum ada binding variable.
+                                No variable bindings yet.
                               </Typography>
                             </TableCell>
                           </TableRow>
@@ -1198,3 +1250,4 @@ export default function ActionManager({
     </Box>
   );
 }
+

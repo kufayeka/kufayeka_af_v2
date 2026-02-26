@@ -182,24 +182,38 @@ export function normalizeProgram(program: Program): Program {
   return {
     ...program,
     triggers: (program.triggers || []).map(
-      (trigger): TriggerDefinition => ({
-        ...trigger,
+      (trigger): TriggerDefinition => {
+        const rawType = String((trigger as { type?: unknown }).type || "interval");
+        return {
+          ...trigger,
         label: typeof trigger.label === "string" ? trigger.label : "",
-        type: trigger.type === "watcher" ? "watcher" : "interval",
+        type:
+          rawType === "watcher_set"
+            ? "watcher_set"
+            : rawType === "watcher_valuechange"
+              ? "watcher_valuechange"
+              : rawType === "watcher_valuechange_with_trigger" || rawType === "watcher"
+                ? "watcher_valuechange"
+                : "interval",
         intervalMs: Math.max(1, Number(trigger.intervalMs) || 1000),
         watchPath:
-          trigger.type === "watcher"
+          rawType === "watcher_set" ||
+          rawType === "watcher_valuechange" ||
+          rawType === "watcher_valuechange_with_trigger" ||
+          rawType === "watcher"
             ? String(trigger.watchPath || "").trim() || "*.*.*"
             : String(trigger.watchPath || ""),
         message: trigger.message && typeof trigger.message === "object" ? trigger.message : { payload: 0 },
         enabled: trigger.enabled !== false
-      })
+      };
+      }
     ),
     actions: (program.actions || []).map(
       (action): ActionDefinition => ({
         ...action,
         label: typeof action.label === "string" ? action.label : "",
         enabled: action.enabled !== false,
+        allowNodeDuplication: action.allowNodeDuplication !== false,
         description: action.description ?? "",
         templateBindingOverrides:
           action.templateBindingOverrides && typeof action.templateBindingOverrides === "object"
@@ -217,6 +231,7 @@ export function normalizeProgram(program: Program): Program {
         ...template,
         description: template.description ?? "",
         script: template.script ?? "send(msg);",
+        allowActionDuplication: template.allowActionDuplication !== false,
         variableBindings: Array.isArray(template.variableBindings)
           ? template.variableBindings.map((binding) =>
               normalizeBinding(binding as ScriptVariableBindingDefinition)

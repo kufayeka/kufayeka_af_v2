@@ -1,158 +1,188 @@
-# Asset API (External) - `http://localhost:4000`
+# Runtime API Frontend Integration Guide
 
-Dokumen ini untuk akses asset system dari API runtime (bukan API editor Next.js).
+This guide describes how frontend clients should integrate with the runtime API.
 
-## Base URL
+## Base URLs
 
-- `http://localhost:4000`
+- Runtime base: `http://localhost:4000`
+- Swagger UI: `GET /docs`
+- OpenAPI JSON: `GET /docs-json`
+- Compatibility aliases:
+  - `GET /api/openapi`
+  - `GET /api/openapi.json`
 
-## 1) Get Asset System (raw)
+## General Rules
+
+- Error payload format:
+
+```json
+{ "error": "message" }
+```
+
+- Wildcard matching supports `*` in path segments.
+- For `/api/assets/value/{encodedPath}`, always use `encodeURIComponent(path)`.
+- Event timestamps accept ISO datetime or epoch values.
+- Boolean query parsing accepts `1|true|yes` for true.
+
+## Assets Service
+
+### Get full asset snapshot
 
 - `GET /api/assets/system`
-- Alias lama: `GET /api/assets`
+- Alias: `GET /api/assets`
 
-Contoh:
-
-```bash
-curl http://localhost:4000/api/assets/system
-```
-
-Response:
-
-```json
-{
-  "data": {
-    "assets": [],
-    "attributeTemplates": []
-  }
-}
-```
-
-## 2) Set Asset System (replace full config)
+### Replace full asset snapshot
 
 - `PUT /api/assets/system`
-- Alias lama: `PUT /api/assets`
-- Body wajib berisi full object:
-  - `assets`
-  - `attributeTemplates`
+- Alias: `PUT /api/assets`
+- Full replace, not patch.
+- Body must include `assets`, `attributeTemplates`, and `historians`.
 
-Contoh:
+### Hierarchy
 
-```bash
-curl -X PUT http://localhost:4000/api/assets/system \
-  -H "content-type: application/json" \
-  -d '{
-    "assets": [
-      {
-        "id": "asset_root",
-        "name": "Surabaya",
-        "parentId": null,
-        "templateIds": [],
-        "attributes": {}
-      }
-    ],
-    "attributeTemplates": []
-  }'
-```
+- `GET /api/assets/hierarchy?populated=true|false`
+- `populated` defaults to `true`.
 
-## 3) Get Populated Hierarchy
-
-- `GET /api/assets/hierarchy`
-- Default: populated (`effectiveAttributes` ikut dikembalikan).
-- Optional query:
-  - `?populated=true|false`
-  - nilai truthy: `1`, `true`, `yes`
-
-Contoh:
-
-```bash
-curl "http://localhost:4000/api/assets/hierarchy?populated=true"
-```
-
-Response node utama:
-
-```json
-{
-  "id": "asset_root",
-  "name": "Surabaya",
-  "path": "Surabaya",
-  "parentId": null,
-  "templateIds": [],
-  "attributes": {},
-  "effectiveAttributes": [],
-  "children": []
-}
-```
-
-## 4) Query Asset / Attribute by Path
+### Query by wildcard path
 
 - `GET /api/assets/query?path=<dot-path>`
-- Support wildcard `*`
 
-Contoh:
+### Find by value
 
-- `Surabaya.Plant1.MesinX`
-- `Surabaya.Plant1.*.Encoder`
-- `Surabaya.Plant1.*`
+- `GET /api/assets/find-by-value?path=<path>&value=<json-or-string>&strict=<bool>`
+- Alias: `GET /api/assets/find`
 
-```bash
-curl "http://localhost:4000/api/assets/query?path=Surabaya.Plant1.*.Encoder"
-```
+### Read attribute value(s)
 
-## 5) Get Attribute Value by Path
+- `GET /api/assets/value/{encodedPath}`
 
-- `GET /api/assets/value/<encoded-path>`
-- Path harus URL-encoded.
+### Write attribute value(s)
 
-Contoh:
+- `PUT /api/assets/value/{encodedPath}`
+- Body: `{ "value": <json-value> }`
 
-```bash
-curl "http://localhost:4000/api/assets/value/Surabaya.Plant1.MesinX.Encoder"
-```
-
-## 6) Set Attribute Value by Path
-
-- `PUT /api/assets/value/<encoded-path>`
-- Body: `{ "value": <any-json> }`
-- Support wildcard path.
-- Jika attribute belum ada tapi asset path match, attribute baru akan dibuat.
-
-Contoh:
-
-```bash
-curl -X PUT "http://localhost:4000/api/assets/value/Surabaya.Plant1.MesinX.Encoder" \
-  -H "content-type: application/json" \
-  -d '{ "value": 123.45 }'
-```
-
-Wildcard write:
-
-```bash
-curl -X PUT "http://localhost:4000/api/assets/value/Surabaya.Plant1.*.Encoder" \
-  -H "content-type: application/json" \
-  -d '{ "value": 0 }'
-```
-
-## 7) Batch Set Attribute Value
+### Batch write
 
 - `PUT /api/assets/values:batch`
-- Body:
 
 ```json
 {
   "items": [
-    { "path": "Surabaya.Plant1.M1.Speed", "value": 8 },
-    { "path": "Surabaya.Plant1.M2.Speed", "value": 9 }
+    { "path": "Taiyo1.Line1.M1.Speed", "value": 1200 },
+    { "path": "Taiyo1.Line1.M2.Speed", "value": 1195 }
   ]
 }
 ```
 
-## Catatan Penting
+### Historian tags from path
 
-- API ini memakai `assetStorage` runtime sebagai single source of truth.
-- Snapshot compat tetap tersedia di `runtime.globalStore` key: `assetFramework`.
-- Endpoint `PUT /api/assets/system` mengganti seluruh state asset system.
-- Jika mau patch sebagian, lakukan:
-  1. `GET /api/assets/system`
-  2. modifikasi di client
-  3. `PUT /api/assets/system`
+- `GET /api/assets/historian-tags?path=<dot-path>`
+
+## Events Service
+
+### Query events
+
+- `GET /api/events`
+
+Query parameters:
+- `pattern` (default `*`): wildcard filter for `event_path`
+- `from`, `to`: ISO or epoch timestamp bounds
+- `status`: `open|closed|*`
+- `severity`: `other|info|low|medium|high|critical|*`
+- `context`: URL-encoded JSON string filter
+- `limit`: page size (runtime clamp: 1..5000)
+- `offset`: 0-based offset
+- `sortBy`: `id|event_path|start_ts|end_ts|status|severity|is_acknowledge|acknowledged_ts`
+- `sortDir`: `asc|desc`
+
+`context` examples:
+
+```json
+{"site":"A","line":"L1"}
+```
+
+```json
+{
+  "op": "OR",
+  "conditions": [
+    { "path": "site", "operator": "eq", "value": "A" },
+    { "path": "shift", "operator": "in", "value": [1, 2] }
+  ]
+}
+```
+
+Supported operators: `eq`, `neq`, `in`, `not_in`, `exists`, `not_exists`.
+
+### Open event
+
+- `POST /api/events/open`
+- Required: `event_path` (or `path`)
+
+### Close by pattern
+
+- `POST /api/events/close`
+- Uses `pattern` (or `event_path`)
+
+### Close by id
+
+- `POST /api/events/close-id`
+- Required: `id`
+
+### Acknowledge by id
+
+- `POST /api/events/ack-id`
+- Required: `id`
+
+### Delete by id
+
+- `DELETE /api/events/by-id?id=<id>`
+
+### Delete by filter
+
+- `DELETE /api/events?pattern=...&status=...&from=...&to=...&severity=...`
+
+## Historian Service
+
+### Read
+
+- `GET /api/historian/raw`
+- `GET /api/historian/range`
+- `GET /api/historian/last`
+
+Common query params:
+- `path` (required)
+- `from`, `to`
+- `order` (`asc|desc`)
+- `time` (`iso|epoch`)
+- `limit` (raw)
+- `bucketMs`, `agg` (range)
+
+### Target and diagnostics
+
+- `GET /api/historian/targets`
+- `GET /api/historian/target-metrics?targetId=default`
+- `GET /api/historian/target-logs?targetId=default&kind=&limit=100`
+
+### Delete historian data
+
+- `DELETE /api/historian/delete-attribute?path=<path>&from=<ts>&to=<ts>`
+- `DELETE /api/historian/delete-template-attribute?templateId=<id>&attributeName=<name>&from=<ts>&to=<ts>`
+
+## Global Store Service
+
+- `GET /api/global`
+- `GET /api/global/{key}`
+- `PUT /api/global/{key}` body: `{ "value": <json-value> }`
+- `DELETE /api/global/{key}`
+
+## Frontend Do / Don't
+
+Do:
+- URL-encode path parameters.
+- URL-encode `context` JSON query values.
+- Handle `400`, `404`, and `502` gracefully.
+- Use pagination for event lists.
+
+Don't:
+- Assume partial merge on `PUT /api/assets/system`.
+- Run broad delete requests in production without confirmation.

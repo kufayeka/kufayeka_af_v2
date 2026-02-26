@@ -28,8 +28,8 @@ function resolveProgramPath() {
     return path.resolve(envPath);
   }
 
-  // Next.js bisa set process.cwd() ke workspace root yang bukan root project ini.
-  // Cari root project dari beberapa anchor supaya selalu pakai programs/main.af.json yang benar.
+  // Next.js can set process.cwd() to a workspace root that is not this project root.
+  // Resolve project root from multiple anchors to consistently use programs/main.af.json.
   const anchors = [process.cwd(), __dirname];
   for (const anchor of anchors) {
     const root = findProjectRootFrom(anchor);
@@ -81,6 +81,15 @@ type ProgramResponse =
   | { ok: true; path: string; runtimeSynced?: boolean; runtimeError?: string }
   | { error: string };
 
+function setOpenCors(res: NextApiResponse): void {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS,PATCH");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  res.setHeader("Access-Control-Expose-Headers", "*");
+  res.setHeader("Access-Control-Allow-Private-Network", "true");
+  res.setHeader("Access-Control-Max-Age", "86400");
+}
+
 function getRuntimeAssetApiUrl() {
   return (
     process.env.KUFAYEKA_RUNTIME_ASSET_API?.trim() ||
@@ -131,6 +140,12 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ProgramResponse>
 ) {
+  setOpenCors(res);
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+
   const programPath = resolveProgramPath();
   ensureProgramFile(programPath);
 
@@ -148,7 +163,7 @@ export default async function handler(
   if (req.method === "PUT") {
     const body = (req.body ?? {}) as { program?: Program };
     if (!body.program || typeof body.program !== "object") {
-      res.status(400).json({ error: "Body wajib punya object 'program'" });
+      res.status(400).json({ error: "Body must include a 'program' object" });
       return;
     }
 
@@ -174,5 +189,5 @@ export default async function handler(
     return;
   }
 
-  res.status(405).json({ error: `Method ${req.method} tidak didukung` });
+  res.status(405).json({ error: `Method ${req.method} is not supported` });
 }

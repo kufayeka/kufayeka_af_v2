@@ -25,7 +25,12 @@ interface ProgramLink {
 
 interface ProgramTrigger {
   id: string;
-  type: "interval" | "watcher";
+  type:
+    | "interval"
+    | "watcher_set"
+    | "watcher_valuechange"
+    | "watcher_valuechange_with_trigger"
+    | "watcher";
   enabled?: boolean;
   intervalMs?: number;
   message?: Record<string, unknown>;
@@ -43,7 +48,7 @@ function createActionHandler(action: ProgramAction, context: Record<string, unkn
   if (action.type === "script") {
     return createScriptActionHandler(action as any, context as any);
   }
-  throw new Error(`Action type "${action.type}" tidak didukung`);
+  throw new Error(`Unsupported action type "${action.type}"`);
 }
 
 function registerActions(runtime: Runtime, actions: unknown[] = []): void {
@@ -54,7 +59,7 @@ function registerActions(runtime: Runtime, actions: unknown[] = []): void {
 
   for (const rawAction of actions) {
     const action = rawAction as ProgramAction;
-    if (!action.id) throw new Error("Action wajib punya id");
+    if (!action.id) throw new Error("Action must have an id");
     if (action.enabled === false) {
       runtime.addNode(action.id, async (_msg, _send) => {});
       continue;
@@ -67,7 +72,7 @@ function registerActions(runtime: Runtime, actions: unknown[] = []): void {
 function registerLinks(runtime: Runtime, links: unknown[] = []): void {
   for (const rawLink of links) {
     const link = rawLink as ProgramLink;
-    if (!link.from || !link.to) throw new Error("Link wajib punya from dan to");
+    if (!link.from || !link.to) throw new Error("Link must include both from and to");
     if (link.enabled === false) continue;
     runtime.wire(link.from, link.to);
   }
@@ -101,29 +106,142 @@ function matchWildcardPath(pattern: string, value: string): boolean {
   return true;
 }
 
-function startWatcherTrigger(runtime: Runtime, trigger: ProgramTrigger): () => void {
+type WatcherMode = "set" | "valuechange" | "valuechange_with_trigger";
+
+interface WatchAttributeRecord {
+  kind?: unknown;
+  path?: unknown;
+  assetId?: unknown;
+  attributeName?: unknown;
+  value?: unknown;
+  ts?: unknown;
+  [key: string]: unknown;
+}
+
+function buildWatcherHelpers(runtime: Runtime, trigger: ProgramTrigger) {
   const watchPath = String(trigger.watchPath || "").trim() || "*.*.*";
   const baseMsg = trigger.message || {};
+  const pollMs = Math.max(10, Number(trigger.intervalMs) || 1000);
   const store = runtime.getGlobal("assetStorage");
   if (!store || typeof (store as { subscribe?: unknown }).subscribe !== "function") {
-    throw new Error(`Trigger watcher "${trigger.id}" gagal: assetStorage belum tersedia`);
+    throw new Error(`Watcher trigger "${trigger.id}" failed: assetStorage is not available`);
   }
 
-  const unsubscribe = (store as { subscribe: (cb: (state: unknown, meta: any) => void) => () => void }).subscribe((_state, meta) => {
-    const changes = Array.isArray(meta?.change?.changes) ? meta.change.changes : [];
-    if (changes.length === 0) return;
-    for (const change of changes) {
-      if (!change || change.kind !== "attribute") continue;
-      if (!matchWildcardPath(watchPath, String(change.path))) continue;
-      const msg = structuredClone(baseMsg) as Record<string, unknown>;
-      msg.payload = change;
-      msg._trigger = { id: trigger.id, type: "watcher", watchPath, ts: new Date().toISOString() };
-      runtime.send(trigger.id, msg as RuntimeMessage);
+  const typedStore = store as {
+    subscribe: (cb: (state: unknown, meta: any) => void) => () => void;
+    query: (path: string) => Array<Record<string, unknown>>;
+  };
+  const lastSeenByKey = new Map<string, string>();
+
+  const computeSignature = (change: Record<string, unknown>): string => {
+    const valueJson = JSON.stringify(change.value ?? null);
+    return `${valueJson}::${String(change.ts ?? "")}`;
+  };
+
+  const changeKey = (change: Record<string, unknown>): string => {
+    return `${String(change.assetId || "")}:${String(change.attributeName || "")}`;
+  };
+
+  const emitChange = (change: Record<string, unknown>, source: "subscribe" | "poll"): void => {
+    const msg = structuredClone(baseMsg) as Record<string, unknown>;
+    msg.payload = change;
+    msg._trigger = { id: trigger.id, type: "watcher", watchPath, source, ts: new Date().toISOString() };
+    runtime.send(trigger.id, msg as RuntimeMessage);
+  };
+
+  const matchesWatcherPath = (change: Record<string, unknown>): boolean => {
+    return String(change.kind || "") === "attribute" && matchWildcardPath(watchPath, String(change.path || ""));
+  };
+
+  return {
+    watchPath,
+    typedStore,
+    pollMs,
+    lastSeenByKey,
+    computeSignature,
+    changeKey,
+    emitChange,
+    matchesWatcherPath,
+  };
+}
+
+function startWatcherTrigger(runtime: Runtime, trigger: ProgramTrigger, mode: WatcherMode): () => void {
+  const helpers = buildWatcherHelpers(runtime, trigger);
+  const {
+    watchPath,
+    typedStore,
+    pollMs,
+    lastSeenByKey,
+    computeSignature,
+    changeKey,
+    emitChange,
+    matchesWatcherPath,
+  } = helpers;
+
+  if (mode === "set") {
+    const unsubscribe = typedStore.subscribe((_state, meta) => {
+      const changes = Array.isArray(meta?.change?.changes) ? meta.change.changes : [];
+      if (changes.length === 0) return;
+      for (const change of changes) {
+        if (!change || typeof change !== "object") continue;
+        const typedChange = change as WatchAttributeRecord;
+        if (!matchesWatcherPath(typedChange)) continue;
+        emitChange(typedChange, "subscribe");
+      }
+    });
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }
+
+  if (mode === "valuechange") {
+    const unsubscribe = typedStore.subscribe((_state, meta) => {
+      const changes = Array.isArray(meta?.change?.changes) ? meta.change.changes : [];
+      if (changes.length === 0) return;
+      for (const change of changes) {
+        if (!change || typeof change !== "object") continue;
+        const typedChange = change as WatchAttributeRecord;
+        if (!matchesWatcherPath(typedChange)) continue;
+        const key = changeKey(typedChange);
+        const sig = computeSignature(typedChange);
+        const prevSig = lastSeenByKey.get(key);
+        if (prevSig === sig) continue;
+        lastSeenByKey.set(key, sig);
+        emitChange(typedChange, "subscribe");
+      }
+    });
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }
+
+  const rememberCurrentBaseline = (): void => {
+    const matches = typedStore.query(watchPath);
+    for (const item of matches) {
+      if (!matchesWatcherPath(item)) continue;
+      lastSeenByKey.set(changeKey(item), computeSignature(item));
     }
-  });
+  };
+
+  const reconcileByPolling = (): void => {
+    const matches = typedStore.query(watchPath);
+    for (const item of matches) {
+      if (!matchesWatcherPath(item)) continue;
+      const key = changeKey(item);
+      const sig = computeSignature(item);
+      const prevSig = lastSeenByKey.get(key);
+      if (prevSig === sig) continue;
+      lastSeenByKey.set(key, sig);
+      emitChange(item, "poll");
+    }
+  };
+
+  rememberCurrentBaseline();
+  const pollTimer = setInterval(reconcileByPolling, pollMs);
+  pollTimer.unref();
 
   return () => {
-    if (typeof unsubscribe === "function") unsubscribe();
+    clearInterval(pollTimer);
   };
 }
 
@@ -131,17 +249,25 @@ function startTriggers(runtime: Runtime, triggers: unknown[] = []): Array<() => 
   const stops: Array<() => void> = [];
   for (const rawTrigger of triggers) {
     const trigger = rawTrigger as ProgramTrigger;
-    if (!trigger.id) throw new Error("Trigger wajib punya id");
+    if (!trigger.id) throw new Error("Trigger must have an id");
     if (trigger.enabled === false) continue;
     if (trigger.type === "interval") {
       stops.push(startIntervalTrigger(runtime, trigger));
       continue;
     }
-    if (trigger.type === "watcher") {
-      stops.push(startWatcherTrigger(runtime, trigger));
+    if (trigger.type === "watcher_set") {
+      stops.push(startWatcherTrigger(runtime, trigger, "set"));
       continue;
     }
-    throw new Error(`Trigger type "${String(trigger.type)}" tidak didukung`);
+    if (trigger.type === "watcher_valuechange" || trigger.type === "watcher") {
+      stops.push(startWatcherTrigger(runtime, trigger, "valuechange"));
+      continue;
+    }
+    if (trigger.type === "watcher_valuechange_with_trigger") {
+      stops.push(startWatcherTrigger(runtime, trigger, "valuechange_with_trigger"));
+      continue;
+    }
+    throw new Error(`Unsupported trigger type "${String(trigger.type)}"`);
   }
   return stops;
 }

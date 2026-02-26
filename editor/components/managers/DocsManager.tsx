@@ -133,7 +133,7 @@ export default function DocsManager() {
       <Paper variant="outlined" sx={{ p: 1.25, minHeight: "calc(100vh - 220px)", display: "grid", gap: 1 }}>
         {!selectedDoc && (
           <Typography variant="body2" color="text.secondary">
-            Pilih dokumen di panel kiri.
+            Select a document from the left panel.
           </Typography>
         )}
         {selectedDoc && (
