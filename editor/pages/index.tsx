@@ -16,6 +16,7 @@ import FlowManager from "../components/managers/FlowManager";
 import AssetManager from "../components/managers/AssetManager";
 import EventManager from "../components/managers/EventManager";
 import DocsManager from "../components/managers/DocsManager";
+import GlobalStoreManager from "../components/managers/GlobalStoreManager";
 import {
   normalizeProgram,
   parseMaybeJson,
@@ -310,7 +311,7 @@ export default function HomePage() {
       label: "",
       type: "script",
       enabled: true,
-      allowNodeDuplication: true,
+      allowTreeDuplicate: true,
       description: "",
       script: "send(msg);"
     };
@@ -322,16 +323,16 @@ export default function HomePage() {
   const duplicateAction = (id: string): void => {
     const source = program.actions.find((item) => item.id === id);
     if (!source) return;
-    if (source.allowNodeDuplication === false) {
-      setStatus(`Duplicate blocked: action "${source.id}" does not allow node duplication`);
+    if (source.allowTreeDuplicate === false) {
+      setStatus(`Duplicate blocked: action "${source.id}" does not allow tree duplication`);
       return;
     }
 
     const sourceTemplate = source.templateId
       ? program.scriptTemplates.find((item) => item.id === source.templateId)
       : null;
-    if (sourceTemplate && sourceTemplate.allowActionDuplication === false) {
-      setStatus(`Duplicate blocked: template "${sourceTemplate.name}" does not allow action duplication`);
+    if (sourceTemplate && sourceTemplate.allowTemplateReuse === false) {
+      setStatus(`Duplicate blocked: template "${sourceTemplate.name}" does not allow template reuse`);
       return;
     }
 
@@ -487,7 +488,7 @@ export default function HomePage() {
       if (
         nextTemplateId &&
         template &&
-        template.allowActionDuplication === false &&
+        template.allowTemplateReuse === false &&
         program.actions.some((item) => item.id !== id && item.templateId === nextTemplateId)
       ) {
         setStatus(`Template "${template.name}" is singleton and already used by another action`);
@@ -511,7 +512,7 @@ export default function HomePage() {
       name: `Script Template ${program.scriptTemplates.length + 1}`,
       description: "",
       script: "send(msg);",
-      allowActionDuplication: true,
+      allowTemplateReuse: true,
       variableBindings: []
     };
     applyProgramUpdate((prev) => ({
@@ -531,11 +532,11 @@ export default function HomePage() {
     id: string,
     patch: Partial<ScriptTemplateDefinition>
   ): void => {
-    if (patch.allowActionDuplication === false) {
+    if (patch.allowTemplateReuse === false) {
       const usageCount = program.actions.filter((action) => action.templateId === id).length;
       if (usageCount > 1) {
         const templateName = program.scriptTemplates.find((item) => item.id === id)?.name || id;
-        setStatus(`Cannot disable duplication: template "${templateName}" is used by ${usageCount} actions`);
+        setStatus(`Cannot disable template reuse: template "${templateName}" is used by ${usageCount} actions`);
         return;
       }
     }
@@ -696,6 +697,7 @@ export default function HomePage() {
           <Tab label="Flow Manager" />
           <Tab label="Asset Manager" />
           <Tab label="Event" />
+          <Tab label="Global Store" />
           <Tab label="Docs" />
         </Tabs>
       </AppBar>
@@ -755,7 +757,8 @@ export default function HomePage() {
         )}
         {tab === 3 && <AssetManager assets={program.assets} onChange={updateAssets} />}
         {tab === 4 && <EventManager />}
-        {tab === 5 && <DocsManager />}
+        {tab === 5 && <GlobalStoreManager onStatus={setStatus} />}
+        {tab === 6 && <DocsManager />}
       </Box>
     </Box>
   );

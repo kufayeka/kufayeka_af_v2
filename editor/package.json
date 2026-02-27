@@ -15,7 +15,7 @@
     "github-markdown-css": "^5.9.0",
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.575.0",
-    "next": "^15.2.0",
+    "next": "^16.0.0",
     "rc-tree": "^5.13.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

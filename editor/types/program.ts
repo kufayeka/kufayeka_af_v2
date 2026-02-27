@@ -90,6 +90,7 @@ export interface ActionDefinition {
   label?: string;
   type: ActionType;
   enabled: boolean;
+  allowTreeDuplicate?: boolean;
   allowNodeDuplication?: boolean;
   description?: string;
   templateId?: string;
@@ -110,6 +111,7 @@ export interface ScriptTemplateDefinition {
   name: string;
   description?: string;
   script: string;
+  allowTemplateReuse?: boolean;
   allowActionDuplication?: boolean;
   variableBindings?: ScriptVariableBindingDefinition[];
 }

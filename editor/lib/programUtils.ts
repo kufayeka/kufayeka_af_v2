@@ -209,7 +209,7 @@ export function normalizeProgram(program: Program): Program {
         ...action,
         label: typeof action.label === "string" ? action.label : "",
         enabled: action.enabled !== false,
-        allowNodeDuplication: action.allowNodeDuplication !== false,
+        allowTreeDuplicate: (action.allowTreeDuplicate ?? action.allowNodeDuplication) !== false,
         description: action.description ?? "",
         templateBindingOverrides:
           action.templateBindingOverrides && typeof action.templateBindingOverrides === "object"
@@ -227,7 +227,7 @@ export function normalizeProgram(program: Program): Program {
         ...template,
         description: template.description ?? "",
         script: template.script ?? "send(msg);",
-        allowActionDuplication: template.allowActionDuplication !== false,
+        allowTemplateReuse: (template.allowTemplateReuse ?? template.allowActionDuplication) !== false,
         variableBindings: Array.isArray(template.variableBindings)
           ? template.variableBindings.map((binding) =>
               normalizeBinding(binding as ScriptVariableBindingDefinition)

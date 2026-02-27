@@ -5,7 +5,16 @@ import {
   loadPersistedValuesIntoAssets,
   startAttributeValuePersistence
 } from "./runtime/attributeValuePersistence";
+import {
+  loadPersistedGlobalsIntoRuntime,
+  startGlobalValuePersistence
+} from "./runtime/globalValuePersistence";
 import path from "node:path";
+import { computeTagID } from "./runtime/historianBridge";
+import { loadHistorianConfig } from "./runtime/historianConfig";
+import { createTimescaleHistorianStore } from "./runtime/historianTimescale";
+import { startHistorianUdpIngestor } from "./runtime/historianUdpIngestor";
+import type { AssetStore, AssetHierarchyNode } from "./runtime/types";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -19,6 +28,14 @@ async function bootstrap(): Promise<void> {
   });
 
   const programPath = path.resolve(__dirname, "../programs/main.af.json");
+  const globalValueStorePath = path.resolve(
+    __dirname,
+    "../data/global-values.sqlite"
+  );
+  const loadedGlobalCount = loadPersistedGlobalsIntoRuntime(
+    rt,
+    process.env.RUNTIME_GLOBAL_VALUES_PATH || globalValueStorePath
+  );
   const { absolutePath, program } = loadProgramFromFile(programPath);
   const attributeValueStorePath = path.resolve(
     __dirname,
@@ -30,12 +47,60 @@ async function bootstrap(): Promise<void> {
   );
   const programWithPersistedValues = { ...program, assets: seededAssets };
   console.log(`Program loaded: ${absolutePath}`);
+  console.log(`[runtime] global persistence seed loaded: ${loadedGlobalCount}`);
   console.log(`[runtime] attribute persistence seed loaded: ${loadedCount}`);
   const stopProgram = startProgram(rt, programWithPersistedValues);
+  const historianConfig = loadHistorianConfig();
+  const historianTimescale = historianConfig.enabled
+    ? await createTimescaleHistorianStore(historianConfig.timescale)
+    : null;
+  rt.setGlobal("historianTimescale", historianTimescale);
+  rt.setGlobal("historianConfig", historianConfig);
+
+  const assetStore = rt.getGlobal<AssetStore | undefined>("assetStorage");
+  const tagToPath = new Map<number, string>();
+  const rebuildTagPathMap = (): void => {
+    tagToPath.clear();
+    if (!assetStore) return;
+    const nodes = assetStore.getHierarchy({ populateAttributes: true });
+    const stack: AssetHierarchyNode[] = [...nodes];
+    while (stack.length > 0) {
+      const node = stack.pop() as AssetHierarchyNode;
+      for (const child of node.children || []) stack.push(child);
+      for (const attr of node.effectiveAttributes || []) {
+        const fullPath = `${node.path}.${attr.name}`;
+        const tagId = computeTagID(node.id, attr.name);
+        tagToPath.set(tagId, fullPath);
+      }
+    }
+  };
+  rebuildTagPathMap();
+
+  const unsubscribeAssetStore = assetStore ? assetStore.subscribe(() => rebuildTagPathMap()) : () => {};
+  const historianUdpIngestor =
+    historianConfig.enabled && historianTimescale
+      ? startHistorianUdpIngestor({
+          host: historianConfig.udp.host,
+          port: historianConfig.udp.port,
+          resolveAttributePath: (tagId) => tagToPath.get(tagId),
+          ingestRows: async (rows) => {
+            await historianTimescale.ingest(rows);
+          },
+          onStats: (stats) => {
+            rt.setGlobal("historianIngestStats", stats);
+          }
+        })
+      : null;
+
   const attributeValuePersistence = startAttributeValuePersistence(rt, {
     filePath: process.env.RUNTIME_ATTRIBUTE_VALUES_PATH || attributeValueStorePath,
     intervalMs: Number(process.env.RUNTIME_ATTRIBUTE_VALUES_SAVE_INTERVAL_MS || 5000)
   });
+  const globalValuePersistence = startGlobalValuePersistence(rt, {
+    filePath: process.env.RUNTIME_GLOBAL_VALUES_PATH || globalValueStorePath,
+    intervalMs: Number(process.env.RUNTIME_GLOBAL_VALUES_SAVE_INTERVAL_MS || 5000)
+  });
+  rt.setGlobal("__runtime.globalValuePersistence", globalValuePersistence);
 
   const apiServer = createApiServer(rt, {
     host: process.env.RUNTIME_API_HOST || "0.0.0.0",
@@ -71,6 +136,16 @@ async function bootstrap(): Promise<void> {
     }
 
     try {
+      globalValuePersistence.flushNow();
+      globalValuePersistence.stop();
+    } catch (error) {
+      console.error(
+        "[runtime] global persistence shutdown error:",
+        getErrorMessage(error)
+      );
+    }
+
+    try {
       await rt.shutdown();
     } catch (error) {
       console.error("[runtime] runtime shutdown error:", getErrorMessage(error));
@@ -80,6 +155,28 @@ async function bootstrap(): Promise<void> {
       await apiServer.stop();
     } catch (error) {
       console.error("[runtime] api stop error:", getErrorMessage(error));
+    }
+
+    try {
+      unsubscribeAssetStore();
+    } catch (error) {
+      console.error("[runtime] asset store unsubscribe error:", getErrorMessage(error));
+    }
+
+    if (historianUdpIngestor) {
+      try {
+        await historianUdpIngestor.stop();
+      } catch (error) {
+        console.error("[runtime] historian udp stop error:", getErrorMessage(error));
+      }
+    }
+
+    if (historianTimescale) {
+      try {
+        await historianTimescale.shutdown();
+      } catch (error) {
+        console.error("[runtime] historian timescale shutdown error:", getErrorMessage(error));
+      }
     }
 
     const historianBridge = rt.getGlobal<{ close?: () => void } | undefined>("historianBridge");

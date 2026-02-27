@@ -47,6 +47,17 @@
       "message": {
         "payload": 0
       }
+    },
+    {
+      "id": "trigger.tick_1772164929424",
+      "label": "1s trigger",
+      "type": "interval",
+      "enabled": true,
+      "intervalMs": 1000,
+      "watchPath": "",
+      "message": {
+        "payload": 0
+      }
     }
   ],
   "actions": [
@@ -95,7 +106,8 @@
           "allowOverride": true
         }
       },
-      "allowNodeDuplication": true
+      "allowNodeDuplication": true,
+      "allowTreeDuplicate": true
     },
     {
       "id": "Taiyo2.Events.JobLifecycle",
@@ -142,7 +154,8 @@
           "allowOverride": true
         }
       },
-      "allowNodeDuplication": true
+      "allowNodeDuplication": true,
+      "allowTreeDuplicate": true
     },
     {
       "id": "Scripts.debug",
@@ -152,7 +165,8 @@
       "description": "",
       "script": "helpers.log(\"msg:\", msg);",
       "templateBindingOverrides": {},
-      "allowNodeDuplication": true
+      "allowNodeDuplication": true,
+      "allowTreeDuplicate": true
     },
     {
       "id": "Taiyo1.Events.JobActivity",
@@ -199,7 +213,41 @@
           "allowOverride": true
         }
       },
-      "templateId": "template.script_1772002036179"
+      "templateId": "template.script_1772002036179",
+      "allowTreeDuplicate": true
+    },
+    {
+      "id": "Taiyo1.PLC.PaperLengthCounter",
+      "label": "",
+      "type": "script",
+      "enabled": true,
+      "allowTreeDuplicate": true,
+      "description": "",
+      "script": "const raw = Number(EncoderRawValue?.value || 0);\r\nconst paperPath = PaperLength?.path || \"\";\r\nconst prevRawPath = EncoderPrevRaw?.path || \"\";\r\n\r\nif (!paperPath || !prevRawPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst prevRaw = Number(EncoderPrevRaw?.value || 0);\r\n\r\n// naik normal -> delta selisih\r\n// turun/reset -> delta = raw (anggap restart dari 0, tapi mungkin kebaca telat dan langsung lompat)\r\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\r\n\r\nconst total = Number(PaperLength?.value || 0) + delta;\r\n\r\nasset.set(paperPath, total);\r\nasset.set(prevRawPath, raw);\r\n\r\nsend(msg);\r\n",
+      "templateId": "template.script_1772164688880",
+      "templateBindingOverrides": {
+        "PaperLength": {
+          "name": "PaperLength",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Length",
+          "allowOverride": true
+        },
+        "EncoderRawValue": {
+          "name": "EncoderRawValue",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Raw Value",
+          "allowOverride": true
+        },
+        "EncoderPrevRaw": {
+          "name": "EncoderPrevRaw",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Prev Value",
+          "allowOverride": true
+        }
+      }
     }
   ],
   "flows": {
@@ -232,6 +280,11 @@
       {
         "from": "trigger.watch_1772152779583",
         "to": "Taiyo1.Events.JobActivity",
+        "enabled": true
+      },
+      {
+        "from": "trigger.tick_1772164929424",
+        "to": "Taiyo1.PLC.PaperLengthCounter",
         "enabled": true
       }
     ],
@@ -273,32 +326,36 @@
         "y": 120
       },
       "Taiyo1.Events.JobLifecycle": {
-        "x": 1260,
-        "y": 470
+        "x": 1160,
+        "y": 320
       },
       "Taiyo2.Events.JobLifecycle": {
-        "x": 1250,
-        "y": 620
+        "x": 1150,
+        "y": 390
       },
       "trigger.watch_1772017838146": {
-        "x": 620,
-        "y": 540
+        "x": 440,
+        "y": 330
       },
       "trigger.watch_1772017836959": {
-        "x": 620,
-        "y": 610
+        "x": 440,
+        "y": 400
       },
       "Taiyo1.Events.JobActivity": {
-        "x": 1250,
-        "y": 770
-      },
-      "trigger.watch_1772123673211": {
-        "x": 620,
-        "y": 790
+        "x": 1160,
+        "y": 530
       },
       "trigger.watch_1772152779583": {
-        "x": 630,
-        "y": 920
+        "x": 430,
+        "y": 520
+      },
+      "Taiyo1.PLC.PaperLengthCounter": {
+        "x": 1180,
+        "y": 650
+      },
+      "trigger.tick_1772164929424": {
+        "x": 470,
+        "y": 670
       }
     }
   },
@@ -313,8 +370,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": 1772154176759,
-            "ts": "2026-02-27T01:02:55.881Z"
+            "value": 1772173059001,
+            "ts": "2026-02-27T06:17:39.001Z"
           }
         }
       },
@@ -346,24 +403,40 @@
             "ts": "2026-02-26T17:46:10.942Z"
           },
           "Work Order": {
-            "value": "WO-123",
-            "ts": "2026-02-27T00:38:11.933Z"
+            "value": "WO-2026-0012",
+            "ts": "2026-02-27T06:11:41.818Z"
           },
           "Job Lifecycle": {
             "value": "load",
-            "ts": "2026-02-27T00:38:12.955Z"
+            "ts": "2026-02-27T06:11:41.819Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-02-27T00:38:12.956Z"
+            "ts": "2026-02-27T03:29:07.453Z"
           },
           "Job Activity": {
             "value": "-",
-            "ts": "2026-02-27T01:02:48.537Z"
+            "ts": "2026-02-27T06:17:21.488Z"
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-02-27T01:02:48.536Z"
+            "ts": "2026-02-27T06:17:21.486Z"
+          },
+          "Encoder Raw Value": {
+            "value": 55,
+            "ts": "2026-02-27T06:17:39.292Z"
+          },
+          "Paper Length": {
+            "value": 73187,
+            "ts": "2026-02-27T06:17:38.755Z"
+          },
+          "Encoder Prev Value": {
+            "value": 12,
+            "ts": "2026-02-27T06:17:38.757Z"
+          },
+          "Historian": {
+            "value": {},
+            "ts": "2026-02-27T06:15:36.890Z"
           }
         }
       },
@@ -375,7 +448,16 @@
           "template_1771523720677_855",
           "template_1771522392767_162"
         ],
-        "attributes": {}
+        "attributes": {
+          "Work Order": {
+            "value": "-",
+            "ts": "2026-02-27T06:01:14.110Z"
+          },
+          "Job Lifecycle": {
+            "value": "unload",
+            "ts": "2026-02-27T06:01:14.107Z"
+          }
+        }
       },
       {
         "id": "asset_1772088636848_239",
@@ -447,11 +529,11 @@
           {
             "enabled": true,
             "name": "Paper Length",
-            "valueType": "int16",
+            "valueType": "int32",
             "default": 0,
             "unit": "meter",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
+            "historianEnabled": true,
+            "historianTimeSourcePath": "Jasuindo.Timestamp",
             "historianTargetId": "default",
             "dashboardVisible": false,
             "dashboardEditable": true,
@@ -617,6 +699,54 @@
             "name": "Job Activity Alarm",
             "valueType": "string",
             "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Encoder Raw Value",
+            "valueType": "int32",
+            "default": 0,
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Encoder Prev Value",
+            "valueType": "int32",
+            "default": 0,
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
@@ -901,7 +1031,8 @@
           "allowOverride": true
         }
       ],
-      "allowActionDuplication": true
+      "allowActionDuplication": true,
+      "allowTemplateReuse": true
     },
     {
       "id": "template.script_1771609498627",
@@ -938,7 +1069,8 @@
           "allowOverride": true
         }
       ],
-      "allowActionDuplication": true
+      "allowActionDuplication": true,
+      "allowTemplateReuse": true
     },
     {
       "id": "template.script_1771898442157",
@@ -989,7 +1121,8 @@
           "allowOverride": true
         }
       ],
-      "allowActionDuplication": true
+      "allowActionDuplication": true,
+      "allowTemplateReuse": true
     },
     {
       "id": "template.script_1772002036179",
@@ -1040,7 +1173,38 @@
           "allowOverride": true
         }
       ],
-      "allowActionDuplication": true
+      "allowActionDuplication": true,
+      "allowTemplateReuse": true
+    },
+    {
+      "id": "template.script_1772164688880",
+      "name": "TaiyoPLCPaperLengthCounter",
+      "description": "",
+      "script": "const raw = Number(EncoderRawValue?.value || 0);\r\nconst paperPath = PaperLength?.path || \"\";\r\nconst prevRawPath = EncoderPrevRaw?.path || \"\";\r\n\r\nif (!paperPath || !prevRawPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst prevRaw = Number(EncoderPrevRaw?.value || 0);\r\n\r\n// naik normal -> delta selisih\r\n// turun/reset -> delta = raw (anggap restart dari 0, tapi mungkin kebaca telat dan langsung lompat)\r\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\r\n\r\nconst total = Number(PaperLength?.value || 0) + delta;\r\n\r\nasset.set(paperPath, total);\r\nasset.set(prevRawPath, raw);\r\n\r\nsend(msg);\r\n",
+      "allowTemplateReuse": true,
+      "variableBindings": [
+        {
+          "name": "EncoderRawValue",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "PaperLength",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "EncoderPrevRaw",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        }
+      ]
     }
   ]
 }

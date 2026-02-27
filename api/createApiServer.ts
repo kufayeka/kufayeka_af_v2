@@ -1,10 +1,15 @@
 import http from "node:http";
 import type { Socket } from "node:net";
-import express, { Request, Response } from "express";
+import express, { Request } from "express";
 import Runtime from "../runtime/Runtime";
 import { ensureAssetStorage } from "../runtime/assetStorage";
 import { ensureEventStore } from "../runtime/eventStore";
 import { computeTagID } from "../runtime/historianBridge";
+import {
+  filterSerializableGlobalEntries,
+  isInternalGlobalKey,
+  toSerializableJsonValue
+} from "../runtime/globalStoreUtils";
 import { OPENAPI_RUNTIME_SPEC } from "./openapiRuntimeSpec";
 import type { AttributeQueryMatch, HistorianTarget } from "../runtime/types";
 
@@ -42,6 +47,53 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   const assetStore = ensureAssetStorage(runtime, runtime.getGlobal("assetFramework", {}));
   const eventStore = ensureEventStore(runtime);
   const historianHttpBase = process.env.HISTORIAN_HTTP_BASE || "http://127.0.0.1:8080";
+  type HistorianTimescaleStore = {
+    queryRaw: (
+      paths: string[],
+      options: {
+        from?: string;
+        to?: string;
+        order?: "asc" | "desc";
+        time?: "iso" | "epoch";
+        limit?: number;
+        timestampUnit?: "us" | "ns";
+      }
+    ) => Promise<{ rows: Array<Record<string, unknown>>; truncated: boolean; agg?: string }>;
+    queryRange: (
+      paths: string[],
+      options: {
+        from?: string;
+        to?: string;
+        order?: "asc" | "desc";
+        time?: "iso" | "epoch";
+        limit?: number;
+        bucketMs?: number;
+        agg?: string;
+        timestampUnit?: "us" | "ns";
+      }
+    ) => Promise<{ rows: Array<Record<string, unknown>>; truncated: boolean; agg?: string }>;
+    queryLast: (
+      paths: string[],
+      options: { time?: "iso" | "epoch"; timestampUnit?: "us" | "ns" }
+    ) => Promise<{ rows: Array<Record<string, unknown>>; truncated: boolean; agg?: string }>;
+    queryFirst: (
+      paths: string[],
+      options: {
+        from?: string;
+        to?: string;
+        time?: "iso" | "epoch";
+        timestampUnit?: "us" | "ns";
+      }
+    ) => Promise<{ rows: Array<Record<string, unknown>>; truncated: boolean; agg?: string }>;
+    deleteByPaths: (paths: string[], from?: string, to?: string) => Promise<{ deletedRecords: number; touchedSegments: number }>;
+    getMetrics: () => Record<string, unknown>;
+    getLogs: (kind?: string, limit?: number) => Array<Record<string, unknown>>;
+  };
+  const historianStore = runtime.getGlobal<HistorianTimescaleStore | null>("historianTimescale", null);
+  const flushGlobalPersistence = (): void => {
+    const persistence = runtime.getGlobal<{ flushNow?: () => void } | undefined>("__runtime.globalValuePersistence");
+    if (persistence?.flushNow) persistence.flushNow();
+  };
 
   type ResolvedPathMatch = {
     path: string;
@@ -99,7 +151,7 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
       }));
   }
 
-  async function historianByPath(kind: "raw" | "range" | "last", req: Request): Promise<{ status: number; body: unknown }> {
+  async function historianByPath(kind: "raw" | "range" | "last" | "first", req: Request): Promise<{ status: number; body: unknown }> {
     const pathQueryRaw = queryString(req, "path") || "";
     const pathQueries = parsePathList(pathQueryRaw);
     if (pathQueries.length === 0) {
@@ -139,40 +191,56 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
       };
     }
     const target = resolveHistorianTargetById(targetIds[0] || "default");
-    const baseUrl = String(target.httpBaseUrl || historianHttpBase);
-
-    const params = new URLSearchParams();
-    params.set(
-      "tagIds",
-      matches
-        .map((item) => String(item.tagId))
-        .filter((v, i, arr) => arr.indexOf(v) === i)
-        .join(",")
-    );
-    const passThrough = ["from", "to", "order", "time", "limit", "bucketMs", "agg"];
-    for (const key of passThrough) {
-      const value = queryString(req, key);
-      if (value != null && value !== "") params.set(key, value);
+    if (!historianStore) {
+      return { status: 503, body: { error: "Historian backend is not initialized" } };
     }
+    const paths = matches.map((item) => item.path);
+    const time = queryString(req, "time");
+    const order = queryString(req, "order");
+    const from = queryString(req, "from");
+    const to = queryString(req, "to");
+    const limit = Number(queryString(req, "limit") || 1000);
+    const bucketMs = Number(queryString(req, "bucketMs") || 0);
+    const agg = queryString(req, "agg") || undefined;
+    let result: { rows: Array<Record<string, unknown>>; truncated: boolean; agg?: string };
 
-    const upstreamUrl = `${baseUrl}/hist/${kind}?${params.toString()}`;
-    const upstreamRes = await fetch(upstreamUrl);
-    const upstreamJson = (await upstreamRes.json()) as { rows?: Array<Record<string, unknown>>; truncated?: boolean; agg?: string };
-    if (!upstreamRes.ok) {
-      return { status: upstreamRes.status, body: upstreamJson };
+    try {
+      if (kind === "raw") {
+        result = await historianStore.queryRaw(paths, {
+          from,
+          to,
+          order: order === "asc" ? "asc" : "desc",
+          time: time === "epoch" ? "epoch" : "iso",
+          limit,
+          timestampUnit: target.timestampUnit === "ns" ? "ns" : "us"
+        });
+      } else if (kind === "range") {
+        result = await historianStore.queryRange(paths, {
+          from,
+          to,
+          order: order === "asc" ? "asc" : "desc",
+          time: time === "epoch" ? "epoch" : "iso",
+          limit,
+          bucketMs: Number.isFinite(bucketMs) && bucketMs > 0 ? bucketMs : undefined,
+          agg,
+          timestampUnit: target.timestampUnit === "ns" ? "ns" : "us"
+        });
+      } else if (kind === "last") {
+        result = await historianStore.queryLast(paths, {
+          time: time === "epoch" ? "epoch" : "iso",
+          timestampUnit: target.timestampUnit === "ns" ? "ns" : "us"
+        });
+      } else {
+        result = await historianStore.queryFirst(paths, {
+          from,
+          to,
+          time: time === "epoch" ? "epoch" : "iso",
+          timestampUnit: target.timestampUnit === "ns" ? "ns" : "us"
+        });
+      }
+    } catch (error: unknown) {
+      return { status: 400, body: { error: getErrorMessage(error) } };
     }
-
-    const tagToPath = new Map(matches.map((item) => [`tag${item.tagId}`, item.path]));
-    const rows = Array.isArray(upstreamJson.rows)
-      ? upstreamJson.rows.map((row) => {
-          const next: Record<string, unknown> = { time: row.time };
-          for (const [key, value] of Object.entries(row)) {
-            if (key === "time") continue;
-            next[tagToPath.get(key) || key] = value;
-          }
-          return next;
-        })
-      : [];
 
     return {
       status: 200,
@@ -180,9 +248,9 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
         path: pathQueryRaw,
         paths: pathQueries,
         matches,
-        rows,
-        truncated: upstreamJson.truncated === true,
-        agg: upstreamJson.agg,
+        rows: result.rows,
+        truncated: result.truncated === true,
+        agg: result.agg,
         historianTargetId: target.id || "default"
       }
     };
@@ -202,34 +270,33 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
       };
     }
     const target = resolveHistorianTargetById(targetIds[0] || "default");
-    const baseUrl = String(target.httpBaseUrl || historianHttpBase);
-    const uniqueTagIds = matches
-      .map((item) => item.tagId)
-      .filter((v, i, arr) => arr.indexOf(v) === i);
-    if (uniqueTagIds.length === 0) {
-      return { status: 404, body: { error: "No matching historian tags", matches: [] } };
+    if (!historianStore) {
+      return { status: 503, body: { error: "Historian backend is not initialized" } };
     }
-    const payload: { tagIds: number[]; from?: string; to?: string } = { tagIds: uniqueTagIds };
+    const uniquePaths = matches
+      .map((item) => item.path)
+      .filter((v, i, arr) => arr.indexOf(v) === i);
+    if (uniquePaths.length === 0) {
+      return { status: 404, body: { error: "No matching historian paths", matches: [] } };
+    }
     const from = queryString(req, "from");
     const to = queryString(req, "to");
-    if (from) payload.from = from;
-    if (to) payload.to = to;
-    const upstreamRes = await fetch(`${baseUrl}/hist/delete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const upstreamJson = await upstreamRes.json();
-    if (!upstreamRes.ok) {
-      return { status: upstreamRes.status, body: upstreamJson };
+    let deletedRecords = 0;
+    let touchedSegments = 0;
+    try {
+      const result = await historianStore.deleteByPaths(uniquePaths, from, to);
+      deletedRecords = result.deletedRecords;
+      touchedSegments = result.touchedSegments;
+    } catch (error: unknown) {
+      return { status: 400, body: { error: getErrorMessage(error) } };
     }
     return {
       status: 200,
       body: {
         ok: true,
         message: "historian has been deleted",
-        deletedRecords: (upstreamJson as { deletedRecords?: number }).deletedRecords ?? 0,
-        touchedSegments: (upstreamJson as { touchedSegments?: number }).touchedSegments ?? 0,
+        deletedRecords,
+        touchedSegments,
         historianTargetId: target.id || "default",
         matches
       }
@@ -302,8 +369,10 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     res.status(200).type("text/html").send(html);
   });
 
-  app.get("/api/global", (_req, res) => {
-    res.status(200).json({ data: runtime.getGlobalEntries() });
+  app.get("/api/global", (req, res) => {
+    const includeInternal = parseBoolean(queryString(req, "includeInternal"), false);
+    const data = filterSerializableGlobalEntries(runtime.getGlobalEntries(), { includeInternal });
+    res.status(200).json({ data });
   });
 
   app.get(["/api/assets", "/api/assets/system"], (_req, res) => {
@@ -354,6 +423,15 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     }
   });
 
+  app.get("/api/historian/first", async (req, res) => {
+    try {
+      const result = await historianByPath("first", req);
+      res.status(result.status).json(result.body);
+    } catch (error: unknown) {
+      res.status(502).json({ error: `Historian upstream error: ${getErrorMessage(error)}` });
+    }
+  });
+
   app.get("/api/historian/targets", (_req, res) => {
     const state = assetStore.getState();
     const list = Array.isArray(state.historians) ? state.historians : [];
@@ -368,10 +446,20 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     try {
       const targetId = queryString(req, "targetId") || "default";
       const target = resolveHistorianTargetById(targetId);
-      const baseUrl = String(target.httpBaseUrl || historianHttpBase);
-      const upstream = await fetch(`${baseUrl}/metrics`);
-      const payload = await upstream.json();
-      res.status(upstream.ok ? 200 : upstream.status).json(payload);
+      if (!historianStore) {
+        res.status(503).json({ error: "Historian backend is not initialized" });
+        return;
+      }
+      res.status(200).json({
+        targetId: target.id || "default",
+        targetName: target.name,
+        udpHost: target.udpHost,
+        udpPort: target.udpPort,
+        timestampUnit: target.timestampUnit,
+        enabled: target.enabled,
+        metrics: historianStore.getMetrics(),
+        ingestStats: runtime.getGlobal("historianIngestStats", {})
+      });
     } catch (error: unknown) {
       res.status(502).json({ error: `Historian metrics upstream error: ${getErrorMessage(error)}` });
     }
@@ -382,11 +470,17 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
       const targetId = queryString(req, "targetId") || "default";
       const kind = queryString(req, "kind") || "";
       const limit = queryString(req, "limit") || "100";
-      const target = resolveHistorianTargetById(targetId);
-      const baseUrl = String(target.httpBaseUrl || historianHttpBase);
-      const upstream = await fetch(`${baseUrl}/logs?kind=${encodeURIComponent(kind)}&limit=${encodeURIComponent(limit)}`);
-      const payload = await upstream.json();
-      res.status(upstream.ok ? 200 : upstream.status).json(payload);
+      if (!historianStore) {
+        res.status(503).json({ error: "Historian backend is not initialized" });
+        return;
+      }
+      const items = historianStore.getLogs(kind, Number(limit));
+      res.status(200).json({
+        targetId,
+        kind,
+        count: items.length,
+        items
+      });
     } catch (error: unknown) {
       res.status(502).json({ error: `Historian logs upstream error: ${getErrorMessage(error)}` });
     }
@@ -740,12 +834,21 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
       res.status(404).json({ error: "Route not found" });
       return;
     }
+    if (isInternalGlobalKey(key)) {
+      res.status(403).json({ error: `Key "${key}" is reserved` });
+      return;
+    }
     if (req.method === "GET") {
       if (!runtime.hasGlobal(key)) {
         res.status(404).json({ error: `Key "${key}" not found` });
         return;
       }
-      res.status(200).json({ key, value: runtime.getGlobal(key) });
+      const serializable = toSerializableJsonValue(runtime.getGlobal(key));
+      if (!serializable.ok) {
+        res.status(409).json({ error: `Key "${key}" is not JSON serializable: ${serializable.error}` });
+        return;
+      }
+      res.status(200).json({ key, value: serializable.value });
       return;
     }
     if (req.method === "PUT") {
@@ -755,7 +858,13 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
           res.status(400).json({ error: "Body must include a 'value' field" });
           return;
         }
-        const value = runtime.setGlobal(key, body.value);
+        const serializable = toSerializableJsonValue(body.value);
+        if (!serializable.ok) {
+          res.status(400).json({ error: `Value is not JSON serializable: ${serializable.error}` });
+          return;
+        }
+        const value = runtime.setGlobal(key, serializable.value);
+        flushGlobalPersistence();
         res.status(200).json({ key, value });
       } catch (error: unknown) {
         res.status(400).json({ error: getErrorMessage(error) });
@@ -764,6 +873,7 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     }
     if (req.method === "DELETE") {
       const deleted = runtime.deleteGlobal(key);
+      flushGlobalPersistence();
       res.status(200).json({ key, deleted });
       return;
     }
@@ -779,14 +889,15 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
 
   return {
     start() {
-      server = app.listen(port, host, () => {
+      const activeServer = app.listen(port, host, () => {
         console.log(`Global store API is running at http://${host}:${port}`);
       });
-      server.on("connection", (socket: Socket) => {
+      server = activeServer;
+      activeServer.on("connection", (socket: Socket) => {
         sockets.add(socket);
         socket.on("close", () => sockets.delete(socket));
       });
-      return server;
+      return activeServer;
     },
     stop() {
       return new Promise<void>((resolve, reject) => {

@@ -317,8 +317,8 @@ export default function ActionManager({
   const selectedTemplate = scriptTemplates.find((item) => item.id === selectedTemplateId);
   const selectedActionTemplate = scriptTemplates.find((item) => item.id === selectedAction?.templateId);
   const isTemplateDuplicationBlocked =
-    !!selectedActionTemplate && selectedActionTemplate.allowActionDuplication === false;
-  const isActionDuplicationBlocked = selectedAction?.allowNodeDuplication === false;
+    !!selectedActionTemplate && selectedActionTemplate.allowTemplateReuse === false;
+  const isActionDuplicationBlocked = selectedAction?.allowTreeDuplicate === false;
   const isSelectedActionDuplicationBlocked = isTemplateDuplicationBlocked || isActionDuplicationBlocked;
   const selectedActionBindingNames = useMemo(
     () =>
@@ -783,16 +783,16 @@ export default function ActionManager({
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={selectedAction.allowNodeDuplication !== false}
+                      checked={selectedAction.allowTreeDuplicate !== false}
                       onChange={(_event, checked) =>
-                        onUpdateAction(selectedAction.id, { allowNodeDuplication: checked })
+                        onUpdateAction(selectedAction.id, { allowTreeDuplicate: checked })
                       }
                     />
                   }
-                  label="Allow Node Duplication"
+                  label="Allow Tree Duplicate"
                 />
                 <Typography variant="caption" color="text.secondary">
-                  If disabled, this action cannot be duplicated from the action list.
+                  If disabled, this action instance cannot be duplicated from the action list.
                 </Typography>
                 <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
                   <Button size="small" variant="outlined" onClick={() => setMaxEditor(true)}>
@@ -925,16 +925,16 @@ export default function ActionManager({
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={selectedTemplate.allowActionDuplication !== false}
+                      checked={selectedTemplate.allowTemplateReuse !== false}
                       onChange={(_event, checked) =>
-                        onUpdateScriptTemplate(selectedTemplate.id, { allowActionDuplication: checked })
+                        onUpdateScriptTemplate(selectedTemplate.id, { allowTemplateReuse: checked })
                       }
                     />
                   }
-                  label="Allow Action Duplication"
+                  label="Allow Template Reuse"
                 />
                 <Typography variant="caption" color="text.secondary">
-                  If disabled, this template can only be used by one action and actions using it cannot be duplicated.
+                  If disabled, this template becomes singleton: only one action instance can use it.
                 </Typography>
 
                 <Box sx={{ display: "grid", gap: 0.75 }}>

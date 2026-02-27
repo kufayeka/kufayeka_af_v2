@@ -113,10 +113,31 @@ function normalizeHistorian(input: unknown): HistorianTarget | null {
 
 export function normalizeAssetSection(input: unknown = {}): AssetSection {
   const source = toObject(input);
-  const assets = Array.isArray(source.assets) ? source.assets.map(normalizeAsset) : [];
+  const rawAssets = Array.isArray(source.assets) ? source.assets.map(normalizeAsset) : [];
   const attributeTemplates = Array.isArray(source.attributeTemplates)
     ? source.attributeTemplates.map(normalizeTemplate)
     : [];
+  const templateById = new Map((attributeTemplates || []).map((template) => [template.id, template]));
+  const assets = rawAssets.map((asset) => {
+    const allowedNames = new Set<string>();
+    for (const templateId of asset.templateIds || []) {
+      const template = templateById.get(templateId);
+      if (!template) continue;
+      for (const attribute of template.attributes || []) {
+        if (attribute.enabled === false) continue;
+        const name = String(attribute.name || "").trim();
+        if (!name) continue;
+        allowedNames.add(name);
+      }
+    }
+
+    const nextAttributes: Record<string, unknown> = {};
+    for (const [name, value] of Object.entries(asset.attributes || {})) {
+      if (!allowedNames.has(name)) continue;
+      nextAttributes[name] = value;
+    }
+    return { ...asset, attributes: nextAttributes };
+  });
   const historiansRaw = Array.isArray(source.historians) ? source.historians : [];
   const historians = [DEFAULT_HISTORIAN_TARGET, ...historiansRaw.map(normalizeHistorian).filter(Boolean) as HistorianTarget[]]
     .filter((h, i, arr) => arr.findIndex((x) => x.id === h.id) === i);

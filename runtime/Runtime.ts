@@ -38,6 +38,7 @@ class Runtime {
   private readonly wires = new Map<string, string[]>();
   private readonly nodes = new Map<string, RuntimeNodeHandler>();
   private readonly globalStore = new Map<string, unknown>();
+  private globalRevision = 0;
   private readonly maxInflightPerNode: number;
   private readonly maxQueuePerNode: number;
   private readonly nodeExecutionTimeoutMs: number;
@@ -66,6 +67,7 @@ class Runtime {
 
   setGlobal<T = unknown>(key: string, value: T): T {
     this.globalStore.set(key, value);
+    this.globalRevision += 1;
     return value;
   }
 
@@ -74,11 +76,17 @@ class Runtime {
   }
 
   deleteGlobal(key: string): boolean {
-    return this.globalStore.delete(key);
+    const deleted = this.globalStore.delete(key);
+    if (deleted) this.globalRevision += 1;
+    return deleted;
   }
 
   getGlobalEntries(): Record<string, unknown> {
     return Object.fromEntries(this.globalStore.entries());
+  }
+
+  getGlobalRevision(): number {
+    return this.globalRevision;
   }
 
   createNodeContext(nodeId: string): RuntimeNodeContext {

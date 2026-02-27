@@ -143,19 +143,174 @@ Supported operators: `eq`, `neq`, `in`, `not_in`, `exists`, `not_exists`.
 
 ## Historian Service
 
-### Read
+Historian endpoints in this runtime are path-based wrappers over historian tag IDs.
+Client sends attribute path(s), runtime resolves tag IDs and historian target, then proxies to historian service.
+
+### Supported read endpoints
 
 - `GET /api/historian/raw`
 - `GET /api/historian/range`
 - `GET /api/historian/last`
+- `GET /api/historian/first`
 
-Common query params:
-- `path` (required)
-- `from`, `to`
-- `order` (`asc|desc`)
-- `time` (`iso|epoch`)
-- `limit` (raw)
-- `bucketMs`, `agg` (range)
+### Query model
+
+- `path` is required for all historian reads.
+- `path` supports:
+  - single path: `Taiyo1.Line1.M1.Speed`
+  - wildcard path: `Taiyo1.*.*.Speed`
+  - comma-separated list: `Taiyo1.Line1.M1.Speed,Taiyo1.Line1.M1.Tension`
+- Runtime deduplicates by `(assetId, attributeName)`.
+- One request must map to one historian target.
+  - mixed target mapping returns `400`.
+
+### Time model
+
+- `from` and `to` accept ISO timestamp or epoch string.
+- `raw`, `range`, and `first` are window-based.
+- `last` is snapshot-based.
+- `time` controls output format:
+  - `iso`
+  - `epoch`
+
+### Endpoint details
+
+#### Raw (`GET /api/historian/raw`)
+
+Use for original points.
+
+Parameters:
+- `path` required
+- `from`, `to` window
+- `order=asc|desc` optional
+- `time=iso|epoch` optional
+- `limit` optional
+
+Response:
+- `rows` pivoted by timestamp
+- `truncated=true` if upstream limit cuts rows
+
+#### Range (`GET /api/historian/range`)
+
+Use for bucketed aggregates.
+
+Parameters:
+- `path` required
+- `from`, `to` window
+- `order=asc|desc` optional
+- `time=iso|epoch` optional
+- `bucketMs` optional
+- `agg` optional: `min|max|avg|first|last|count|delta|reverseDelta`
+
+Response:
+- `rows` bucketed results
+- `agg` echoes chosen aggregation
+- `delta` means `last - first` per path in selected window
+- `reverseDelta` means `first - last` per path in selected window
+- for `delta`/`reverseDelta`, `from` and `to` are mandatory
+
+#### Last (`GET /api/historian/last`)
+
+Use for latest value per path.
+
+Parameters:
+- `path` required
+- `time=iso|epoch` optional
+
+Response:
+- latest point set (current snapshot style)
+
+#### First (`GET /api/historian/first`)
+
+Use for earliest value in a window per path.
+
+Parameters:
+- `path` required
+- `from`, `to` window
+- `time=iso|epoch` optional
+
+Behavior:
+- internally mapped to raw query with forced `order=asc` and `limit=1`
+
+### Read examples
+
+First value in event window:
+
+```http
+GET /api/historian/first?path=Taiyo1.Line1.M1.Speed&from=2026-02-27T08:00:00Z&to=2026-02-27T08:05:00Z&time=iso
+```
+
+Last value now:
+
+```http
+GET /api/historian/last?path=Taiyo1.Line1.M1.Speed
+```
+
+Raw points:
+
+```http
+GET /api/historian/raw?path=Taiyo1.Line1.M1.Speed&from=2026-02-27T08:00:00Z&to=2026-02-27T08:05:00Z&order=asc&limit=500
+```
+
+Average by 1-second buckets:
+
+```http
+GET /api/historian/range?path=Taiyo1.Line1.M1.Speed&from=2026-02-27T08:00:00Z&to=2026-02-27T08:05:00Z&bucketMs=1000&agg=avg
+```
+
+### Response shape
+
+```json
+{
+  "path": "Taiyo1.Line1.M1.Speed",
+  "paths": ["Taiyo1.Line1.M1.Speed"],
+  "matches": [
+    {
+      "path": "Taiyo1.Line1.M1.Speed",
+      "assetId": "M1",
+      "attributeName": "Speed",
+      "tagId": 123456789,
+      "historianTargetId": "default",
+      "type": "float64",
+      "unit": "m/min",
+      "latestValue": 1200,
+      "latestTs": "2026-02-27T08:04:59Z",
+      "historianEnabled": true,
+      "historianTimeSourcePath": ""
+    }
+  ],
+  "rows": [
+    {
+      "time": "2026-02-27T08:00:00Z",
+      "Taiyo1.Line1.M1.Speed": 1188.2
+    }
+  ],
+  "truncated": false,
+  "agg": "avg",
+  "historianTargetId": "default"
+}
+```
+
+### Common errors
+
+- `400` missing path
+- `404` no matching attribute path
+- `400` one request resolves to multiple historian targets
+- `502` historian upstream error/unavailable
+
+### Recommended event-window pattern
+
+1. Query events from `/api/events`.
+2. Build window per event:
+   - `from = event.start_ts`
+   - `to = event.end_ts` (or current time when still open)
+3. Query historian:
+   - avg speed: `/api/historian/range?...&agg=avg`
+   - first value in event: `/api/historian/first?...`
+   - last value: `/api/historian/last?path=...`
+4. Derive usage:
+   - totalizer tags: `usage = last - first`
+   - rate tags: integrate bucket values over time
 
 ### Target and diagnostics
 
