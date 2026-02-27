@@ -1,6 +1,10 @@
 import Runtime from "./runtime/Runtime";
 import createApiServer from "./api/createApiServer";
 import { loadProgramFromFile, startProgram } from "./runtime/programEngine";
+import {
+  loadPersistedValuesIntoAssets,
+  startAttributeValuePersistence
+} from "./runtime/attributeValuePersistence";
 import path from "node:path";
 
 function getErrorMessage(error: unknown): string {
@@ -16,8 +20,22 @@ async function bootstrap(): Promise<void> {
 
   const programPath = path.resolve(__dirname, "../programs/main.af.json");
   const { absolutePath, program } = loadProgramFromFile(programPath);
+  const attributeValueStorePath = path.resolve(
+    __dirname,
+    "../data/attribute-values.sqlite"
+  );
+  const { assets: seededAssets, loadedCount } = loadPersistedValuesIntoAssets(
+    program.assets || {},
+    process.env.RUNTIME_ATTRIBUTE_VALUES_PATH || attributeValueStorePath
+  );
+  const programWithPersistedValues = { ...program, assets: seededAssets };
   console.log(`Program loaded: ${absolutePath}`);
-  const stopProgram = startProgram(rt, program);
+  console.log(`[runtime] attribute persistence seed loaded: ${loadedCount}`);
+  const stopProgram = startProgram(rt, programWithPersistedValues);
+  const attributeValuePersistence = startAttributeValuePersistence(rt, {
+    filePath: process.env.RUNTIME_ATTRIBUTE_VALUES_PATH || attributeValueStorePath,
+    intervalMs: Number(process.env.RUNTIME_ATTRIBUTE_VALUES_SAVE_INTERVAL_MS || 5000)
+  });
 
   const apiServer = createApiServer(rt, {
     host: process.env.RUNTIME_API_HOST || "0.0.0.0",
@@ -40,6 +58,16 @@ async function bootstrap(): Promise<void> {
       stopProgram();
     } catch (error) {
       console.error("[runtime] stop program error:", getErrorMessage(error));
+    }
+
+    try {
+      attributeValuePersistence.flushNow();
+      attributeValuePersistence.stop();
+    } catch (error) {
+      console.error(
+        "[runtime] attribute persistence shutdown error:",
+        getErrorMessage(error)
+      );
     }
 
     try {

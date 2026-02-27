@@ -674,6 +674,7 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
         res.status(200).json({
           path: pathQuery,
           count: matches.length,
+          matchedCount: matches.length,
           matches: matches.map((item) => ({
             ...item,
             tagId: computeTagID(item.assetId, item.attributeName)
@@ -720,6 +721,7 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
         count: results.length,
         results: results.map((result) => ({
           ...result,
+          matchedCount: result.matches.length,
           matches: (result.matches || []).map((item) => ({
             ...item,
             tagId: computeTagID(item.assetId, item.attributeName)

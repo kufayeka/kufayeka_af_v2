@@ -81,6 +81,15 @@ type ProgramResponse =
   | { ok: true; path: string; runtimeSynced?: boolean; runtimeError?: string }
   | { error: string };
 
+function containsPersistedAttributeValues(program: Program): boolean {
+  const assets = program.assets?.assets || [];
+  for (const asset of assets) {
+    const attributes = asset?.attributes && typeof asset.attributes === "object" ? asset.attributes : {};
+    if (Object.keys(attributes).length > 0) return true;
+  }
+  return false;
+}
+
 function setOpenCors(res: NextApiResponse): void {
   const preferredCorsOrigin = "http://192.168.68.99:3333";
   const requestOrigin =
@@ -129,6 +138,27 @@ async function fetchRuntimeAssets(): Promise<Program["assets"] | null> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function mergeProgramAssetsPreserveRuntimeValues(
+  incoming: Program["assets"],
+  runtimeCurrent: Program["assets"]
+): Program["assets"] {
+  const runtimeAttributesByAssetId = new Map<
+    string,
+    Program["assets"]["assets"][number]["attributes"]
+  >();
+  for (const asset of runtimeCurrent.assets || []) {
+    runtimeAttributesByAssetId.set(asset.id, { ...(asset.attributes || {}) });
+  }
+
+  return {
+    ...incoming,
+    assets: (incoming.assets || []).map((asset) => ({
+      ...asset,
+      attributes: runtimeAttributesByAssetId.get(asset.id) || {}
+    }))
+  };
 }
 
 async function pushRuntimeAssets(
@@ -181,8 +211,19 @@ export default async function handler(
       res.status(400).json({ error: "Body must include a 'program' object" });
       return;
     }
+    if (containsPersistedAttributeValues(body.program)) {
+      res.status(400).json({
+        error:
+          "Workspace save is not allowed to persist asset attribute values. Apply values via runtime/effective attribute flow."
+      });
+      return;
+    }
 
-    const runtimeResult = await pushRuntimeAssets(body.program.assets);
+    const runtimeCurrentAssets = await fetchRuntimeAssets();
+    const runtimeAssetsForSync = runtimeCurrentAssets
+      ? mergeProgramAssetsPreserveRuntimeValues(body.program.assets, runtimeCurrentAssets)
+      : body.program.assets;
+    const runtimeResult = await pushRuntimeAssets(runtimeAssetsForSync);
     if (!runtimeResult.ok) {
       fs.writeFileSync(programPath, JSON.stringify(body.program, null, 2));
       res.status(200).json({

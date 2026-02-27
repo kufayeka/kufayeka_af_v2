@@ -28,9 +28,7 @@ interface ProgramTrigger {
   type:
     | "interval"
     | "watcher_set"
-    | "watcher_valuechange"
-    | "watcher_valuechange_with_trigger"
-    | "watcher";
+    | "watcher_valuechange";
   enabled?: boolean;
   intervalMs?: number;
   message?: Record<string, unknown>;
@@ -107,7 +105,7 @@ function matchWildcardPath(pattern: string, value: string): boolean {
   return true;
 }
 
-type WatcherMode = "set" | "valuechange" | "valuechange_with_trigger";
+type WatcherMode = "set" | "valuechange";
 
 interface WatchAttributeRecord {
   kind?: unknown;
@@ -122,7 +120,6 @@ interface WatchAttributeRecord {
 function buildWatcherHelpers(runtime: Runtime, trigger: ProgramTrigger) {
   const watchPath = String(trigger.watchPath || "").trim() || "*.*.*";
   const baseMsg = trigger.message || {};
-  const pollMs = Math.max(10, Number(trigger.intervalMs) || 1000);
   const store = runtime.getGlobal("assetStorage");
   if (!store || typeof (store as { subscribe?: unknown }).subscribe !== "function") {
     throw new Error(`Watcher trigger "${trigger.id}" failed: assetStorage is not available`);
@@ -155,9 +152,7 @@ function buildWatcherHelpers(runtime: Runtime, trigger: ProgramTrigger) {
   };
 
   return {
-    watchPath,
     typedStore,
-    pollMs,
     lastSeenByKey,
     computeSignature,
     changeKey,
@@ -169,9 +164,7 @@ function buildWatcherHelpers(runtime: Runtime, trigger: ProgramTrigger) {
 function startWatcherTrigger(runtime: Runtime, trigger: ProgramTrigger, mode: WatcherMode): () => void {
   const helpers = buildWatcherHelpers(runtime, trigger);
   const {
-    watchPath,
     typedStore,
-    pollMs,
     lastSeenByKey,
     computeSignature,
     changeKey,
@@ -216,34 +209,7 @@ function startWatcherTrigger(runtime: Runtime, trigger: ProgramTrigger, mode: Wa
     };
   }
 
-  const rememberCurrentBaseline = (): void => {
-    const matches = typedStore.query(watchPath);
-    for (const item of matches) {
-      if (!matchesWatcherPath(item)) continue;
-      lastSeenByKey.set(changeKey(item), computeSignature(item));
-    }
-  };
-
-  const reconcileByPolling = (): void => {
-    const matches = typedStore.query(watchPath);
-    for (const item of matches) {
-      if (!matchesWatcherPath(item)) continue;
-      const key = changeKey(item);
-      const sig = computeSignature(item);
-      const prevSig = lastSeenByKey.get(key);
-      if (prevSig === sig) continue;
-      lastSeenByKey.set(key, sig);
-      emitChange(item, "poll");
-    }
-  };
-
-  rememberCurrentBaseline();
-  const pollTimer = setInterval(reconcileByPolling, pollMs);
-  pollTimer.unref();
-
-  return () => {
-    clearInterval(pollTimer);
-  };
+  throw new Error(`Unsupported watcher mode "${String(mode)}"`);
 }
 
 function startTriggers(runtime: Runtime, triggers: unknown[] = []): Array<() => void> {
@@ -260,12 +226,8 @@ function startTriggers(runtime: Runtime, triggers: unknown[] = []): Array<() => 
       stops.push(startWatcherTrigger(runtime, trigger, "set"));
       continue;
     }
-    if (trigger.type === "watcher_valuechange" || trigger.type === "watcher") {
+    if (trigger.type === "watcher_valuechange") {
       stops.push(startWatcherTrigger(runtime, trigger, "valuechange"));
-      continue;
-    }
-    if (trigger.type === "watcher_valuechange_with_trigger") {
-      stops.push(startWatcherTrigger(runtime, trigger, "valuechange_with_trigger"));
       continue;
     }
     throw new Error(`Unsupported trigger type "${String(trigger.type)}"`);

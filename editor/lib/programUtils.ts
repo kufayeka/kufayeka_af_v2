@@ -192,15 +192,11 @@ export function normalizeProgram(program: Program): Program {
             ? "watcher_set"
             : rawType === "watcher_valuechange"
               ? "watcher_valuechange"
-              : rawType === "watcher_valuechange_with_trigger" || rawType === "watcher"
-                ? "watcher_valuechange"
-                : "interval",
+              : "interval",
         intervalMs: Math.max(1, Number(trigger.intervalMs) || 1000),
         watchPath:
           rawType === "watcher_set" ||
-          rawType === "watcher_valuechange" ||
-          rawType === "watcher_valuechange_with_trigger" ||
-          rawType === "watcher"
+          rawType === "watcher_valuechange"
             ? String(trigger.watchPath || "").trim() || "*.*.*"
             : String(trigger.watchPath || ""),
         message: trigger.message && typeof trigger.message === "object" ? trigger.message : { payload: 0 },

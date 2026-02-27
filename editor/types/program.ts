@@ -1,8 +1,7 @@
 export type TriggerType =
   | "interval"
   | "watcher_set"
-  | "watcher_valuechange"
-  | "watcher_valuechange_with_trigger";
+  | "watcher_valuechange";
 export type ActionType = "script";
 export type AssetAttributeType =
   | "int8"

@@ -964,32 +964,50 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                                     variant="contained"
                                     disabled={!hasDraft}
                                     onClick={() => {
-                                      try {
+                                      void (async () => {
+                                        try {
+                                          if (!selectedAssetPath) {
+                                            throw new Error("Asset path is empty");
+                                          }
+                                          const fullPath = `${selectedAssetPath}.${row.name}`;
                                         const nextValue =
                                           row.valueType === "custom"
                                             ? parseMaybeJson(draftValue)
                                             : parseByType(row.valueType, draftValue);
-                                        updateAssetWith(selectedAsset.id, (asset) => ({
-                                          ...asset,
-                                          attributes: {
-                                            ...asset.attributes,
-                                            [row.name]: { value: nextValue }
+                                          const res = await fetch(
+                                            `${runtimeApiBase}/api/assets/value/${encodeURIComponent(fullPath)}`,
+                                            {
+                                              method: "PUT",
+                                              headers: { "content-type": "application/json" },
+                                              body: JSON.stringify({ value: nextValue })
+                                            }
+                                          );
+                                          const data = await readJsonLike(res);
+                                          if (!res.ok) {
+                                            throw new Error(
+                                              String(data.error || `Runtime API error ${res.status}`)
+                                            );
                                           }
-                                        }));
+                                          const matched = Number(data.matchedCount ?? data.count ?? 0);
+                                          if (matched <= 0) {
+                                            throw new Error("Runtime did not match any attribute");
+                                          }
                                         setFieldDrafts((prev) => {
                                           const cloned = { ...prev };
                                           delete cloned[fieldKey];
                                           return cloned;
                                         });
-                                        showNotice("success", `Applied value for ${row.name}`);
-                                      } catch (error) {
-                                        showNotice(
-                                          "error",
-                                          `Failed applying ${row.name}: ${
-                                            error instanceof Error ? error.message : String(error)
-                                          }`
-                                        );
-                                      }
+                                          await reloadFromRuntime();
+                                          showNotice("success", `Applied value for ${fullPath}`);
+                                        } catch (error) {
+                                          showNotice(
+                                            "error",
+                                            `Failed applying ${row.name}: ${
+                                              error instanceof Error ? error.message : String(error)
+                                            }`
+                                          );
+                                        }
+                                      })();
                                     }}
                                   >
                                     Apply

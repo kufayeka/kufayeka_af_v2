@@ -196,6 +196,14 @@ export default function HomePage() {
   const saveProgram = async () => {
     const programForSave: Program = {
       ...program,
+      assets: {
+        ...program.assets,
+        assets: (program.assets?.assets || []).map((asset) => ({
+          ...asset,
+          // Workspace save must not persist runtime attribute values.
+          attributes: {}
+        }))
+      },
       actions: program.actions.map((action) => ({
         ...action,
         script:

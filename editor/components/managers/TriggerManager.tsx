@@ -40,12 +40,7 @@ function buildTriggerHierarchyTree(triggers: TriggerDefinition[], search: string
   const categories: Array<{ type: TriggerDefinition["type"]; label: string; icon: ReactNode }> = [
     { type: "interval", label: "Interval", icon: <AlarmClock size={15} /> },
     { type: "watcher_set", label: "Watcher (Set)", icon: <Eye size={15} /> },
-    { type: "watcher_valuechange", label: "Watcher (Value Change)", icon: <Eye size={15} /> },
-    {
-      type: "watcher_valuechange_with_trigger",
-      label: "Watcher (Value Change + Trigger)",
-      icon: <Eye size={15} />
-    }
+    { type: "watcher_valuechange", label: "Watcher (Value Change)", icon: <Eye size={15} /> }
   ];
 
   const tree: DataNode[] = [];
@@ -176,13 +171,6 @@ export default function TriggerManager({
             <Button fullWidth variant="outlined" onClick={() => onAddTrigger("watcher_valuechange")}>
               Add Watcher (Value)
             </Button>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={() => onAddTrigger("watcher_valuechange_with_trigger")}
-            >
-              Add Watcher (Value+Trigger)
-            </Button>
           </Box>
           <TextField
             size="small"
@@ -269,8 +257,7 @@ export default function TriggerManager({
               />
             )}
             {(selectedTrigger.type === "watcher_set" ||
-              selectedTrigger.type === "watcher_valuechange" ||
-              selectedTrigger.type === "watcher_valuechange_with_trigger") && (
+              selectedTrigger.type === "watcher_valuechange") && (
                 <Autocomplete
                   freeSolo
                   options={watchPathOptions}
@@ -287,19 +274,6 @@ export default function TriggerManager({
                   )}
                 />
               )}
-            {selectedTrigger.type === "watcher_valuechange_with_trigger" && (
-              <TextField
-                label="Compare Interval (ms)"
-                type="number"
-                value={selectedTrigger.intervalMs}
-                onChange={(e) =>
-                  onUpdateTrigger(selectedTrigger.id, {
-                    intervalMs: Math.max(10, Number(e.target.value) || 1000)
-                  })
-                }
-                helperText="Used for manual polling (read + compare)."
-              />
-            )}
             <TextField
               label="Initial Payload"
               value={JSON.stringify(selectedTrigger.message?.payload ?? 0)}
