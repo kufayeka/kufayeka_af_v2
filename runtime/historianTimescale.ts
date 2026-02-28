@@ -146,23 +146,37 @@ class TimescaleHistorianStore {
   }
 
   private async createDatabaseIfNeeded(): Promise<void> {
-    const adminPool = new Pool({
-      host: this.cfg.host,
-      port: this.cfg.port,
-      user: this.cfg.user,
-      password: this.cfg.password,
-      database: this.cfg.adminDatabase || "postgres",
-      ssl: this.cfg.ssl ? { rejectUnauthorized: false } : undefined
-    });
-    try {
-      const check = await adminPool.query("SELECT 1 FROM pg_database WHERE datname = $1", [this.cfg.database]);
-      if (check.rowCount && check.rowCount > 0) return;
-      const dbName = sanitizeIdentifier(this.cfg.database) || "af";
-      await adminPool.query(`CREATE DATABASE "${dbName}"`);
-      this.log("info", "created database", { database: dbName });
-    } finally {
-      await adminPool.end();
+    const dbName = sanitizeIdentifier(this.cfg.database) || "af";
+    const requestedAdminDb = sanitizeIdentifier(this.cfg.adminDatabase) || "postgres";
+    const candidates = [requestedAdminDb, "postgres", "template1"].filter((v, i, arr) => v && arr.indexOf(v) === i);
+
+    let lastError: unknown = null;
+    for (const adminDb of candidates) {
+      const adminPool = new Pool({
+        host: this.cfg.host,
+        port: this.cfg.port,
+        user: this.cfg.user,
+        password: this.cfg.password,
+        database: adminDb,
+        ssl: this.cfg.ssl ? { rejectUnauthorized: false } : undefined
+      });
+      try {
+        const check = await adminPool.query("SELECT 1 FROM pg_database WHERE datname = $1", [dbName]);
+        if (check.rowCount && check.rowCount > 0) return;
+        await adminPool.query(`CREATE DATABASE "${dbName}"`);
+        this.log("info", "created database", { database: dbName, adminDatabase: adminDb });
+        return;
+      } catch (error: unknown) {
+        lastError = error;
+        const code = (error as { code?: string })?.code || "";
+        if (code !== "3D000") {
+          throw error;
+        }
+      } finally {
+        await adminPool.end();
+      }
     }
+    if (lastError) throw lastError;
   }
 
   async init(): Promise<void> {
@@ -173,7 +187,14 @@ class TimescaleHistorianStore {
       user: this.cfg.user,
       password: this.cfg.password,
       database: this.cfg.database,
-      ssl: this.cfg.ssl ? { rejectUnauthorized: false } : undefined
+      ssl: this.cfg.ssl ? { rejectUnauthorized: false } : undefined,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10_000,
+      connectionTimeoutMillis: 10_000,
+      idleTimeoutMillis: 30_000
+    });
+    this.pool.on("error", (error: Error) => {
+      this.log("warn", "timescale pool idle client error", { error: error.message });
     });
     const tableRef = this.tableRef();
     const schema = sanitizeIdentifier(this.cfg.schema) || "public";

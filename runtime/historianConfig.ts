@@ -66,7 +66,16 @@ function toBoolean(value: unknown, fallback: boolean): boolean {
 function resolveConfigPath(): string {
   const envPath = process.env.RUNTIME_HISTORIAN_CONFIG;
   if (envPath && envPath.trim()) return path.resolve(envPath);
-  return path.resolve(__dirname, "../config/historian.config.json");
+
+  const candidates = [
+    path.resolve(process.cwd(), "config/historian.config.json"),
+    path.resolve(__dirname, "../config/historian.config.json"),
+    path.resolve(__dirname, "../../config/historian.config.json")
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return candidates[0];
 }
 
 export function loadHistorianConfig(): HistorianRuntimeConfig {

@@ -143,8 +143,17 @@ Supported operators: `eq`, `neq`, `in`, `not_in`, `exists`, `not_exists`.
 
 ## Historian Service
 
-Historian endpoints in this runtime are path-based wrappers over historian tag IDs.
-Client sends attribute path(s), runtime resolves tag IDs and historian target, then proxies to historian service.
+Runtime historian now uses TimescaleDB directly (no external historian HTTP query dependency).
+Ingest remains UDP-based from runtime bridge.
+
+Storage model:
+- database: `af`
+- table: `af_historian` (hypertable)
+- columns:
+  - `ts` (`TIMESTAMPTZ`)
+  - `attribute_path` (`TEXT`)
+  - `value` (`JSONB`)
+- chunk interval: 12 hours
 
 ### Supported read endpoints
 
@@ -160,14 +169,13 @@ Client sends attribute path(s), runtime resolves tag IDs and historian target, t
   - single path: `Taiyo1.Line1.M1.Speed`
   - wildcard path: `Taiyo1.*.*.Speed`
   - comma-separated list: `Taiyo1.Line1.M1.Speed,Taiyo1.Line1.M1.Tension`
-- Runtime deduplicates by `(assetId, attributeName)`.
-- One request must map to one historian target.
-  - mixed target mapping returns `400`.
+- Runtime resolves wildcard path to full attribute paths from asset model.
+- Result rows are pivoted by timestamp (`time` + one column per attribute path).
 
 ### Time model
 
 - `from` and `to` accept ISO timestamp or epoch string.
-- `raw`, `range`, and `first` are window-based.
+- `raw`, `range`, and `first` are window-based (`from` and `to` required in practice).
 - `last` is snapshot-based.
 - `time` controls output format:
   - `iso`
@@ -184,11 +192,11 @@ Parameters:
 - `from`, `to` window
 - `order=asc|desc` optional
 - `time=iso|epoch` optional
-- `limit` optional
+- `limit` optional (default 1000)
 
 Response:
 - `rows` pivoted by timestamp
-- `truncated=true` if upstream limit cuts rows
+- `truncated=true` if rows exceed limit
 
 #### Range (`GET /api/historian/range`)
 
@@ -199,7 +207,7 @@ Parameters:
 - `from`, `to` window
 - `order=asc|desc` optional
 - `time=iso|epoch` optional
-- `bucketMs` optional
+- `bucketMs` optional (if empty, returns raw-like timeline with aggregation context)
 - `agg` optional: `min|max|avg|first|last|count|delta|reverseDelta`
 
 Response:
@@ -230,7 +238,7 @@ Parameters:
 - `time=iso|epoch` optional
 
 Behavior:
-- internally mapped to raw query with forced `order=asc` and `limit=1`
+- earliest point per attribute path inside requested window
 
 ### Read examples
 
@@ -256,6 +264,18 @@ Average by 1-second buckets:
 
 ```http
 GET /api/historian/range?path=Taiyo1.Line1.M1.Speed&from=2026-02-27T08:00:00Z&to=2026-02-27T08:05:00Z&bucketMs=1000&agg=avg
+```
+
+Multiple attributes in one range query:
+
+```http
+GET /api/historian/range?path=Taiyo1.Line1.M1.Speed,Taiyo1.Line1.M1.Tension,Taiyo1.Line1.M1.PaperUsage&from=2026-02-27T08:00:00Z&to=2026-02-27T10:00:00Z&bucketMs=60000&agg=avg&order=asc&time=iso
+```
+
+Delta per attribute in one window:
+
+```http
+GET /api/historian/range?path=Taiyo1.Line1.M1.TotalPaper,Taiyo1.Line1.M1.TotalLength&from=2026-02-27T08:00:00Z&to=2026-02-27T10:00:00Z&agg=delta&time=iso
 ```
 
 ### Response shape
@@ -291,12 +311,141 @@ GET /api/historian/range?path=Taiyo1.Line1.M1.Speed&from=2026-02-27T08:00:00Z&to
 }
 ```
 
+### Direct SQL examples (TimescaleDB)
+
+These examples run directly on database `af`, table `public.af_historian`.
+
+Raw points for multiple attributes in time range:
+
+```sql
+SELECT
+  ts,
+  attribute_path,
+  value
+FROM public.af_historian
+WHERE attribute_path = ANY(ARRAY[
+  'Taiyo1.Line1.M1.Speed',
+  'Taiyo1.Line1.M1.Tension',
+  'Taiyo1.Line1.M1.PaperUsage'
+])
+  AND ts >= '2026-02-27T08:00:00Z'::timestamptz
+  AND ts <= '2026-02-27T10:00:00Z'::timestamptz
+ORDER BY ts ASC
+LIMIT 5000;
+```
+
+Average per 1-minute bucket (numeric JSON value):
+
+```sql
+SELECT
+  time_bucket('1 minute', ts) AS bucket,
+  attribute_path,
+  AVG((value #>> '{}')::double precision) AS avg_value
+FROM public.af_historian
+WHERE attribute_path = ANY(ARRAY[
+  'Taiyo1.Line1.M1.Speed',
+  'Taiyo1.Line1.M1.Tension'
+])
+  AND ts >= '2026-02-27T08:00:00Z'::timestamptz
+  AND ts <= '2026-02-27T10:00:00Z'::timestamptz
+GROUP BY bucket, attribute_path
+ORDER BY bucket ASC, attribute_path ASC;
+```
+
+First and last value per attribute in a window:
+
+```sql
+WITH scoped AS (
+  SELECT ts, attribute_path, value
+  FROM public.af_historian
+  WHERE attribute_path = ANY(ARRAY[
+    'Taiyo1.Line1.M1.TotalPaper',
+    'Taiyo1.Line1.M1.TotalLength'
+  ])
+    AND ts >= '2026-02-27T08:00:00Z'::timestamptz
+    AND ts <= '2026-02-27T10:00:00Z'::timestamptz
+),
+firsts AS (
+  SELECT DISTINCT ON (attribute_path)
+    attribute_path,
+    ts AS first_ts,
+    value AS first_value
+  FROM scoped
+  ORDER BY attribute_path, ts ASC
+),
+lasts AS (
+  SELECT DISTINCT ON (attribute_path)
+    attribute_path,
+    ts AS last_ts,
+    value AS last_value
+  FROM scoped
+  ORDER BY attribute_path, ts DESC
+)
+SELECT
+  f.attribute_path,
+  f.first_ts,
+  l.last_ts,
+  f.first_value,
+  l.last_value
+FROM firsts f
+JOIN lasts l USING (attribute_path)
+ORDER BY f.attribute_path;
+```
+
+Delta and reverse delta per attribute:
+
+```sql
+WITH scoped AS (
+  SELECT ts, attribute_path, value
+  FROM public.af_historian
+  WHERE attribute_path = ANY(ARRAY[
+    'Taiyo1.Line1.M1.TotalPaper',
+    'Taiyo1.Line1.M1.TotalLength'
+  ])
+    AND ts >= '2026-02-27T08:00:00Z'::timestamptz
+    AND ts <= '2026-02-27T10:00:00Z'::timestamptz
+),
+firsts AS (
+  SELECT DISTINCT ON (attribute_path)
+    attribute_path,
+    (value #>> '{}')::double precision AS first_num
+  FROM scoped
+  ORDER BY attribute_path, ts ASC
+),
+lasts AS (
+  SELECT DISTINCT ON (attribute_path)
+    attribute_path,
+    (value #>> '{}')::double precision AS last_num
+  FROM scoped
+  ORDER BY attribute_path, ts DESC
+)
+SELECT
+  f.attribute_path,
+  (l.last_num - f.first_num) AS delta,
+  (f.first_num - l.last_num) AS reverse_delta
+FROM firsts f
+JOIN lasts l USING (attribute_path)
+ORDER BY f.attribute_path;
+```
+
+Delete historian data by path and time range:
+
+```sql
+DELETE FROM public.af_historian
+WHERE attribute_path = ANY(ARRAY[
+  'Taiyo1.Line1.M1.Speed',
+  'Taiyo1.Line1.M1.Tension'
+])
+  AND ts >= '2026-02-27T08:00:00Z'::timestamptz
+  AND ts <= '2026-02-27T10:00:00Z'::timestamptz;
+```
+
 ### Common errors
 
 - `400` missing path
 - `404` no matching attribute path
-- `400` one request resolves to multiple historian targets
-- `502` historian upstream error/unavailable
+- `400` invalid time range (`to < from`)
+- `503` historian backend not initialized
 
 ### Recommended event-window pattern
 

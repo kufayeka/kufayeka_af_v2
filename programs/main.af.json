@@ -370,8 +370,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": 1772173059001,
-            "ts": "2026-02-27T06:17:39.001Z"
+            "value": 1772258206720,
+            "ts": "2026-02-28T05:56:42.585Z"
           }
         }
       },
@@ -403,12 +403,12 @@
             "ts": "2026-02-26T17:46:10.942Z"
           },
           "Work Order": {
-            "value": "WO-2026-0012",
-            "ts": "2026-02-27T06:11:41.818Z"
+            "value": "-",
+            "ts": "2026-02-27T09:45:10.756Z"
           },
           "Job Lifecycle": {
-            "value": "load",
-            "ts": "2026-02-27T06:11:41.819Z"
+            "value": "unload",
+            "ts": "2026-02-27T09:45:10.754Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
@@ -416,27 +416,23 @@
           },
           "Job Activity": {
             "value": "-",
-            "ts": "2026-02-27T06:17:21.488Z"
+            "ts": "2026-02-27T09:31:30.497Z"
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-02-27T06:17:21.486Z"
+            "ts": "2026-02-27T06:55:29.226Z"
           },
           "Encoder Raw Value": {
-            "value": 55,
-            "ts": "2026-02-27T06:17:39.292Z"
+            "value": 21,
+            "ts": "2026-02-28T05:56:42.353Z"
           },
           "Paper Length": {
-            "value": 73187,
-            "ts": "2026-02-27T06:17:38.755Z"
+            "value": 567895,
+            "ts": "2026-02-28T05:56:42.553Z"
           },
           "Encoder Prev Value": {
-            "value": 12,
-            "ts": "2026-02-27T06:17:38.757Z"
-          },
-          "Historian": {
-            "value": {},
-            "ts": "2026-02-27T06:15:36.890Z"
+            "value": 21,
+            "ts": "2026-02-28T05:56:42.554Z"
           }
         }
       },
@@ -451,11 +447,11 @@
         "attributes": {
           "Work Order": {
             "value": "-",
-            "ts": "2026-02-27T06:01:14.110Z"
+            "ts": "2026-02-27T10:00:24.803Z"
           },
           "Job Lifecycle": {
             "value": "unload",
-            "ts": "2026-02-27T06:01:14.107Z"
+            "ts": "2026-02-27T10:00:24.802Z"
           }
         }
       },
@@ -724,8 +720,8 @@
             "valueType": "int32",
             "default": 0,
             "unit": "",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
+            "historianEnabled": true,
+            "historianTimeSourcePath": "Jasuindo.Timestamp",
             "historianTargetId": "default",
             "dashboardVisible": false,
             "dashboardEditable": true,

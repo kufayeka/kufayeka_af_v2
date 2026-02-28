@@ -5,15 +5,15 @@
     "port": 9900
   },
   "timescale": {
-    "host": "127.0.0.1",
-    "port": 5432,
-    "user": "postgres",
-    "password": "postgres",
-    "database": "af",
-    "adminDatabase": "postgres",
+    "host": "iwdt6pl48t.bv1x9l2srf.tsdb.cloud.timescale.com",
+    "port": 31370,
+    "user": "tsdbadmin",
+    "password": "png82d865krb1ug6",
+    "database": "tsdb",
+    "adminDatabase": "tsdb",
     "schema": "public",
     "table": "af_historian",
-    "ssl": false,
+    "ssl": "require",
     "chunkIntervalHours": 12,
     "maxQueryRows": 100000,
     "ingestBatchSize": 1000
