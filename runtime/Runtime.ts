@@ -43,6 +43,7 @@ class Runtime {
   private readonly maxQueuePerNode: number;
   private readonly nodeExecutionTimeoutMs: number;
   private readonly nodeState = new Map<string, NodeExecutionState>();
+  private assetWriteChain: Promise<void> = Promise.resolve();
   private shuttingDown = false;
   private shutdownPromise: Promise<void> | null = null;
 
@@ -90,6 +91,15 @@ class Runtime {
     return this.globalRevision;
   }
 
+  private enqueueAssetWrite<T>(fn: () => T | Promise<T>): Promise<T> {
+    const run = this.assetWriteChain.then(() => Promise.resolve(fn()));
+    this.assetWriteChain = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  }
+
   createNodeContext(nodeId: string): RuntimeNodeContext {
     const getAssetStorage = (): AssetStore | undefined => this.getGlobal<AssetStore | undefined>("assetStorage");
     const getEventStore = (): EventStore | undefined => this.getGlobal<EventStore | undefined>("eventStore");
@@ -118,15 +128,15 @@ class Runtime {
           if (!store) return [];
           return store.getAttributes(path);
         },
-        set: (path: string, value: unknown) => {
+        set: async (path: string, value: unknown) => {
           const store = getAssetStorage();
           if (!store) return [];
-          return store.setAttribute(path, value);
+          return await this.enqueueAssetWrite(() => store.setAttribute(path, value));
         },
-        setMany: (items: Array<{ path: string; value: unknown }>) => {
+        setMany: async (items: Array<{ path: string; value: unknown }>) => {
           const store = getAssetStorage();
           if (!store) return [];
-          return store.setAttributes(items);
+          return await this.enqueueAssetWrite(() => store.setAttributes(items));
         },
         findByValue: (path: string, expectedValue: unknown, options?: { strict?: boolean }): FindAttributesResult => {
           const store = getAssetStorage();

@@ -714,10 +714,10 @@ export default function HomePage() {
         </Toolbar>
         <Divider />
         <Tabs value={tab} onChange={(_, value: number) => setTab(value)} variant="scrollable" scrollButtons="auto">
+          <Tab label="Asset Manager" />
           <Tab label="Trigger Manager" />
           <Tab label="Action Script Manager" />
           <Tab label="Flow Manager" />
-          <Tab label="Asset Manager" />
           <Tab label="DB Connection" />
           <Tab label="Event" />
           <Tab label="Global Store" />
@@ -727,6 +727,9 @@ export default function HomePage() {
 
       <Box sx={{ px: 1, py: 1 }}>
         {tab === 0 && (
+          <AssetManager assets={program.assets} onChange={updateAssets} />
+        )}
+        {tab === 1 && (
           <TriggerManager
             triggers={program.triggers}
             watchPathOptions={watchPathOptions}
@@ -739,7 +742,7 @@ export default function HomePage() {
             onUpdateTriggerPayload={updateTriggerPayload}
           />
         )}
-        {tab === 1 && (
+        {tab === 2 && (
           <ActionManager
             actions={program.actions}
             scriptTemplates={program.scriptTemplates}
@@ -756,7 +759,7 @@ export default function HomePage() {
             onUpdateScriptTemplate={updateScriptTemplate}
           />
         )}
-        {tab === 2 && (
+        {tab === 3 && (
           <FlowManager
             triggerIds={program.triggers.map((item) => item.id)}
             actionIds={program.actions.map((item) => item.id)}
@@ -778,7 +781,6 @@ export default function HomePage() {
             onConnectNodes={(fromId, toId) => addLink({ from: fromId, to: toId, enabled: true })}
           />
         )}
-        {tab === 3 && <AssetManager assets={program.assets} onChange={updateAssets} />}
         {tab === 4 && <DbConnectionManager />}
         {tab === 5 && <EventManager />}
         {tab === 6 && <GlobalStoreManager onStatus={setStatus} />}

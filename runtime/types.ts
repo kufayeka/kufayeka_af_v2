@@ -184,12 +184,12 @@ export interface RuntimeAssetApi {
   query(path: string): QueryMatch[];
   get<T = unknown>(path: string, defaultValue?: T): T;
   getAll(path: string): AttributeQueryMatch[];
-  set(path: string, value: unknown): AttributeQueryMatch[];
-  setMany(items: Array<{ path: string; value: unknown }>): Array<{
+  set(path: string, value: unknown): Promise<AttributeQueryMatch[]>;
+  setMany(items: Array<{ path: string; value: unknown }>): Promise<Array<{
     path: string;
     count: number;
     matches: AttributeQueryMatch[];
-  }>;
+  }>>;
   findByValue(path: string, expectedValue: unknown, options?: { strict?: boolean }): FindAttributesResult;
   find(path: string, expectedValue: unknown, options?: { strict?: boolean }): FindAttributesResult;
   hierarchy(options?: { populateAttributes?: boolean }): AssetHierarchyNode[];

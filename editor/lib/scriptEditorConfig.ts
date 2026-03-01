@@ -138,8 +138,8 @@ declare interface ScriptContext {
     query: (path: string) => AssetQueryMatch[];
     get: (path: string, defaultValue?: any) => any;
     getAll: (path: string) => AssetQueryMatch[];
-    set: (path: string, value: any) => AssetQueryMatch[];
-    setMany: (items: Array<{ path: string; value: any }>) => Array<{ path: string; count: number; matches: AssetQueryMatch[] }>;
+    set: (path: string, value: any) => Promise<AssetQueryMatch[]>;
+    setMany: (items: Array<{ path: string; value: any }>) => Promise<Array<{ path: string; count: number; matches: AssetQueryMatch[] }>>;
     findByValue: (
       path: string,
       expectedValue: any,
@@ -269,13 +269,13 @@ declare const eventSys: ScriptContext["eventSys"];
       },
       {
         label: "asset.set",
-        insertText: "asset.set(${1:path}, ${2:value});",
+        insertText: "await asset.set(${1:path}, ${2:value});",
         detail: "Set one attribute",
         documentation: "Alias of context.asset.set(...)"
       },
       {
         label: "asset.setMany",
-        insertText: "asset.setMany([\\n  { path: ${1:\"A.B.C\"}, value: ${2:1} }\\n]);",
+        insertText: "await asset.setMany([\\n  { path: ${1:\"A.B.C\"}, value: ${2:1} }\\n]);",
         detail: "Set many attributes",
         documentation: "Alias of context.asset.setMany(...)"
       },
@@ -335,13 +335,13 @@ declare const eventSys: ScriptContext["eventSys"];
       },
       {
         label: "context.asset.set",
-        insertText: "context.asset.set(${1:path}, ${2:value});",
+        insertText: "await context.asset.set(${1:path}, ${2:value});",
         detail: "Set one attribute",
         documentation: "Set attribute value by path."
       },
       {
         label: "context.asset.setMany",
-        insertText: "context.asset.setMany([\\n  { path: ${1:\"A.B.C\"}, value: ${2:1} }\\n]);",
+        insertText: "await context.asset.setMany([\\n  { path: ${1:\"A.B.C\"}, value: ${2:1} }\\n]);",
         detail: "Set many attributes",
         documentation: "Bulk write attribute values."
       },

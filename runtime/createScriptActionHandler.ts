@@ -119,7 +119,9 @@ export default function createScriptActionHandler(
   const templateById = options.templateById || new Map<string, ScriptTemplate>();
   const template = action.templateId ? templateById.get(action.templateId) : null;
   const rawScript = (template && template.script) || action.script || "send(msg);";
-  const script = rawScript.replace(/(?<!\bawait\s)eventSys\.(open|close|get)\s*\(/g, "await eventSys.$1(");
+  const script = rawScript
+    .replace(/(?<!\bawait\s)eventSys\.(open|close|get)\s*\(/g, "await eventSys.$1(")
+    .replace(/(?<!\bawait\s)asset\.(set|setMany)\s*\(/g, "await asset.$1(");
   const scriptWithBindings = `
 const __bindings = bindings && typeof bindings === "object" ? bindings : {};
 const global = context && context.global ? context.global : null;
