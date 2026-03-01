@@ -1,0 +1,32 @@
+{
+  "enabled": true,
+  "connection": {
+    "host": "iwdt6pl48t.bv1x9l2srf.tsdb.cloud.timescale.com",
+    "port": 31370,
+    "user": "tsdbadmin",
+    "password": "png82d865krb1ug6",
+    "database": "tsdb",
+    "adminDatabase": "tsdb",
+    "schema": "public",
+    "ssl": "require",
+    "maxQueryRows": 100000
+  },
+  "tables": {
+    "historian": "af_historian",
+    "event": "af_event"
+  },
+  "queue": {
+    "historian": {
+      "enabled": true,
+      "batchSize": 1000,
+      "flushIntervalMs": 250,
+      "maxQueue": 250000
+    },
+    "event": {
+      "enabled": true,
+      "batchSize": 500,
+      "flushIntervalMs": 300,
+      "maxQueue": 100000
+    }
+  }
+}

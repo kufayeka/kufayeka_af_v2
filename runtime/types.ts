@@ -21,9 +21,6 @@ export type ValueType =
 export interface HistorianTarget {
   id: string;
   name: string;
-  udpHost: string;
-  udpPort: number;
-  httpBaseUrl: string;
   timestampUnit: "us" | "ns";
   enabled: boolean;
 }
@@ -210,11 +207,25 @@ export interface EventRow {
   acknowledged_ts: string | null;
   notes_on_open: string | null;
   notes_on_close: string | null;
+  captured_data_on_open: unknown | null;
+  captured_data_on_close: unknown | null;
 }
 
 export interface RuntimeEventApi {
-  open(eventPath: string, ts?: string, context?: Record<string, unknown>, notes?: string, severity?: string): EventRow;
-  close(pattern?: string, ts?: string, notes?: string): { pattern: string; closedCount: number; ts: string; notes_on_close: string | null };
+  open(
+    eventPath: string,
+    ts?: string,
+    context?: Record<string, unknown>,
+    notes?: string,
+    severity?: string,
+    capturedDataOnOpen?: unknown | null
+  ): Promise<EventRow>;
+  close(
+    pattern?: string,
+    ts?: string,
+    notes?: string,
+    capturedDataOnClose?: unknown | null
+  ): Promise<{ pattern: string; closedCount: number; ts: string; notes_on_close: string | null; captured_data_on_close: unknown | null }>;
   get(
     pattern?: string,
     from?: string,
@@ -222,7 +233,7 @@ export interface RuntimeEventApi {
     status?: string,
     contextFilters?: Record<string, unknown>,
     options?: Record<string, unknown>
-  ): EventRow[];
+  ): Promise<EventRow[]>;
 }
 
 export interface RuntimeNodeContext {
@@ -239,18 +250,40 @@ export type RuntimeNodeHandler = (
 ) => Promise<void> | void;
 
 export interface EventStore {
-  dbPath: string;
-  open(eventPath: string, ts?: string, context?: Record<string, unknown>, notesOnOpen?: string, severity?: string): EventRow;
-  close(pattern?: string, ts?: string, notesOnClose?: string): { pattern: string; closedCount: number; ts: string; notes_on_close: string | null };
-  closeById(id: string, ts?: string, notesOnClose?: string): { id: string; closedCount: number; ts: string; notes_on_close: string | null };
-  acknowledgeById(id: string, ts?: string): { id: string; acknowledgedCount: number; acknowledged_ts: string };
-  deleteById(id: string): { id: string; deletedCount: number };
-  deleteByPattern(pattern?: string, status?: string, from?: string, to?: string, severity?: string): {
+  getMeta(): {
+    engine: "postgresql";
+    database: string;
+    schema: string;
+    table: string;
+  };
+  open(
+    eventPath: string,
+    ts?: string,
+    context?: Record<string, unknown>,
+    notesOnOpen?: string,
+    severity?: string,
+    capturedDataOnOpen?: unknown | null
+  ): Promise<EventRow>;
+  close(
+    pattern?: string,
+    ts?: string,
+    notesOnClose?: string,
+    capturedDataOnClose?: unknown | null
+  ): Promise<{ pattern: string; closedCount: number; ts: string; notes_on_close: string | null; captured_data_on_close: unknown | null }>;
+  closeById(
+    id: string,
+    ts?: string,
+    notesOnClose?: string,
+    capturedDataOnClose?: unknown | null
+  ): Promise<{ id: string; closedCount: number; ts: string; notes_on_close: string | null; captured_data_on_close: unknown | null }>;
+  acknowledgeById(id: string, ts?: string): Promise<{ id: string; acknowledgedCount: number; acknowledged_ts: string }>;
+  deleteById(id: string): Promise<{ id: string; deletedCount: number }>;
+  deleteByPattern(pattern?: string, status?: string, from?: string, to?: string, severity?: string): Promise<{
     pattern: string;
     status: string;
     severity: string;
     deletedCount: number;
-  };
+  }>;
   get(
     pattern?: string,
     from?: string,
@@ -258,7 +291,7 @@ export interface EventStore {
     status?: string,
     contextFilters?: Record<string, unknown>,
     options?: Record<string, unknown>
-  ): EventRow[];
+  ): Promise<EventRow[]>;
   query(
     pattern?: string,
     from?: string,
@@ -266,15 +299,15 @@ export interface EventStore {
     status?: string,
     contextFilters?: Record<string, unknown>,
     options?: Record<string, unknown>
-  ): {
+  ): Promise<{
     rows: EventRow[];
     total: number;
     limit: number;
     offset: number;
     sortBy: string;
     sortDir: "ASC" | "DESC";
-  };
-  shutdown?(): void;
+  }>;
+  shutdown?(): Promise<void>;
 }
 
 export interface ProgramDefinition {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Autocomplete,
@@ -58,9 +58,6 @@ const ATTRIBUTE_TYPES: AssetAttributeType[] = [
 const DEFAULT_HISTORIAN_TARGET: HistorianTargetDefinition = {
   id: "default",
   name: "Default Historian",
-  udpHost: "127.0.0.1",
-  udpPort: 9900,
-  httpBaseUrl: "http://127.0.0.1:8080",
   timestampUnit: "us",
   enabled: true
 };
@@ -288,7 +285,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [queryLoading, setQueryLoading] = useState(false);
   const [queryResult, setQueryResult] = useState<HistorianQueryResponse | null>(null);
   const [queryError, setQueryError] = useState("");
-  const fieldTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const runtimeApiBase = useMemo(() => {
     if (process.env.NEXT_PUBLIC_RUNTIME_API_BASE) return process.env.NEXT_PUBLIC_RUNTIME_API_BASE;
     if (typeof window !== "undefined") {
@@ -346,21 +342,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
 
   const getDraft = (fieldKey: string, source: string): string =>
     Object.prototype.hasOwnProperty.call(fieldDrafts, fieldKey) ? fieldDrafts[fieldKey] : source;
-
-  const scheduleDraftCommit = (fieldKey: string, next: string, commit: (value: string) => void) => {
-    setFieldDrafts((prev) => ({ ...prev, [fieldKey]: next }));
-    const existing = fieldTimersRef.current[fieldKey];
-    if (existing) clearTimeout(existing);
-    fieldTimersRef.current[fieldKey] = setTimeout(() => {
-      commit(next);
-      setFieldDrafts((prev) => {
-        const cloned = { ...prev };
-        delete cloned[fieldKey];
-        return cloned;
-      });
-      delete fieldTimersRef.current[fieldKey];
-    }, 350);
-  };
 
   const addAsset = (parentId: string | null) => {
     const id = makeId("asset");
@@ -430,14 +411,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     setExpandedKeys(assetKeys);
   }, [assets.assets.length]);
 
-  useEffect(() => {
-    return () => {
-      for (const timer of Object.values(fieldTimersRef.current)) {
-        clearTimeout(timer);
-      }
-    };
-  }, []);
-
   const selectedAssetEffectiveAttributes = useMemo(() => {
     if (!selectedAsset) return [];
     return getEffectiveAttributes(selectedAsset, templateById);
@@ -471,6 +444,10 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     if (assetAttributePaths.length === 0) return;
     setQueryPath(assetAttributePaths[0]);
   }, [assetAttributePaths, queryPath]);
+
+  useEffect(() => {
+    if (mainTab > 1) setMainTab(1);
+  }, [mainTab]);
 
   const treeData = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -732,7 +709,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         <Tabs value={mainTab} onChange={(_e, value: number) => setMainTab(value)}>
           <Tab label="Assets" />
           <Tab label="Attribute Templates" />
-          <Tab label="Historian Manager" />
         </Tabs>
       </Paper>
 
@@ -825,14 +801,14 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
 
                 <Box sx={{ display: "flex", gap: 0.75, mb: 1 }}>
                 <TextField
+                  key={`asset-name:${selectedAsset.id}:${selectedAsset.name}`}
                   size="small"
                   label="Asset Name"
-                  value={getDraft(`asset-name:${selectedAsset.id}`, selectedAsset.name)}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    scheduleDraftCommit(`asset-name:${selectedAsset.id}`, name, (committed) => {
-                      updateAssetWith(selectedAsset.id, (asset) => ({ ...asset, name: committed }));
-                    });
+                  defaultValue={selectedAsset.name}
+                  onBlur={(e) => {
+                    const committed = e.target.value;
+                    if (committed === selectedAsset.name) return;
+                    updateAssetWith(selectedAsset.id, (asset) => ({ ...asset, name: committed }));
                   }}
                   sx={{ minWidth: 460, maxWidth: 460 }}
                 />
@@ -1099,14 +1075,14 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
             ) : (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
                 <TextField
+                  key={`template-name:${selectedTemplate.id}:${selectedTemplate.name}`}
                   size="small"
                   label="Template Name"
-                  value={getDraft(`template-name:${selectedTemplate.id}`, selectedTemplate.name)}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    scheduleDraftCommit(`template-name:${selectedTemplate.id}`, name, (committed) => {
-                      updateTemplateWith(selectedTemplate.id, (template) => ({ ...template, name: committed }));
-                    });
+                  defaultValue={selectedTemplate.name}
+                  onBlur={(e) => {
+                    const committed = e.target.value;
+                    if (committed === selectedTemplate.name) return;
+                    updateTemplateWith(selectedTemplate.id, (template) => ({ ...template, name: committed }));
                   }}
                   sx={{ maxWidth: 460 }}
                 />
@@ -1149,25 +1125,18 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           </TableCell>
                           <TableCell>
                             <TextField
+                              key={`template-attr-name:${selectedTemplate.id}:${idx}:${attribute.name}`}
                               size="small"
-                              value={getDraft(
-                                `template-attr-name:${selectedTemplate.id}:${idx}`,
-                                attribute.name
-                              )}
-                              onChange={(e) => {
-                                const name = e.target.value;
-                                scheduleDraftCommit(
-                                  `template-attr-name:${selectedTemplate.id}:${idx}`,
-                                  name,
-                                  (committed) => {
-                                    updateTemplateWith(selectedTemplate.id, (template) => ({
-                                      ...template,
-                                      attributes: template.attributes.map((item, itemIdx) =>
-                                        itemIdx === idx ? { ...item, name: committed } : item
-                                      )
-                                    }));
-                                  }
-                                );
+                              defaultValue={attribute.name}
+                              onBlur={(e) => {
+                                const committed = e.target.value;
+                                if (committed === attribute.name) return;
+                                updateTemplateWith(selectedTemplate.id, (template) => ({
+                                  ...template,
+                                  attributes: template.attributes.map((item, itemIdx) =>
+                                    itemIdx === idx ? { ...item, name: committed } : item
+                                  )
+                                }));
                               }}
                             />
                           </TableCell>
@@ -1196,50 +1165,37 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           </TableCell>
                           <TableCell>
                             <TextField
+                              key={`template-attr-default:${selectedTemplate.id}:${idx}:${serializeValue(attribute.default)}`}
                               size="small"
-                              value={getDraft(
-                                `template-attr-default:${selectedTemplate.id}:${idx}`,
-                                serializeValue(attribute.default)
-                              )}
-                              onChange={(e) => {
-                                const raw = e.target.value;
-                                scheduleDraftCommit(
-                                  `template-attr-default:${selectedTemplate.id}:${idx}`,
-                                  raw,
-                                  (committed) => {
-                                    const next = parseByType(attribute.valueType, committed);
-                                    updateTemplateWith(selectedTemplate.id, (template) => ({
-                                      ...template,
-                                      attributes: template.attributes.map((item, itemIdx) =>
-                                        itemIdx === idx ? { ...item, default: next } : item
-                                      )
-                                    }));
-                                  }
-                                );
+                              defaultValue={serializeValue(attribute.default)}
+                              onBlur={(e) => {
+                                const committed = e.target.value;
+                                const currentSerialized = serializeValue(attribute.default);
+                                if (committed === currentSerialized) return;
+                                const next = parseByType(attribute.valueType, committed);
+                                updateTemplateWith(selectedTemplate.id, (template) => ({
+                                  ...template,
+                                  attributes: template.attributes.map((item, itemIdx) =>
+                                    itemIdx === idx ? { ...item, default: next } : item
+                                  )
+                                }));
                               }}
                             />
                           </TableCell>
                           <TableCell>
                             <TextField
+                              key={`template-attr-unit:${selectedTemplate.id}:${idx}:${attribute.unit ?? ""}`}
                               size="small"
-                              value={getDraft(
-                                `template-attr-unit:${selectedTemplate.id}:${idx}`,
-                                attribute.unit ?? ""
-                              )}
-                              onChange={(e) => {
-                                const unit = e.target.value;
-                                scheduleDraftCommit(
-                                  `template-attr-unit:${selectedTemplate.id}:${idx}`,
-                                  unit,
-                                  (committed) => {
-                                    updateTemplateWith(selectedTemplate.id, (template) => ({
-                                      ...template,
-                                      attributes: template.attributes.map((item, itemIdx) =>
-                                        itemIdx === idx ? { ...item, unit: committed } : item
-                                      )
-                                    }));
-                                  }
-                                );
+                              defaultValue={attribute.unit ?? ""}
+                              onBlur={(e) => {
+                                const committed = e.target.value;
+                                if (committed === (attribute.unit ?? "")) return;
+                                updateTemplateWith(selectedTemplate.id, (template) => ({
+                                  ...template,
+                                  attributes: template.attributes.map((item, itemIdx) =>
+                                    itemIdx === idx ? { ...item, unit: committed } : item
+                                  )
+                                }));
                               }}
                             />
                           </TableCell>
@@ -1257,36 +1213,22 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                             />
                           </TableCell>
                           <TableCell>
-                            <Autocomplete
-                              freeSolo
-                              options={assetAttributePaths}
-                              value={getDraft(
-                                `template-attr-time-source:${selectedTemplate.id}:${idx}`,
-                                attribute.historianTimeSourcePath ?? ""
-                              )}
-                              onInputChange={(_e, value) => {
-                                scheduleDraftCommit(
-                                  `template-attr-time-source:${selectedTemplate.id}:${idx}`,
-                                  value,
-                                  (committed) => {
-                                    updateTemplateWith(selectedTemplate.id, (template) => ({
-                                      ...template,
-                                      attributes: template.attributes.map((item, itemIdx) =>
-                                        itemIdx === idx
-                                          ? { ...item, historianTimeSourcePath: committed }
-                                          : item
-                                      )
-                                    }));
-                                  }
-                                );
+                            <TextField
+                              key={`template-attr-time-source:${selectedTemplate.id}:${idx}:${attribute.historianTimeSourcePath ?? ""}`}
+                              size="small"
+                              defaultValue={attribute.historianTimeSourcePath ?? ""}
+                              onBlur={(e) => {
+                                const committed = e.target.value;
+                                if (committed === (attribute.historianTimeSourcePath ?? "")) return;
+                                updateTemplateWith(selectedTemplate.id, (template) => ({
+                                  ...template,
+                                  attributes: template.attributes.map((item, itemIdx) =>
+                                    itemIdx === idx ? { ...item, historianTimeSourcePath: committed } : item
+                                  )
+                                }));
                               }}
-                              renderInput={(params) => (
-                                <TextField
-                                  {...params}
-                                  size="small"
-                                  placeholder="AssetA.Machine1.EventTime"
-                                />
-                              )}
+                              placeholder="AssetA.Machine1.EventTime"
+                              inputProps={{ list: "asset-attribute-paths" }}
                             />
                           </TableCell>
                           <TableCell>
@@ -1400,9 +1342,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                   const next: HistorianTargetDefinition = {
                     id: `hist_${Date.now()}`,
                     name: `Historian ${historianTargets.length + 1}`,
-                    udpHost: "127.0.0.1",
-                    udpPort: 9900,
-                    httpBaseUrl: "http://127.0.0.1:8080",
                     timestampUnit: "us",
                     enabled: true
                   };
@@ -1419,9 +1358,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                   <TableRow>
                     <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>ID</TableCell>
                     <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 150 }}>Name</TableCell>
-                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 130 }}>UDP Host</TableCell>
-                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 100 }}>UDP Port</TableCell>
-                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 210 }}>HTTP Base URL</TableCell>
                     <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 90 }}>TS Unit</TableCell>
                     <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 90 }}>Enabled</TableCell>
                     <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 220 }}>Action</TableCell>
@@ -1454,49 +1390,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                             updateHistorians(
                               historianTargets.map((item, itemIdx) =>
                                 itemIdx === idx ? { ...item, name } : item
-                              )
-                            );
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextField
-                          size="small"
-                          value={target.udpHost}
-                          onChange={(e) => {
-                            const udpHost = e.target.value;
-                            updateHistorians(
-                              historianTargets.map((item, itemIdx) =>
-                                itemIdx === idx ? { ...item, udpHost } : item
-                              )
-                            );
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextField
-                          size="small"
-                          type="number"
-                          value={target.udpPort}
-                          onChange={(e) => {
-                            const udpPort = Number(e.target.value) || 9900;
-                            updateHistorians(
-                              historianTargets.map((item, itemIdx) =>
-                                itemIdx === idx ? { ...item, udpPort } : item
-                              )
-                            );
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextField
-                          size="small"
-                          value={target.httpBaseUrl}
-                          onChange={(e) => {
-                            const httpBaseUrl = e.target.value;
-                            updateHistorians(
-                              historianTargets.map((item, itemIdx) =>
-                                itemIdx === idx ? { ...item, httpBaseUrl } : item
                               )
                             );
                           }}
@@ -1762,6 +1655,11 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         </Box>
       )}
     </Box>
+    <datalist id="asset-attribute-paths">
+      {assetAttributePaths.map((path) => (
+        <option key={`asset-attr-path:${path}`} value={path} />
+      ))}
+    </datalist>
     <Dialog open={monitorOpen} onClose={() => setMonitorOpen(false)} maxWidth="lg" fullWidth>
       <DialogTitle>
         Historian Monitor

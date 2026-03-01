@@ -65,9 +65,6 @@ export interface AssetFrameworkDefinition {
 export interface HistorianTargetDefinition {
   id: string;
   name: string;
-  udpHost: string;
-  udpPort: number;
-  httpBaseUrl: string;
   timestampUnit: "us" | "ns";
   enabled?: boolean;
 }

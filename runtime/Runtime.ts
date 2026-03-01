@@ -44,6 +44,7 @@ class Runtime {
   private readonly nodeExecutionTimeoutMs: number;
   private readonly nodeState = new Map<string, NodeExecutionState>();
   private shuttingDown = false;
+  private shutdownPromise: Promise<void> | null = null;
 
   constructor(options: RuntimeOptions = {}) {
     this.maxInflightPerNode = options.maxInflightPerNode ?? 50;
@@ -148,20 +149,20 @@ class Runtime {
         },
       },
       eventSys: {
-        open: (eventPath, ts, context, notes, severity) => {
+        open: async (eventPath, ts, context, notes, severity, capturedDataOnOpen) => {
           const store = getEventStore();
           if (!store) throw new Error("eventStore is not available");
-          return store.open(eventPath, ts, context, notes, severity);
+          return await store.open(eventPath, ts, context, notes, severity, capturedDataOnOpen);
         },
-        close: (pattern, ts, notes) => {
+        close: async (pattern, ts, notes, capturedDataOnClose) => {
           const store = getEventStore();
           if (!store) throw new Error("eventStore is not available");
-          return store.close(pattern, ts, notes);
+          return await store.close(pattern, ts, notes, capturedDataOnClose);
         },
-        get: (pattern, from, to, status, contextFilters, options) => {
+        get: async (pattern, from, to, status, contextFilters, options) => {
           const store = getEventStore();
           if (!store) throw new Error("eventStore is not available");
-          return store.get(pattern, from, to, status, contextFilters, options);
+          return await store.get(pattern, from, to, status, contextFilters, options);
         },
       },
     };
@@ -249,10 +250,31 @@ class Runtime {
   }
 
   async shutdown(): Promise<void> {
-    this.shuttingDown = true;
-    for (const state of this.nodeState.values()) {
-      state.queue.length = 0;
-    }
+    if (this.shutdownPromise) return this.shutdownPromise;
+    this.shutdownPromise = (async () => {
+      this.shuttingDown = true;
+      for (const state of this.nodeState.values()) {
+        state.queue.length = 0;
+      }
+
+      const deadlineMs = Math.max(
+        500,
+        Number(process.env.RUNTIME_SHUTDOWN_DRAIN_TIMEOUT_MS || 5000)
+      );
+      const started = Date.now();
+      while (Date.now() - started < deadlineMs) {
+        let inflight = 0;
+        for (const state of this.nodeState.values()) {
+          inflight += state.inflight;
+        }
+        if (inflight <= 0) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 25));
+      }
+      console.warn(
+        `[runtime] shutdown drain timeout (${deadlineMs}ms), forcing close with in-flight handlers`
+      );
+    })();
+    return this.shutdownPromise;
   }
 }
 

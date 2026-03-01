@@ -169,8 +169,20 @@ declare interface ScriptContext {
     hierarchy: (options?: { populateAttributes?: boolean }) => any[];
   };
   eventSys: {
-    open: (path: string, ts: string, context: Record<string, any>, notes: string, severity?: string) => any;
-    close: (pattern: string, ts: string, notes: string) => any;
+    open: (
+      path: string,
+      ts: string,
+      context: Record<string, any>,
+      notes: string,
+      severity?: string,
+      captured_data_on_open?: Record<string, any> | null
+    ) => Promise<any>;
+    close: (
+      pattern: string,
+      ts: string,
+      notes: string,
+      captured_data_on_close?: Record<string, any> | null
+    ) => Promise<any>;
     get: (
       pattern: string,
       from: string,
@@ -178,7 +190,7 @@ declare interface ScriptContext {
       status: string,
       contextFilters?: Record<string, any>,
       options?: { limit?: number }
-    ) => any[];
+    ) => Promise<any[]>;
   };
 }
 
@@ -227,13 +239,13 @@ declare const eventSys: ScriptContext["eventSys"];
       },
       {
         label: "eventSys.open",
-        insertText: "eventSys.open(${1:path}, ${2:msg.ts}, ${3:{}}, ${4:notes}, ${5:\"low\"});",
+        insertText: "eventSys.open(${1:path}, ${2:msg.ts}, ${3:{}}, ${4:notes}, ${5:\"low\"}, ${6:{}});",
         detail: "Open event",
         documentation: "Create new event row."
       },
       {
         label: "eventSys.close",
-        insertText: "eventSys.close(${1:pattern}, ${2:msg.ts}, ${3:notes});",
+        insertText: "eventSys.close(${1:pattern}, ${2:msg.ts}, ${3:notes}, ${4:{}});",
         detail: "Close event(s)",
         documentation: "Close open events by wildcard pattern."
       },

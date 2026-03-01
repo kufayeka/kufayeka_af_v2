@@ -17,6 +17,7 @@ import AssetManager from "../components/managers/AssetManager";
 import EventManager from "../components/managers/EventManager";
 import DocsManager from "../components/managers/DocsManager";
 import GlobalStoreManager from "../components/managers/GlobalStoreManager";
+import DbConnectionManager from "../components/managers/DbConnectionManager";
 import {
   normalizeProgram,
   parseMaybeJson,
@@ -696,6 +697,7 @@ export default function HomePage() {
           <Tab label="Action Script Manager" />
           <Tab label="Flow Manager" />
           <Tab label="Asset Manager" />
+          <Tab label="DB Connection" />
           <Tab label="Event" />
           <Tab label="Global Store" />
           <Tab label="Docs" />
@@ -756,9 +758,10 @@ export default function HomePage() {
           />
         )}
         {tab === 3 && <AssetManager assets={program.assets} onChange={updateAssets} />}
-        {tab === 4 && <EventManager />}
-        {tab === 5 && <GlobalStoreManager onStatus={setStatus} />}
-        {tab === 6 && <DocsManager />}
+        {tab === 4 && <DbConnectionManager />}
+        {tab === 5 && <EventManager />}
+        {tab === 6 && <GlobalStoreManager onStatus={setStatus} />}
+        {tab === 7 && <DocsManager />}
       </Box>
     </Box>
   );

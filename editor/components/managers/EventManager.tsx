@@ -42,6 +42,8 @@ interface EventRow {
   acknowledged_ts: string | null;
   notes_on_open: string | null;
   notes_on_close: string | null;
+  captured_data_on_open: Record<string, unknown> | null;
+  captured_data_on_close: Record<string, unknown> | null;
 }
 
 interface EventApiResponse {
@@ -49,10 +51,16 @@ interface EventApiResponse {
   total?: number;
 }
 
-const RUNTIME_EVENT_API =
-  process.env.NEXT_PUBLIC_KUFAYEKA_RUNTIME_EVENT_API?.trim() ||
-  "http://192.168.68.9:4000/api/events";
- 
+interface EventMetaResponse {
+  provider?: string;
+  eventStore?: {
+    engine?: string;
+    database?: string;
+    schema?: string;
+    table?: string;
+  };
+}
+
 const severityBg: Record<EventSeverity, string> = {
   other: "#ffffff",
   info: "#e8f1ff",
@@ -100,9 +108,21 @@ export default function EventManager() {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [sortBy, setSortBy] = useState<SortColumn>("start_ts");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
+  const [meta, setMeta] = useState<EventMetaResponse | null>(null);
+
+  const runtimeEventApi = useMemo(() => {
+    const explicit = process.env.NEXT_PUBLIC_KUFAYEKA_RUNTIME_EVENT_API?.trim();
+    if (explicit) return explicit;
+    const base = process.env.NEXT_PUBLIC_RUNTIME_API_BASE?.trim();
+    if (base) return `${base.replace(/\/$/, "")}/api/events`;
+    if (typeof window !== "undefined") {
+      return `${window.location.protocol}//${window.location.hostname}:4000/api/events`;
+    }
+    return "http://127.0.0.1:4000/api/events";
+  }, []);
 
   const queryUrl = useMemo(() => {
-    const url = new URL(RUNTIME_EVENT_API);
+    const url = new URL(runtimeEventApi);
     url.searchParams.set("pattern", pattern || "*");
     url.searchParams.set("status", status);
     url.searchParams.set("severity", severity);
@@ -113,7 +133,7 @@ export default function EventManager() {
     if (from) url.searchParams.set("from", from);
     if (to) url.searchParams.set("to", to);
     return url.toString();
-  }, [from, page, pattern, rowsPerPage, severity, sortBy, sortDir, status, to]);
+  }, [from, page, pattern, rowsPerPage, runtimeEventApi, severity, sortBy, sortDir, status, to]);
 
   const loadRows = async () => {
     setLoading(true);
@@ -146,7 +166,7 @@ export default function EventManager() {
 
   const closeById = async (id: string) =>
     runRowAction(async () => {
-      const response = await fetch(`${RUNTIME_EVENT_API}/close-id`, {
+      const response = await fetch(`${runtimeEventApi}/close-id`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id, ts: new Date().toISOString(), notes_on_close: "Manual close" })
@@ -156,7 +176,7 @@ export default function EventManager() {
 
   const acknowledgeById = async (id: string) =>
     runRowAction(async () => {
-      const response = await fetch(`${RUNTIME_EVENT_API}/ack-id`, {
+      const response = await fetch(`${runtimeEventApi}/ack-id`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id, ts: new Date().toISOString() })
@@ -166,7 +186,7 @@ export default function EventManager() {
 
   const deleteById = async (id: string) =>
     runRowAction(async () => {
-      const response = await fetch(`${RUNTIME_EVENT_API}/by-id?id=${encodeURIComponent(id)}`, {
+      const response = await fetch(`${runtimeEventApi}/by-id?id=${encodeURIComponent(id)}`, {
         method: "DELETE"
       });
       await parseJsonOrError(response);
@@ -176,7 +196,7 @@ export default function EventManager() {
     const confirmed = window.confirm("Delete all events matching the current filter?");
     if (!confirmed) return;
     await runRowAction(async () => {
-      const url = new URL(RUNTIME_EVENT_API);
+      const url = new URL(runtimeEventApi);
       url.searchParams.set("pattern", pattern || "*");
       url.searchParams.set("status", status);
       url.searchParams.set("severity", severity);
@@ -199,6 +219,21 @@ export default function EventManager() {
     return () => clearInterval(timer);
   }, [queryUrl]);
 
+  useEffect(() => {
+    const loadMeta = async () => {
+      try {
+        const url = new URL(runtimeEventApi);
+        url.pathname = "/api/events/meta";
+        const response = await fetch(url.toString());
+        const data = (await parseJsonOrError(response)) as EventMetaResponse;
+        setMeta(data);
+      } catch {
+        setMeta(null);
+      }
+    };
+    void loadMeta();
+  }, [runtimeEventApi]);
+
   const toggleSort = (column: SortColumn) => {
     if (sortBy === column) {
       setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -213,6 +248,10 @@ export default function EventManager() {
       <Paper variant="outlined" sx={{ p: 1, display: "grid", gap: 1 }}>
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
           Event View
+        </Typography>
+        <Typography variant="caption" sx={{ color: "#475569" }}>
+          source: {runtimeEventApi} | engine: {meta?.eventStore?.engine || "-"} | table: {meta?.eventStore?.schema || "-"}.
+          {meta?.eventStore?.table || "-"}
         </Typography>
         <Box sx={{ display: "grid", gridTemplateColumns: "1.4fr 120px 120px 1fr 1fr auto auto", gap: 1 }}>
           <TextField
@@ -375,6 +414,8 @@ export default function EventManager() {
                 </TableCell>
                 <TableCell sx={{ minWidth: 220, backgroundColor: "#d0dfdb" }}>notes_on_open</TableCell>
                 <TableCell sx={{ minWidth: 220, backgroundColor: "#d0dfdb" }}>notes_on_close</TableCell>
+                <TableCell sx={{ minWidth: 260, backgroundColor: "#d0dfdb" }}>captured_data_on_open</TableCell>
+                <TableCell sx={{ minWidth: 260, backgroundColor: "#d0dfdb" }}>captured_data_on_close</TableCell>
                 <TableCell sx={{ minWidth: 260, backgroundColor: "#d0dfdb" }}>actions</TableCell>
               </TableRow>
             </TableHead>
@@ -394,6 +435,8 @@ export default function EventManager() {
                   <TableCell sx={{ whiteSpace: "nowrap" }}>{row.acknowledged_ts || ""}</TableCell>
                   <TableCell>{row.notes_on_open || ""}</TableCell>
                   <TableCell>{row.notes_on_close || ""}</TableCell>
+                  <TableCell>{row.captured_data_on_open ? serializeContextPreview(row.captured_data_on_open) : ""}</TableCell>
+                  <TableCell>{row.captured_data_on_close ? serializeContextPreview(row.captured_data_on_close) : ""}</TableCell>
                   <TableCell>
                     <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
                       <Button

@@ -2,7 +2,7 @@ export const OPENAPI_RUNTIME_SPEC = {
   openapi: "3.0.3",
   info: {
     title: "Kufayeka Runtime API",
-    version: "1.3.0",
+    version: "1.4.0",
     description:
       "Runtime API for asset system, attribute values, hierarchy, finder, event system, historian, and global store."
   },
@@ -193,7 +193,8 @@ export const OPENAPI_RUNTIME_SPEC = {
                 start_ts: "2026-02-26T12:00:00Z",
                 severity: "medium",
                 context: { assetId: "Taiyo1", jobId: "JOB-0001", state: "running" },
-                notes_on_open: "Job lifecycle changed to running"
+                notes_on_open: "Job lifecycle changed to running",
+                captured_data_on_open: { oldValue: "unload", newValue: "load", source: "PLC" }
               }
             }
           }
@@ -215,7 +216,8 @@ export const OPENAPI_RUNTIME_SPEC = {
               example: {
                 pattern: "Taiyo1.Events.jobLifecycle",
                 end_ts: "2026-02-26T12:10:00Z",
-                notes_on_close: "Job completed"
+                notes_on_close: "Job completed",
+                captured_data_on_close: { finalCount: 12345, reason: "Done" }
               }
             }
           }
@@ -234,7 +236,11 @@ export const OPENAPI_RUNTIME_SPEC = {
           content: {
             "application/json": {
               schema: { $ref: "#/components/schemas/CloseByIdRequest" },
-              example: { id: "8f63f54d-5d0f-4fd3-b953-5c36f59070c7", notes_on_close: "Acknowledged by operator" }
+              example: {
+                id: "8f63f54d-5d0f-4fd3-b953-5c36f59070c7",
+                notes_on_close: "Acknowledged by operator",
+                captured_data_on_close: { acknowledgedBy: "operator-1" }
+              }
             }
           }
         },
@@ -538,13 +544,10 @@ export const OPENAPI_RUNTIME_SPEC = {
       },
       HistorianTarget: {
         type: "object",
-        required: ["id", "name", "udpHost", "udpPort", "httpBaseUrl", "timestampUnit", "enabled"],
+        required: ["id", "name", "timestampUnit", "enabled"],
         properties: {
           id: { type: "string" },
           name: { type: "string" },
-          udpHost: { type: "string" },
-          udpPort: { type: "integer" },
-          httpBaseUrl: { type: "string" },
           timestampUnit: { type: "string", enum: ["us", "ns"] },
           enabled: { type: "boolean" }
         }
@@ -589,11 +592,27 @@ export const OPENAPI_RUNTIME_SPEC = {
           end_ts: { type: "string", format: "date-time", nullable: true },
           status: { type: "string", enum: ["open", "closed"] },
           severity: { type: "string", enum: ["other", "info", "low", "medium", "high", "critical"] },
-          context: { type: "object", additionalProperties: { $ref: "#/components/schemas/JsonValue" } },
+          context: {
+            type: "object",
+            description: "Arbitrary context object (stored as JSONB in af_event).",
+            additionalProperties: { $ref: "#/components/schemas/JsonValue" }
+          },
           is_acknowledge: { type: "boolean" },
           acknowledged_ts: { type: "string", format: "date-time", nullable: true },
           notes_on_open: { type: "string", nullable: true },
-          notes_on_close: { type: "string", nullable: true }
+          notes_on_close: { type: "string", nullable: true },
+          captured_data_on_open: {
+            type: "object",
+            nullable: true,
+            description: "Captured payload at open time (stored as JSONB in af_event).",
+            additionalProperties: { $ref: "#/components/schemas/JsonValue" }
+          },
+          captured_data_on_close: {
+            type: "object",
+            nullable: true,
+            description: "Captured payload at close time (stored as JSONB in af_event).",
+            additionalProperties: { $ref: "#/components/schemas/JsonValue" }
+          }
         }
       },
       OpenEventRequest: {
@@ -604,8 +623,18 @@ export const OPENAPI_RUNTIME_SPEC = {
           path: { type: "string" },
           start_ts: { type: "string", format: "date-time" },
           ts: { type: "string", format: "date-time" },
-          context: { type: "object", additionalProperties: { $ref: "#/components/schemas/JsonValue" } },
+          context: {
+            type: "object",
+            description: "Context object (stored as JSONB in af_event).",
+            additionalProperties: { $ref: "#/components/schemas/JsonValue" }
+          },
           notes_on_open: { type: "string" },
+          captured_data_on_open: {
+            type: "object",
+            nullable: true,
+            description: "Captured payload at open time (stored as JSONB in af_event).",
+            additionalProperties: { $ref: "#/components/schemas/JsonValue" }
+          },
           notes: { type: "string" },
           severity: { type: "string", enum: ["other", "info", "low", "medium", "high", "critical"] }
         },
@@ -614,24 +643,76 @@ export const OPENAPI_RUNTIME_SPEC = {
           start_ts: "2026-02-26T12:00:00Z",
           severity: "medium",
           context: { assetId: "Taiyo1", state: "running" },
-          notes_on_open: "Job started"
+          notes_on_open: "Job started",
+          captured_data_on_open: { oldValue: "unload", newValue: "load" }
         }
       },
       OpenEventResponse: { type: "object", required: ["ok", "row"], properties: { ok: { type: "boolean" }, row: { $ref: "#/components/schemas/EventRow" } } },
       CloseEventsRequest: {
         type: "object",
         description: "Close open events by wildcard pattern.",
-        properties: { pattern: { type: "string" }, event_path: { type: "string" }, end_ts: { type: "string", format: "date-time" }, ts: { type: "string", format: "date-time" }, notes_on_close: { type: "string" }, notes: { type: "string" } },
-        example: { pattern: "Taiyo1.Events.jobLifecycle", end_ts: "2026-02-26T12:15:00Z", notes_on_close: "Job completed" }
+        properties: {
+          pattern: { type: "string" },
+          event_path: { type: "string" },
+          end_ts: { type: "string", format: "date-time" },
+          ts: { type: "string", format: "date-time" },
+          notes_on_close: { type: "string" },
+          captured_data_on_close: {
+            type: "object",
+            nullable: true,
+            description: "Captured payload at close time (stored as JSONB in af_event).",
+            additionalProperties: { $ref: "#/components/schemas/JsonValue" }
+          },
+          notes: { type: "string" }
+        },
+        example: {
+          pattern: "Taiyo1.Events.jobLifecycle",
+          end_ts: "2026-02-26T12:15:00Z",
+          notes_on_close: "Job completed",
+          captured_data_on_close: { finalState: "completed" }
+        }
       },
       CloseByIdRequest: {
         type: "object",
         required: ["id"],
         description: "Close one event by row id.",
-        properties: { id: { type: "string" }, end_ts: { type: "string", format: "date-time" }, ts: { type: "string", format: "date-time" }, notes_on_close: { type: "string" }, notes: { type: "string" } },
-        example: { id: "8f63f54d-5d0f-4fd3-b953-5c36f59070c7", notes_on_close: "Closed by operator" }
+        properties: {
+          id: { type: "string" },
+          end_ts: { type: "string", format: "date-time" },
+          ts: { type: "string", format: "date-time" },
+          notes_on_close: { type: "string" },
+          captured_data_on_close: {
+            type: "object",
+            nullable: true,
+            description: "Captured payload at close time (stored as JSONB in af_event).",
+            additionalProperties: { $ref: "#/components/schemas/JsonValue" }
+          },
+          notes: { type: "string" }
+        },
+        example: {
+          id: "8f63f54d-5d0f-4fd3-b953-5c36f59070c7",
+          notes_on_close: "Closed by operator",
+          captured_data_on_close: { closedBy: "operator-1" }
+        }
       },
-      CloseEventsResponse: { type: "object", required: ["ok", "closedCount", "ts"], properties: { ok: { type: "boolean" }, pattern: { type: "string" }, id: { type: "string" }, closedCount: { type: "integer" }, ts: { type: "string", format: "date-time" }, notes_on_close: { type: "string", nullable: true } } },
+      CloseEventsResponse: {
+        type: "object",
+        required: ["ok", "closedCount", "ts"],
+        properties: {
+          ok: { type: "boolean" },
+          pattern: { type: "string" },
+          id: { type: "string" },
+          closedCount: { type: "integer" },
+          ts: { type: "string", format: "date-time" },
+          notes_on_close: { type: "string", nullable: true },
+          captured_data_on_close: {
+            type: "object",
+            nullable: true,
+            description: "Captured payload at close time (stored as JSONB in af_event).",
+            additionalProperties: { $ref: "#/components/schemas/JsonValue" }
+          }
+        }
+      },
       AckByIdRequest: {
         type: "object",
         required: ["id"],

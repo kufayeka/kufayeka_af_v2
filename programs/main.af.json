@@ -67,7 +67,7 @@
       "type": "script",
       "enabled": true,
       "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventLifecyclePath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\nconst eventActivityPath = `${assetPath}/Job/${workOrderAttribute}/Activity/*`;\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  asset.set(jobLifecycleAttributePath, `-`);\r\n  send(msg);\r\n\r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);\r\n\r\n  // CREATE EVENT BASED ON LIFECYCLE\r\n  if (jobLifecycleAttribute === \"load\") {\r\n\r\n    if (openedEvents.length === 0) {\r\n\r\n      const jobLifecycleContext = {\r\n        operator: operatorAttribute,\r\n        workOrder: workOrderAttribute,\r\n      }\r\n\r\n      eventSys.open(`${eventLifecyclePath}Running`, timestamp, jobLifecycleContext, `${workOrderAttribute} loaded`, \"info\");\r\n\r\n    }\r\n\r\n  } else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n    if (openedEvents.length > 0) {\r\n\r\n      eventSys.close(`${eventLifecyclePath}Running`, timestamp, `${workOrderAttribute} unloaded`);\r\n      eventSys.close(`${eventActivityPath}`, timestamp, `${workOrderAttribute} unloaded`);\r\n\r\n      asset.set(workOrderAttributePath, `-`);\r\n\r\n    }\r\n\r\n  }\r\n\r\n\r\n}\r\n\r\n\r\n\r\nsend(msg);",
+      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\r\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = await eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventLifecyclePath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\nconst eventActivityPath = `${assetPath}/Job/${workOrderAttribute}/Activity/*`;\r\n\r\nhelpers.log('event mulai:', jobLifecycleAttribute);\r\n\r\n// CEK APAKAH LOAD/UNLOAD\r\nif (![\"load\", \"unload\"].includes(String(jobLifecycleAttribute).toLowerCase())) {\r\n  helpers.log('--- bukan load/unload');\r\n  return;\r\n}\r\n\r\nhelpers.log('--- terdeteksi load/unload');\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  asset.set(jobLifecycleAttributePath, `-`);\r\n\r\n  msg.payload = \"alarm: work order is empty\";\r\n\r\n  send(msg);\r\n\r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);\r\n\r\n  // CREATE EVENT BASED ON LIFECYCLE\r\n  if (jobLifecycleAttribute === \"load\") {\r\n\r\n    if (openedEvents.length === 0) {\r\n\r\n      const jobLifecycleContext = {\r\n        operator: operatorAttribute,\r\n        workOrder: workOrderAttribute,\r\n      }\r\n\r\n      await eventSys.open(\r\n        `${eventLifecyclePath}Running`,\r\n        timestamp,\r\n        jobLifecycleContext,\r\n        `${workOrderAttribute} loaded`,\r\n        \"info\",\r\n        {\r\n          operator: operatorAttribute, workOrder: workOrderAttribute, lifecycle: \"load\", sourceAttribute: jobLifecycleAttributePath\r\n        });\r\n\r\n      msg.payload = \"event opened\";\r\n\r\n      send(msg);\r\n\r\n    }\r\n\r\n  } else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n    if (openedEvents.length > 0) {\r\n\r\n      await eventSys.close(`\r\n        ${eventLifecyclePath}Running`,\r\n        timestamp,\r\n        `${workOrderAttribute} unloaded`,\r\n        {\r\n          operator: operatorAttribute, workOrder: workOrderAttribute, lifecycle: \"unload\", sourceAttribute: jobLifecycleAttributePath\r\n        });\r\n\r\n      await eventSys.close(\r\n        `${eventActivityPath}`,\r\n        timestamp,\r\n        `${workOrderAttribute} unloaded`,\r\n        {\r\n          operator: operatorAttribute, workOrder: workOrderAttribute, lifecycle: \"unload\", closedPattern: eventActivityPath\r\n        });\r\n\r\n      asset.set(workOrderAttributePath, `-`);\r\n      asset.set(jobLifecycleAttributePath, `-`);\r\n      asset.set(jobActivityAttributePath, `-`);\r\n\r\n      msg.payload = \"event closed\";\r\n\r\n      send(msg);\r\n\r\n    }\r\n\r\n  }\r\n\r\n\r\n}\r\n\r\n\r\n\r\nreturn;",
       "templateId": "template.script_1771898442157",
       "templateBindingOverrides": {
         "AssetPath": {
@@ -95,7 +95,7 @@
           "name": "OperatorAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Operator",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Machine Operator",
           "allowOverride": true
         },
         "AlarmAttribute": {
@@ -104,53 +104,12 @@
           "staticValue": "",
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle Alarm",
           "allowOverride": true
-        }
-      },
-      "allowNodeDuplication": true,
-      "allowTreeDuplicate": true
-    },
-    {
-      "id": "Taiyo2.Events.JobLifecycle",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventLifecyclePath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\nconst eventActivityPath = `${assetPath}/Job/${workOrderAttribute}/Activity/*`;\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  asset.set(jobLifecycleAttributePath, `-`);\r\n  send(msg);\r\n\r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);\r\n\r\n  // CREATE EVENT BASED ON LIFECYCLE\r\n  if (jobLifecycleAttribute === \"load\") {\r\n\r\n    if (openedEvents.length === 0) {\r\n\r\n      const jobLifecycleContext = {\r\n        operator: operatorAttribute,\r\n        workOrder: workOrderAttribute,\r\n      }\r\n\r\n      eventSys.open(`${eventLifecyclePath}Running`, timestamp, jobLifecycleContext, `${workOrderAttribute} loaded`, \"info\");\r\n\r\n    }\r\n\r\n  } else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n    if (openedEvents.length > 0) {\r\n\r\n      eventSys.close(`${eventLifecyclePath}Running`, timestamp, `${workOrderAttribute} unloaded`);\r\n      eventSys.close(`${eventActivityPath}`, timestamp, `${workOrderAttribute} unloaded`);\r\n\r\n      asset.set(workOrderAttributePath, `-`);\r\n\r\n    }\r\n\r\n  }\r\n\r\n\r\n}\r\n\r\n\r\n\r\nsend(msg);",
-      "templateId": "template.script_1771898442157",
-      "templateBindingOverrides": {
-        "JobLifecycleAttribute": {
-          "name": "JobLifecycleAttribute",
+        },
+        "JobActivityAttribute": {
+          "name": "JobActivityAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle",
-          "allowOverride": true
-        },
-        "WorkOrderAttribute": {
-          "name": "WorkOrderAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order",
-          "allowOverride": true
-        },
-        "OperatorAttribute": {
-          "name": "OperatorAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Operator",
-          "allowOverride": true
-        },
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "static_string",
-          "staticValue": "Jasuindo.OffsetPrinter.Taiyo2",
-          "attributePath": "",
-          "allowOverride": true
-        },
-        "AlarmAttribute": {
-          "name": "AlarmAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle Alarm",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
           "allowOverride": true
         }
       },
@@ -163,7 +122,7 @@
       "type": "script",
       "enabled": true,
       "description": "",
-      "script": "helpers.log(\"msg:\", msg);",
+      "script": "helpers.log(\"msg:\", msg.payload);",
       "templateBindingOverrides": {},
       "allowNodeDuplication": true,
       "allowTreeDuplicate": true
@@ -175,7 +134,7 @@
       "enabled": true,
       "allowNodeDuplication": true,
       "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst jobActivityAttribute = JobActivityAttribute?.value || \"-\";\r\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\n\r\n// STOP jika reset / invalid (jangan bikin event)\r\nif (jobActivityAttribute === \"-\" || jobActivityAttribute === \"\" || jobActivityAttribute === null) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// STOP jika wo not found (jangan bikin event)\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n  asset.set(alarmAttributePath, \"!!!No Active Work Order!!!\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst eventPath = `${assetPath}/Job/${workOrderAttribute}/Activity/${jobActivityAttribute}`;\r\nconst openedEvents = eventSys.get(eventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\nif (openedEvents.length > 0) {\r\n  asset.set(alarmAttributePath, `!!!Activity already open: ${jobActivityAttribute}!!!`);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nasset.set(alarmAttributePath, \"-\");\r\n\r\nconst activityContext = {\r\n  operator: operatorAttribute,\r\n  workOrder: workOrderAttribute,\r\n};\r\n\r\neventSys.open(eventPath, timestamp, activityContext, `activity ${jobActivityAttribute} created`, \"info\");\r\n\r\n// AUTO RESET activity biar bisa trigger lagi walau value sama\r\nasset.set(jobActivityAttributePath, \"-\");\r\n\r\nsend(msg);\r\n",
+      "script": "// VARIABLE BINDINGS\r\nconst jobActivityAttribute = JobActivityAttribute?.value || \"-\";\r\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\r\nconst jobActivityCategoryAttributePath = JobActivityCategoryAttribute?.path || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\n\r\n// STOP jika reset / invalid (jangan bikin event)\r\nif (jobActivityAttribute === \"-\" || jobActivityAttribute === \"\" || jobActivityAttribute === null) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// STOP jika wo not found (jangan bikin event)\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n  asset.set(alarmAttributePath, \"!!!No Active Work Order!!!\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst rawActivity = String(jobActivityAttribute).trim();\r\nconst activityLower = rawActivity.toLowerCase();\r\n\r\nlet activityType = \"\";\r\nif (activityLower === \"production\") {\r\n  activityType = \"Production\";\r\n  asset.set(jobActivityCategoryAttributePath, activityType);\r\n} else if (activityLower.startsWith(\"setup\")) {\r\n  activityType = \"Setup\";\r\n  asset.set(jobActivityCategoryAttributePath, activityType);\r\n} else if (activityLower.startsWith(\"idle\")) {\r\n  activityType = \"Idle\";\r\n  asset.set(jobActivityCategoryAttributePath, activityType);\r\n} else {\r\n  asset.set(alarmAttributePath, `!!!Unknown activity type: ${rawActivity}!!!`);\r\n  asset.set(jobActivityCategoryAttributePath, \"-\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst basePath = `${assetPath}/Job/${workOrderAttribute}/Activity`;\r\nconst eventPath = `${basePath}/${rawActivity}`;\r\n\r\n// Cek duplicate event exact path\r\nconst openedExact = await eventSys.get(eventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\nif (openedExact.length > 0) {\r\n  asset.set(alarmAttributePath, `!!!Activity already open: ${rawActivity}!!!`);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// Selalu enforce single active activity:\r\n// sebelum open activity baru, tutup semua activity type lain\r\nconst setupPattern = `${basePath}/Setup/*`;\r\nconst productionPattern = `${basePath}/Production`;\r\nconst idlePattern = `${basePath}/Idle/*`;\r\n\r\nif (activityType === \"Production\") {\r\n  await eventSys.close(setupPattern, timestamp, \"auto close by Production transition\", { transitionTo: \"Production\", fromType: \"Setup\", workOrder: workOrderAttribute });\r\n  await eventSys.close(idlePattern, timestamp, \"auto close by Production transition\", { transitionTo: \"Production\", fromType: \"Idle\", workOrder: workOrderAttribute });\r\n} else if (activityType === \"Setup\") {\r\n  asset.set(jobActivityCategoryAttributePath, \"Setup\");\r\n  await eventSys.close(productionPattern, timestamp, \"auto close by Setup transition\", { transitionTo: \"Setup\", fromType: \"Production\", workOrder: workOrderAttribute });\r\n  await eventSys.close(idlePattern, timestamp, \"auto close by Setup transition\", { transitionTo: \"Setup\", fromType: \"Idle\", workOrder: workOrderAttribute });\r\n} else if (activityType === \"Idle\") {\r\n  asset.set(jobActivityCategoryAttributePath, \"Idle\");\r\n  await eventSys.close(productionPattern, timestamp, \"auto close by Idle transition\", { transitionTo: \"Idle\", fromType: \"Production\", workOrder: workOrderAttribute });\r\n  await eventSys.close(setupPattern, timestamp, \"auto close by Idle transition\", { transitionTo: \"Idle\", fromType: \"Setup\", workOrder: workOrderAttribute });\r\n}\r\n\r\nasset.set(alarmAttributePath, \"-\");\r\n\r\nconst activityContext = {\r\n  operator: operatorAttribute,\r\n  workOrder: workOrderAttribute,\r\n  activityType\r\n};\r\n\r\nawait eventSys.open(\n  eventPath,\n  timestamp,\n  activityContext,\n  `activity ${rawActivity} created`,\n  \"info\",\n  { operator: operatorAttribute, workOrder: workOrderAttribute, activity: rawActivity, activityType, sourceAttribute: jobActivityAttributePath }\n);\r\n\r\n// AUTO RESET activity biar bisa trigger lagi walau value sama\r\nasset.set(jobActivityAttributePath, \"-\");\r\n\r\nsend(msg);\r\n",
       "templateBindingOverrides": {
         "JobActivityAttribute": {
           "name": "JobActivityAttribute",
@@ -195,7 +154,7 @@
           "name": "OperatorAttribute",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Operator",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Machine Operator",
           "allowOverride": true
         },
         "AlarmAttribute": {
@@ -211,28 +170,68 @@
           "staticValue": "Jasuindo.OffsetPrinter.Taiyo1",
           "attributePath": "",
           "allowOverride": true
+        },
+        "JobActivityModeAttribute": {
+          "name": "JobActivityModeAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category",
+          "allowOverride": true
+        },
+        "JobActivityCategoryAttribute": {
+          "name": "JobActivityCategoryAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category",
+          "allowOverride": true
         }
       },
       "templateId": "template.script_1772002036179",
       "allowTreeDuplicate": true
     },
     {
-      "id": "Taiyo1.PLC.PaperLengthCounter",
+      "id": "Taiyo1.MES.ProductCounter",
       "label": "",
       "type": "script",
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "const raw = Number(EncoderRawValue?.value || 0);\r\nconst paperPath = PaperLength?.path || \"\";\r\nconst prevRawPath = EncoderPrevRaw?.path || \"\";\r\n\r\nif (!paperPath || !prevRawPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst prevRaw = Number(EncoderPrevRaw?.value || 0);\r\n\r\n// naik normal -> delta selisih\r\n// turun/reset -> delta = raw (anggap restart dari 0, tapi mungkin kebaca telat dan langsung lompat)\r\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\r\n\r\nconst total = Number(PaperLength?.value || 0) + delta;\r\n\r\nasset.set(paperPath, total);\r\nasset.set(prevRawPath, raw);\r\n\r\nsend(msg);\r\n",
-      "templateId": "template.script_1772164688880",
+      "script": "const paperLength = PaperLength?.value || 0;\r\nconst productLength = ProductLength?.value || 0;\r\nconst productCount = ProductCount?.value || 0;\r\n\r\nlet count = 0;\r\n\r\nif (productLength > 0) {\r\n  count = paperLength / productLength;\r\n}\r\n\r\ncount = Number(count.toFixed(2));\r\n\r\nasset.set(ProductCount.path, count);\r\n\r\nsend(msg);",
+      "templateId": "template.script_1772274570343",
       "templateBindingOverrides": {
         "PaperLength": {
           "name": "PaperLength",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Length",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed",
           "allowOverride": true
         },
+        "ProductLength": {
+          "name": "ProductLength",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Length",
+          "allowOverride": true
+        },
+        "ProductCount": {
+          "name": "ProductCount",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count",
+          "allowOverride": true
+        }
+      }
+    },
+    {
+      "id": "Taiyo1.MES.PaperConsumptionPerActivity",
+      "label": "",
+      "type": "script",
+      "enabled": true,
+      "allowTreeDuplicate": true,
+      "description": "",
+      "script": "const raw = Number(EncoderRawValue?.value ?? 0);\r\nconst prevRaw = Number(EncoderPrevRaw?.value ?? 0);\r\nconst prevRawPath = EncoderPrevRaw?.path ?? \"\";\r\n\r\n\r\n// counter paths\r\nconst setupPath = PaperConsumedSetup?.path ?? \"\";\r\nconst idlePath = PaperConsumedIdle?.path ?? \"\";\r\nconst prodPath = PaperConsumedProduction?.path ?? \"\";\r\nconst wastePath = PaperWaste?.path ?? \"\";\r\nconst totalConsumedPath = PaperTotalConsumed?.path ?? \"\";\r\nconst jobActivityCategory = JobActivityCategoryAttribute?.value ?? \"\";\r\n\r\n\r\nif (!prevRawPath) { send(msg); return; }\r\n\r\n\r\n\r\n// hitung delta (normal naik -> selisih, reset turun -> raw)\r\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\r\n\r\nif (!Number.isFinite(delta) || delta <= 0) {\r\n  asset.set(prevRawPath, raw);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// baca nilai sebelumnya\r\nconst setupPrev = Number(PaperConsumedSetup?.value ?? 0);\r\nconst idlePrev = Number(PaperConsumedIdle?.value ?? 0);\r\nconst prodPrev = Number(PaperConsumedProduction?.value ?? 0);\r\n\r\nlet setupNew = setupPrev;\r\nlet idleNew = idlePrev;\r\nlet prodNew = prodPrev;\r\n\r\n// routing delta ke jobActivityCategory\r\nif (jobActivityCategory === \"Setup\") setupNew += delta;\r\nelse if (jobActivityCategory === \"Idle\") idleNew += delta;\r\nelse if (jobActivityCategory === \"Production\") prodNew += delta;\r\nelse {\r\n  // jobActivityCategory unknown\r\n  helpers.log(\"no activity\");\r\n}\r\n\r\n// set counters kalau path tersedia\r\nif (setupPath) asset.set(setupPath, setupNew);\r\nif (idlePath) asset.set(idlePath, idleNew);\r\nif (prodPath) asset.set(prodPath, prodNew);\r\n\r\n// waste & total\r\nconst waste = setupNew + idleNew;\r\nconst totalConsumed = waste + prodNew;\r\n\r\nif (wastePath) asset.set(wastePath, waste);\r\nif (totalConsumedPath) asset.set(totalConsumedPath, totalConsumed);\r\n\r\n// simpan raw terakhir\r\nasset.set(prevRawPath, raw);\r\n\r\nsend(msg);",
+      "templateId": "template.script_1772296918869",
+      "templateBindingOverrides": {
         "EncoderRawValue": {
           "name": "EncoderRawValue",
           "source": "attribute",
@@ -246,6 +245,121 @@
           "staticValue": "",
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Prev Value",
           "allowOverride": true
+        },
+        "JobActivityAttribute": {
+          "name": "JobActivityAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
+          "allowOverride": true
+        },
+        "PaperConsumedSetup": {
+          "name": "PaperConsumedSetup",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Setup",
+          "allowOverride": true
+        },
+        "PaperConsumedIdle": {
+          "name": "PaperConsumedIdle",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Idle",
+          "allowOverride": true
+        },
+        "PaperConsumedProduction": {
+          "name": "PaperConsumedProduction",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production",
+          "allowOverride": true
+        },
+        "PaperWaste": {
+          "name": "PaperWaste",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Total Waste",
+          "allowOverride": true
+        },
+        "PaperTotalConsumed": {
+          "name": "PaperTotalConsumed",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Total Consumed",
+          "allowOverride": true
+        },
+        "JobActivityCategoryAttribute": {
+          "name": "JobActivityCategoryAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category",
+          "allowOverride": true
+        }
+      }
+    },
+    {
+      "id": "Taiyo1.Events.EventDetector",
+      "label": "",
+      "type": "script",
+      "enabled": true,
+      "allowTreeDuplicate": true,
+      "description": "",
+      "script": "// VARIABLE BINDINGS\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst assetPath = AssetPath || \"-\";\r\n\r\n// STOP jika WO invalid\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n  helpers.log(\"[ActivityDetector] skip: work order empty\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// BASE PATH activity\r\nconst base = `${assetPath}/Job/${workOrderAttribute}/Activity`;\r\n\r\n// PATTERN yang mau dicek (status open)\r\nconst setupPattern = `${base}/Setup/*`;\r\nconst productionPattern = `${base}/Production`;\r\nconst idlePattern = `${base}/Idle/*`;\r\n\r\n// QUERY OPEN EVENTS\r\nconst setupOpen = await eventSys.get(setupPattern, \"*\", \"*\", \"open\", {}, { limit: 200 });\r\nconst productionOpen = await eventSys.get(productionPattern, \"*\", \"*\", \"open\", {}, { limit: 200 });\r\nconst idleOpen = await eventSys.get(idlePattern, \"*\", \"*\", \"open\", {}, { limit: 200 });\r\n\r\n// GABUNG + DEDUPE by id\r\nconst dedup = new Map();\r\nfor (const row of [...setupOpen, ...productionOpen, ...idleOpen]) {\r\n  if (!row?.id) continue;\r\n  dedup.set(row.id, row);\r\n}\r\nconst activeEvents = Array.from(dedup.values());\r\n\r\n// LOG SUMMARY\r\nhelpers.log(`${helpers.now()} [ActivityDetector] active count:`, activeEvents.length);\r\nhelpers.log(\"[ActivityDetector] setup:\", setupOpen.length, \"production:\", productionOpen.length, \"idle:\", idleOpen.length);\r\n\r\n// LOG DETAIL path per event\r\n// for (const ev of activeEvents) {\r\n//   helpers.log(\"[ActivityDetector] active:\", ev.event_path, \"| status:\", ev.status, \"| start:\", ev.start_ts);\r\n// }\r\n\r\nsend(msg);\r\n",
+      "templateId": "template.script_1772300414929",
+      "templateBindingOverrides": {
+        "WorkOrderAttribute": {
+          "name": "WorkOrderAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order",
+          "allowOverride": true
+        },
+        "AssetPath": {
+          "name": "AssetPath",
+          "source": "static_string",
+          "staticValue": "Jasuindo.OffsetPrinter.Taiyo1",
+          "attributePath": "",
+          "allowOverride": true
+        }
+      }
+    },
+    {
+      "id": "Taiyo1.MES.TimeSpentPerActivity",
+      "label": "",
+      "type": "script",
+      "enabled": true,
+      "allowTreeDuplicate": true,
+      "description": "",
+      "script": "// ===== INPUT =====\r\nconst rawMode = String(JobActivityCategoryAttribute?.value ?? \"\")\r\n  .trim()\r\n  .toLowerCase();\r\n\r\n// ===== OUTPUT PATHS =====\r\nconst setupPath = SetupDurationSec?.path ?? \"\";\r\nconst idlePath = IdleDurationSec?.path ?? \"\";\r\nconst prodPath = ProductionDurationSec?.path ?? \"\";\r\n\r\nif (!setupPath || !idlePath || !prodPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// ===== AMBIL NILAI SEBELUMNYA =====\r\nlet setupTime = Number(SetupDurationSec?.value ?? 0);\r\nlet idleTime = Number(IdleDurationSec?.value ?? 0);\r\nlet prodTime = Number(ProductionDurationSec?.value ?? 0);\r\n\r\n// ===== IDENTIFIKASI MODE (support Setup/X dll) =====\r\nlet mode = \"\";\r\n\r\nif (rawMode.startsWith(\"setup\")) mode = \"setup\";\r\nelse if (rawMode.startsWith(\"idle\")) mode = \"idle\";\r\nelse if (rawMode.startsWith(\"production\")) mode = \"production\";\r\n\r\n// ===== TAMBAH 1 DETIK SESUAI MODE =====\r\nif (mode === \"setup\") setupTime += 1;\r\nelse if (mode === \"idle\") idleTime += 1;\r\nelse if (mode === \"production\") prodTime += 1;\r\n\r\n// ===== SIMPAN =====\r\nasset.set(setupPath, setupTime);\r\nasset.set(idlePath, idleTime);\r\nasset.set(prodPath, prodTime);\r\n\r\nsend(msg);",
+      "templateId": "template.script_1772340546636",
+      "templateBindingOverrides": {
+        "JobActivityCategoryAttribute": {
+          "name": "JobActivityCategoryAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category",
+          "allowOverride": true
+        },
+        "SetupDurationSec": {
+          "name": "SetupDurationSec",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Setup Time",
+          "allowOverride": true
+        },
+        "IdleDurationSec": {
+          "name": "IdleDurationSec",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Idle Time",
+          "allowOverride": true
+        },
+        "ProductionDurationSec": {
+          "name": "ProductionDurationSec",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Production Time",
+          "allowOverride": true
         }
       }
     }
@@ -258,23 +372,8 @@
         "enabled": true
       },
       {
-        "from": "trigger.watch_1772017836959",
-        "to": "Taiyo2.Events.JobLifecycle",
-        "enabled": true
-      },
-      {
         "from": "trigger.watch_1772017838146",
         "to": "Taiyo1.Events.JobLifecycle",
-        "enabled": true
-      },
-      {
-        "from": "trigger.watch_1772017838146",
-        "to": "Scripts.debug",
-        "enabled": true
-      },
-      {
-        "from": "trigger.watch_1772017836959",
-        "to": "Scripts.debug",
         "enabled": true
       },
       {
@@ -283,8 +382,28 @@
         "enabled": true
       },
       {
+        "from": "Taiyo1.Events.JobLifecycle",
+        "to": "Scripts.debug",
+        "enabled": true
+      },
+      {
+        "from": "Taiyo1.Events.JobActivity",
+        "to": "Scripts.debug",
+        "enabled": true
+      },
+      {
+        "from": "trigger.watch_1772017838146",
+        "to": "Scripts.debug",
+        "enabled": true
+      },
+      {
         "from": "trigger.tick_1772164929424",
-        "to": "Taiyo1.PLC.PaperLengthCounter",
+        "to": "Taiyo1.MES.PaperConsumptionPerActivity",
+        "enabled": true
+      },
+      {
+        "from": "trigger.tick_1772164929424",
+        "to": "Taiyo1.MES.TimeSpentPerActivity",
         "enabled": true
       }
     ],
@@ -322,8 +441,8 @@
         "y": 310
       },
       "Scripts.debug": {
-        "x": 790,
-        "y": 120
+        "x": 1240,
+        "y": 110
       },
       "Taiyo1.Events.JobLifecycle": {
         "x": 1160,
@@ -337,25 +456,37 @@
         "x": 440,
         "y": 330
       },
-      "trigger.watch_1772017836959": {
-        "x": 440,
-        "y": 400
-      },
       "Taiyo1.Events.JobActivity": {
         "x": 1160,
-        "y": 530
+        "y": 400
       },
       "trigger.watch_1772152779583": {
         "x": 430,
-        "y": 520
+        "y": 400
       },
-      "Taiyo1.PLC.PaperLengthCounter": {
+      "trigger.tick_1772164929424": {
+        "x": 440,
+        "y": 510
+      },
+      "Taiyo1.MES.ProductCounter": {
+        "x": 1730,
+        "y": 650
+      },
+      "Taiyo1.PLC.PaperConsupCounter": {
         "x": 1180,
         "y": 650
       },
-      "trigger.tick_1772164929424": {
-        "x": 470,
-        "y": 670
+      "Taiyo1.Events.EventDetector": {
+        "x": 1750,
+        "y": 720
+      },
+      "Taiyo1.MES.PaperConsumptionPerActivity": {
+        "x": 1170,
+        "y": 510
+      },
+      "Taiyo1.MES.TimeSpentPerActivity": {
+        "x": 1170,
+        "y": 590
       }
     }
   },
@@ -370,8 +501,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": 1772258206720,
-            "ts": "2026-02-28T05:56:42.585Z"
+            "value": 1772341245444,
+            "ts": "2026-03-01T05:00:44.710Z"
           }
         }
       },
@@ -381,58 +512,76 @@
         "parentId": "asset_1772088636848_239",
         "templateIds": [
           "template_1771523720677_855",
-          "template_1771522392767_162"
+          "template_1772291867711_154",
+          "template_1772297957808_540"
         ],
         "attributes": {
-          "Operator": {
-            "value": {
-              "value": "account123",
-              "label": "Joni"
-            },
-            "ts": "2026-02-26T17:45:09.130Z"
-          },
-          "Machine Condition": {
-            "value": {
-              "value": "condition123",
-              "label": "Working"
-            },
-            "ts": "2026-02-26T17:46:03.596Z"
-          },
           "Machine Speed": {
             "value": 100,
             "ts": "2026-02-26T17:46:10.942Z"
           },
+          "Encoder Raw Value": {
+            "value": 67,
+            "ts": "2026-03-01T05:00:45.168Z"
+          },
+          "Encoder Prev Value": {
+            "value": 60,
+            "ts": "2026-03-01T05:00:45.112Z"
+          },
           "Work Order": {
-            "value": "-",
-            "ts": "2026-02-27T09:45:10.756Z"
+            "value": "WO-777",
+            "ts": "2026-02-28T17:28:47.949Z"
           },
           "Job Lifecycle": {
-            "value": "unload",
-            "ts": "2026-02-27T09:45:10.754Z"
+            "value": "load",
+            "ts": "2026-02-28T17:28:53.974Z"
+          },
+          "Machine Operator": {
+            "value": {
+              "value": "operator123",
+              "label": "Joni"
+            },
+            "ts": "2026-02-28T17:08:43.265Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-02-27T03:29:07.453Z"
+            "ts": "2026-02-28T17:28:56.921Z"
           },
           "Job Activity": {
             "value": "-",
-            "ts": "2026-02-27T09:31:30.497Z"
+            "ts": "2026-03-01T05:00:24.814Z"
           },
-          "Job Activity Alarm": {
-            "value": "-",
-            "ts": "2026-02-27T06:55:29.226Z"
+          "Paper Consumed Setup": {
+            "value": 110616,
+            "ts": "2026-03-01T05:00:45.111Z"
           },
-          "Encoder Raw Value": {
-            "value": 21,
-            "ts": "2026-02-28T05:56:42.353Z"
+          "Paper Total Waste": {
+            "value": 134134,
+            "ts": "2026-03-01T05:00:45.112Z"
           },
-          "Paper Length": {
-            "value": 567895,
-            "ts": "2026-02-28T05:56:42.553Z"
+          "Paper Total Consumed": {
+            "value": 1245433,
+            "ts": "2026-03-01T05:00:45.112Z"
           },
-          "Encoder Prev Value": {
-            "value": 21,
-            "ts": "2026-02-28T05:56:42.554Z"
+          "Job Activity Category": {
+            "value": "Setup",
+            "ts": "2026-03-01T05:00:20.922Z"
+          },
+          "Paper Consumed Production": {
+            "value": 1111299,
+            "ts": "2026-03-01T05:00:19.937Z"
+          },
+          "Paper Consumed Idle": {
+            "value": 23518,
+            "ts": "2026-02-28T19:03:35.459Z"
+          },
+          "Total Production Time": {
+            "value": 219,
+            "ts": "2026-03-01T05:00:19.944Z"
+          },
+          "Total Setup Time": {
+            "value": 25,
+            "ts": "2026-03-01T05:00:45.113Z"
           }
         }
       },
@@ -442,18 +591,9 @@
         "parentId": "asset_1772088636848_239",
         "templateIds": [
           "template_1771523720677_855",
-          "template_1771522392767_162"
+          "template_1772291867711_154"
         ],
-        "attributes": {
-          "Work Order": {
-            "value": "-",
-            "ts": "2026-02-27T10:00:24.803Z"
-          },
-          "Job Lifecycle": {
-            "value": "unload",
-            "ts": "2026-02-27T10:00:24.802Z"
-          }
-        }
+        "attributes": {}
       },
       {
         "id": "asset_1772088636848_239",
@@ -504,200 +644,8 @@
             "valueType": "int16",
             "default": 0,
             "unit": "meter/minute",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "Paper Length",
-            "valueType": "int32",
-            "default": 0,
-            "unit": "meter",
             "historianEnabled": true,
             "historianTimeSourcePath": "Jasuindo.Timestamp",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "Operator",
-            "valueType": "object",
-            "default": {},
-            "unit": "",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "Alarm",
-            "valueType": "string",
-            "default": "-",
-            "unit": "",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "Work Order",
-            "valueType": "string",
-            "default": "-",
-            "unit": "",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "Job Lifecycle",
-            "valueType": "string",
-            "default": "-",
-            "unit": "",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "Job Activity",
-            "valueType": "string",
-            "default": "-",
-            "unit": "",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "Job Lifecycle Alarm",
-            "valueType": "string",
-            "default": "-",
-            "unit": "",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "Job Activity Alarm",
-            "valueType": "string",
-            "default": "-",
-            "unit": "",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
             "historianTargetId": "default",
             "dashboardVisible": false,
             "dashboardEditable": true,
@@ -720,7 +668,7 @@
             "valueType": "int32",
             "default": 0,
             "unit": "",
-            "historianEnabled": true,
+            "historianEnabled": false,
             "historianTimeSourcePath": "Jasuindo.Timestamp",
             "historianTargetId": "default",
             "dashboardVisible": false,
@@ -761,115 +709,13 @@
             "numberSuffix": "",
             "numberAllowDecimal": true,
             "numberPrecision": 2
-          }
-        ]
-      },
-      {
-        "id": "template_1771557163569_471",
-        "name": "DataLoggerSuhu",
-        "attributes": [
-          {
-            "enabled": true,
-            "name": "CorridorTemperature",
-            "valueType": "float64",
-            "default": 0,
-            "unit": "Celcius",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
           },
           {
             "enabled": true,
-            "name": "AHUTemperature",
-            "valueType": "float64",
+            "name": "Running Hour",
+            "valueType": "int32",
             "default": 0,
-            "unit": "Celcius",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "CorridorHumidity",
-            "valueType": "float64",
-            "default": 0,
-            "unit": "% RH",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "AHUHumidity",
-            "valueType": "float64",
-            "default": 0,
-            "unit": "% RH",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "InletTemperature",
-            "valueType": "float64",
-            "default": 10,
-            "unit": "Celcius",
+            "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
             "historianTargetId": "default",
@@ -991,15 +837,504 @@
             "numberPrecision": 2
           }
         ]
+      },
+      {
+        "id": "template_1772291867711_154",
+        "name": "Offset_Printer_MES",
+        "attributes": [
+          {
+            "enabled": true,
+            "name": "Job Lifecycle",
+            "valueType": "string",
+            "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Job Lifecycle Alarm",
+            "valueType": "string",
+            "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Job Activity",
+            "valueType": "string",
+            "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Job Activity Alarm",
+            "valueType": "string",
+            "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Work Order",
+            "valueType": "string",
+            "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Machine Operator",
+            "valueType": "object",
+            "default": {},
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Product Count",
+            "valueType": "int32",
+            "default": 0,
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Product Length",
+            "valueType": "float32",
+            "default": 0,
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Product Count Target",
+            "valueType": "int32",
+            "default": 0,
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Job Progress",
+            "valueType": "int16",
+            "default": 0,
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Job Estimated Duration",
+            "valueType": "int32",
+            "default": 0,
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Job Activity Category",
+            "valueType": "string",
+            "default": 0,
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          }
+        ]
+      },
+      {
+        "id": "template_1772297957808_540",
+        "name": "Offset_Printer_MES_Data",
+        "attributes": [
+          {
+            "enabled": true,
+            "name": "Paper Consumed Setup",
+            "valueType": "int32",
+            "default": 0,
+            "unit": "meter",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Paper Consumed Idle",
+            "valueType": "int32",
+            "default": 0,
+            "unit": "meter",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Paper Consumed Production",
+            "valueType": "int32",
+            "default": 0,
+            "unit": "meter",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Paper Total Waste",
+            "valueType": "int32",
+            "default": 0,
+            "unit": "meter",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Paper Total Consumed",
+            "valueType": "float64",
+            "default": 0,
+            "unit": "meter",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Total Setup Time",
+            "valueType": "uint32",
+            "default": 0,
+            "unit": "seconds",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Total Production Time",
+            "valueType": "uint32",
+            "default": 0,
+            "unit": "seconds",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Total Idle Time",
+            "valueType": "uint32",
+            "default": 0,
+            "unit": "seconds",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          }
+        ]
       }
     ],
     "historians": [
       {
         "id": "default",
         "name": "Default Historian",
-        "udpHost": "127.0.0.1",
-        "udpPort": 9900,
-        "httpBaseUrl": "http://127.0.0.1:8080",
         "timestampUnit": "us",
         "enabled": true
       }
@@ -1034,7 +1369,7 @@
       "id": "template.script_1771609498627",
       "name": "TaiyoMachineSpeedAlarm",
       "description": "",
-      "script": "const nowTs = msg.ts || helpers.now();\n\nconst eventPath = `${MachineAlarmAttribute.path}/Event/Alarm/MachineSpeedHigh`;\nconst speed = Number(MachinePresentValue?.value ?? 0);\nconst threshold = Number(Threshold ?? 0);\nconst operatorLabel = OperatorName?.value?.label ?? \"-\";\n\nconst openRows = eventSys.get(`${eventPath}*`, \"*\", \"*\", \"open\", {}, { limit: 1 });\n\nif (speed > threshold) {\n\n  asset.set(MachineAlarmAttribute.path, `Oii ${operatorLabel} bahaya!`);\n\n  if (openRows.length === 0) {\n    eventSys.open(eventPath,nowTs,{operatorLabel,speed,threshold},`Machine speed ${speed} > threshold ${threshold}`,\"low\");\n  }\n\n} else {\n\n  asset.set(MachineAlarmAttribute.path, \"No alarm.\");\n\n  if (openRows.length > 0) {\n    eventSys.close(`${eventPath}*`,nowTs,`Machine speed ${speed} <= threshold ${threshold}`);\n  }\n}\n\nsend(msg);",
+      "script": "const nowTs = msg.ts || helpers.now();\n\nconst eventPath = `${MachineAlarmAttribute.path}/Event/Alarm/MachineSpeedHigh`;\nconst speed = Number(MachinePresentValue?.value ?? 0);\nconst threshold = Number(Threshold ?? 0);\nconst operatorLabel = OperatorName?.value?.label ?? \"-\";\n\nconst openRows = await eventSys.get(`${eventPath}*`, \"*\", \"*\", \"open\", {}, { limit: 1 });\n\nif (speed > threshold) {\n\n  asset.set(MachineAlarmAttribute.path, `Oii ${operatorLabel} bahaya!`);\n\n  if (openRows.length === 0) {\n    await eventSys.open(eventPath,nowTs,{operatorLabel,speed,threshold},`Machine speed ${speed} > threshold ${threshold}`,\"low\",{ speed, threshold, operatorLabel, state: \"open\" });\n  }\n\n} else {\n\n  asset.set(MachineAlarmAttribute.path, \"No alarm.\");\n\n  if (openRows.length > 0) {\n    await eventSys.close(`${eventPath}*`,nowTs,`Machine speed ${speed} <= threshold ${threshold}`,{ speed, threshold, operatorLabel, state: \"close\" });\n  }\n}\n\nsend(msg);",
       "variableBindings": [
         {
           "name": "MachineAlarmAttribute",
@@ -1072,7 +1407,7 @@
       "id": "template.script_1771898442157",
       "name": "TaiyoJobLifecycleEvent",
       "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventLifecyclePath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\nconst eventActivityPath = `${assetPath}/Job/${workOrderAttribute}/Activity/*`;\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  asset.set(jobLifecycleAttributePath, `-`);\r\n  send(msg);\r\n\r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);\r\n\r\n  // CREATE EVENT BASED ON LIFECYCLE\r\n  if (jobLifecycleAttribute === \"load\") {\r\n\r\n    if (openedEvents.length === 0) {\r\n\r\n      const jobLifecycleContext = {\r\n        operator: operatorAttribute,\r\n        workOrder: workOrderAttribute,\r\n      }\r\n\r\n      eventSys.open(`${eventLifecyclePath}Running`, timestamp, jobLifecycleContext, `${workOrderAttribute} loaded`, \"info\");\r\n\r\n    }\r\n\r\n  } else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n    if (openedEvents.length > 0) {\r\n\r\n      eventSys.close(`${eventLifecyclePath}Running`, timestamp, `${workOrderAttribute} unloaded`);\r\n      eventSys.close(`${eventActivityPath}`, timestamp, `${workOrderAttribute} unloaded`);\r\n\r\n      asset.set(workOrderAttributePath, `-`);\r\n\r\n    }\r\n\r\n  }\r\n\r\n\r\n}\r\n\r\n\r\n\r\nsend(msg);",
+      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\r\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = await eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventLifecyclePath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\nconst eventActivityPath = `${assetPath}/Job/${workOrderAttribute}/Activity/*`;\r\n\r\nhelpers.log('event mulai:', jobLifecycleAttribute);\r\n\r\n// CEK APAKAH LOAD/UNLOAD\r\nif (![\"load\", \"unload\"].includes(String(jobLifecycleAttribute).toLowerCase())) {\r\n  helpers.log('--- bukan load/unload');\r\n  return;\r\n}\r\n\r\nhelpers.log('--- terdeteksi load/unload');\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  asset.set(jobLifecycleAttributePath, `-`);\r\n\r\n  msg.payload = \"alarm: work order is empty\";\r\n\r\n  send(msg);\r\n\r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);\r\n\r\n  // CREATE EVENT BASED ON LIFECYCLE\r\n  if (jobLifecycleAttribute === \"load\") {\r\n\r\n    if (openedEvents.length === 0) {\r\n\r\n      const jobLifecycleContext = {\r\n        operator: operatorAttribute,\r\n        workOrder: workOrderAttribute,\r\n      }\r\n\r\n      await eventSys.open(\r\n        `${eventLifecyclePath}Running`,\r\n        timestamp,\r\n        jobLifecycleContext,\r\n        `${workOrderAttribute} loaded`,\r\n        \"info\",\r\n        {\r\n          operator: operatorAttribute, workOrder: workOrderAttribute, lifecycle: \"load\", sourceAttribute: jobLifecycleAttributePath\r\n        });\r\n\r\n      msg.payload = \"event opened\";\r\n\r\n      send(msg);\r\n\r\n    }\r\n\r\n  } else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n    if (openedEvents.length > 0) {\r\n\r\n      await eventSys.close(`\r\n        ${eventLifecyclePath}Running`,\r\n        timestamp,\r\n        `${workOrderAttribute} unloaded`,\r\n        {\r\n          operator: operatorAttribute, workOrder: workOrderAttribute, lifecycle: \"unload\", sourceAttribute: jobLifecycleAttributePath\r\n        });\r\n\r\n      await eventSys.close(\r\n        `${eventActivityPath}`,\r\n        timestamp,\r\n        `${workOrderAttribute} unloaded`,\r\n        {\r\n          operator: operatorAttribute, workOrder: workOrderAttribute, lifecycle: \"unload\", closedPattern: eventActivityPath\r\n        });\r\n\r\n      asset.set(workOrderAttributePath, `-`);\r\n      asset.set(jobLifecycleAttributePath, `-`);\r\n      asset.set(jobActivityAttributePath, `-`);\r\n\r\n      msg.payload = \"event closed\";\r\n\r\n      send(msg);\r\n\r\n    }\r\n\r\n  }\r\n\r\n\r\n}\r\n\r\n\r\n\r\nreturn;",
       "variableBindings": [
         {
           "name": "JobLifecycleAttribute",
@@ -1115,6 +1450,13 @@
           "staticValue": "",
           "attributePath": "",
           "allowOverride": true
+        },
+        {
+          "name": "JobActivityAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
         }
       ],
       "allowActionDuplication": true,
@@ -1124,7 +1466,7 @@
       "id": "template.script_1772002036179",
       "name": "TaiyoJobActivityEvent",
       "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst jobActivityAttribute = JobActivityAttribute?.value || \"-\";\r\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\n\r\n// STOP jika reset / invalid (jangan bikin event)\r\nif (jobActivityAttribute === \"-\" || jobActivityAttribute === \"\" || jobActivityAttribute === null) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// STOP jika wo not found (jangan bikin event)\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n  asset.set(alarmAttributePath, \"!!!No Active Work Order!!!\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst eventPath = `${assetPath}/Job/${workOrderAttribute}/Activity/${jobActivityAttribute}`;\r\nconst openedEvents = eventSys.get(eventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\nif (openedEvents.length > 0) {\r\n  asset.set(alarmAttributePath, `!!!Activity already open: ${jobActivityAttribute}!!!`);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nasset.set(alarmAttributePath, \"-\");\r\n\r\nconst activityContext = {\r\n  operator: operatorAttribute,\r\n  workOrder: workOrderAttribute,\r\n};\r\n\r\neventSys.open(eventPath, timestamp, activityContext, `activity ${jobActivityAttribute} created`, \"info\");\r\n\r\n// AUTO RESET activity biar bisa trigger lagi walau value sama\r\nasset.set(jobActivityAttributePath, \"-\");\r\n\r\nsend(msg);\r\n",
+      "script": "// VARIABLE BINDINGS\r\nconst jobActivityAttribute = JobActivityAttribute?.value || \"-\";\r\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\r\nconst jobActivityCategoryAttributePath = JobActivityCategoryAttribute?.path || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\n\r\n// STOP jika reset / invalid (jangan bikin event)\r\nif (jobActivityAttribute === \"-\" || jobActivityAttribute === \"\" || jobActivityAttribute === null) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// STOP jika wo not found (jangan bikin event)\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n  asset.set(alarmAttributePath, \"!!!No Active Work Order!!!\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst rawActivity = String(jobActivityAttribute).trim();\r\nconst activityLower = rawActivity.toLowerCase();\r\n\r\nlet activityType = \"\";\r\nif (activityLower === \"production\") {\r\n  activityType = \"Production\";\r\n  asset.set(jobActivityCategoryAttributePath, activityType);\r\n} else if (activityLower.startsWith(\"setup\")) {\r\n  activityType = \"Setup\";\r\n  asset.set(jobActivityCategoryAttributePath, activityType);\r\n} else if (activityLower.startsWith(\"idle\")) {\r\n  activityType = \"Idle\";\r\n  asset.set(jobActivityCategoryAttributePath, activityType);\r\n} else {\r\n  asset.set(alarmAttributePath, `!!!Unknown activity type: ${rawActivity}!!!`);\r\n  asset.set(jobActivityCategoryAttributePath, \"-\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst basePath = `${assetPath}/Job/${workOrderAttribute}/Activity`;\r\nconst eventPath = `${basePath}/${rawActivity}`;\r\n\r\n// Cek duplicate event exact path\r\nconst openedExact = await eventSys.get(eventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\nif (openedExact.length > 0) {\r\n  asset.set(alarmAttributePath, `!!!Activity already open: ${rawActivity}!!!`);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// Selalu enforce single active activity:\r\n// sebelum open activity baru, tutup semua activity type lain\r\nconst setupPattern = `${basePath}/Setup/*`;\r\nconst productionPattern = `${basePath}/Production`;\r\nconst idlePattern = `${basePath}/Idle/*`;\r\n\r\nif (activityType === \"Production\") {\r\n  await eventSys.close(setupPattern, timestamp, \"auto close by Production transition\", { transitionTo: \"Production\", fromType: \"Setup\", workOrder: workOrderAttribute });\r\n  await eventSys.close(idlePattern, timestamp, \"auto close by Production transition\", { transitionTo: \"Production\", fromType: \"Idle\", workOrder: workOrderAttribute });\r\n} else if (activityType === \"Setup\") {\r\n  asset.set(jobActivityCategoryAttributePath, \"Setup\");\r\n  await eventSys.close(productionPattern, timestamp, \"auto close by Setup transition\", { transitionTo: \"Setup\", fromType: \"Production\", workOrder: workOrderAttribute });\r\n  await eventSys.close(idlePattern, timestamp, \"auto close by Setup transition\", { transitionTo: \"Setup\", fromType: \"Idle\", workOrder: workOrderAttribute });\r\n} else if (activityType === \"Idle\") {\r\n  asset.set(jobActivityCategoryAttributePath, \"Idle\");\r\n  await eventSys.close(productionPattern, timestamp, \"auto close by Idle transition\", { transitionTo: \"Idle\", fromType: \"Production\", workOrder: workOrderAttribute });\r\n  await eventSys.close(setupPattern, timestamp, \"auto close by Idle transition\", { transitionTo: \"Idle\", fromType: \"Setup\", workOrder: workOrderAttribute });\r\n}\r\n\r\nasset.set(alarmAttributePath, \"-\");\r\n\r\nconst activityContext = {\r\n  operator: operatorAttribute,\r\n  workOrder: workOrderAttribute,\r\n  activityType\r\n};\r\n\r\nawait eventSys.open(\n  eventPath,\n  timestamp,\n  activityContext,\n  `activity ${rawActivity} created`,\n  \"info\",\n  { operator: operatorAttribute, workOrder: workOrderAttribute, activity: rawActivity, activityType, sourceAttribute: jobActivityAttributePath }\n);\r\n\r\n// AUTO RESET activity biar bisa trigger lagi walau value sama\r\nasset.set(jobActivityAttributePath, \"-\");\r\n\r\nsend(msg);\r\n",
       "variableBindings": [
         {
           "name": "JobActivityAttribute",
@@ -1167,6 +1509,13 @@
           "staticValue": "",
           "attributePath": "",
           "allowOverride": true
+        },
+        {
+          "name": "JobActivityCategoryAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
         }
       ],
       "allowActionDuplication": true,
@@ -1195,6 +1544,161 @@
         },
         {
           "name": "EncoderPrevRaw",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        }
+      ]
+    },
+    {
+      "id": "template.script_1772274570343",
+      "name": "TaiyoProductCounter",
+      "description": "",
+      "script": "const paperLength = PaperLength?.value || 0;\r\nconst productLength = ProductLength?.value || 0;\r\nconst productCount = ProductCount?.value || 0;\r\n\r\nlet count = 0;\r\n\r\nif (productLength > 0) {\r\n  count = paperLength / productLength;\r\n}\r\n\r\ncount = Number(count.toFixed(2));\r\n\r\nasset.set(ProductCount.path, count);\r\n\r\nsend(msg);",
+      "allowTemplateReuse": true,
+      "variableBindings": [
+        {
+          "name": "PaperLength",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "ProductLength",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "ProductCount",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        }
+      ]
+    },
+    {
+      "id": "template.script_1772296918869",
+      "name": "TaiyoPaperConsumptionPerActivity",
+      "description": "",
+      "script": "const raw = Number(EncoderRawValue?.value ?? 0);\r\nconst prevRaw = Number(EncoderPrevRaw?.value ?? 0);\r\nconst prevRawPath = EncoderPrevRaw?.path ?? \"\";\r\n\r\n\r\n// counter paths\r\nconst setupPath = PaperConsumedSetup?.path ?? \"\";\r\nconst idlePath = PaperConsumedIdle?.path ?? \"\";\r\nconst prodPath = PaperConsumedProduction?.path ?? \"\";\r\nconst wastePath = PaperWaste?.path ?? \"\";\r\nconst totalConsumedPath = PaperTotalConsumed?.path ?? \"\";\r\nconst jobActivityCategory = JobActivityCategoryAttribute?.value ?? \"\";\r\n\r\n\r\nif (!prevRawPath) { send(msg); return; }\r\n\r\n\r\n\r\n// hitung delta (normal naik -> selisih, reset turun -> raw)\r\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\r\n\r\nif (!Number.isFinite(delta) || delta <= 0) {\r\n  asset.set(prevRawPath, raw);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// baca nilai sebelumnya\r\nconst setupPrev = Number(PaperConsumedSetup?.value ?? 0);\r\nconst idlePrev = Number(PaperConsumedIdle?.value ?? 0);\r\nconst prodPrev = Number(PaperConsumedProduction?.value ?? 0);\r\n\r\nlet setupNew = setupPrev;\r\nlet idleNew = idlePrev;\r\nlet prodNew = prodPrev;\r\n\r\n// routing delta ke jobActivityCategory\r\nif (jobActivityCategory === \"Setup\") setupNew += delta;\r\nelse if (jobActivityCategory === \"Idle\") idleNew += delta;\r\nelse if (jobActivityCategory === \"Production\") prodNew += delta;\r\nelse {\r\n  // jobActivityCategory unknown\r\n  helpers.log(\"no activity\");\r\n}\r\n\r\n// set counters kalau path tersedia\r\nif (setupPath) asset.set(setupPath, setupNew);\r\nif (idlePath) asset.set(idlePath, idleNew);\r\nif (prodPath) asset.set(prodPath, prodNew);\r\n\r\n// waste & total\r\nconst waste = setupNew + idleNew;\r\nconst totalConsumed = waste + prodNew;\r\n\r\nif (wastePath) asset.set(wastePath, waste);\r\nif (totalConsumedPath) asset.set(totalConsumedPath, totalConsumed);\r\n\r\n// simpan raw terakhir\r\nasset.set(prevRawPath, raw);\r\n\r\nsend(msg);",
+      "allowTemplateReuse": true,
+      "variableBindings": [
+        {
+          "name": "EncoderRawValue",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "EncoderPrevRaw",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "JobActivityCategoryAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "PaperConsumedSetup",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "PaperConsumedIdle",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "PaperConsumedProduction",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "PaperWaste",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "PaperTotalConsumed",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        }
+      ]
+    },
+    {
+      "id": "template.script_1772300414929",
+      "name": "EventDetector",
+      "description": "",
+      "script": "// VARIABLE BINDINGS\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst assetPath = AssetPath || \"-\";\r\n\r\n// STOP jika WO invalid\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n  helpers.log(\"[ActivityDetector] skip: work order empty\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// BASE PATH activity\r\nconst base = `${assetPath}/Job/${workOrderAttribute}/Activity`;\r\n\r\n// PATTERN yang mau dicek (status open)\r\nconst setupPattern = `${base}/Setup/*`;\r\nconst productionPattern = `${base}/Production`;\r\nconst idlePattern = `${base}/Idle/*`;\r\n\r\n// QUERY OPEN EVENTS\r\nconst setupOpen = await eventSys.get(setupPattern, \"*\", \"*\", \"open\", {}, { limit: 200 });\r\nconst productionOpen = await eventSys.get(productionPattern, \"*\", \"*\", \"open\", {}, { limit: 200 });\r\nconst idleOpen = await eventSys.get(idlePattern, \"*\", \"*\", \"open\", {}, { limit: 200 });\r\n\r\n// GABUNG + DEDUPE by id\r\nconst dedup = new Map();\r\nfor (const row of [...setupOpen, ...productionOpen, ...idleOpen]) {\r\n  if (!row?.id) continue;\r\n  dedup.set(row.id, row);\r\n}\r\nconst activeEvents = Array.from(dedup.values());\r\n\r\n// LOG SUMMARY\r\nhelpers.log(`${helpers.now()} [ActivityDetector] active count:`, activeEvents.length);\r\nhelpers.log(\"[ActivityDetector] setup:\", setupOpen.length, \"production:\", productionOpen.length, \"idle:\", idleOpen.length);\r\n\r\n// LOG DETAIL path per event\r\n// for (const ev of activeEvents) {\r\n//   helpers.log(\"[ActivityDetector] active:\", ev.event_path, \"| status:\", ev.status, \"| start:\", ev.start_ts);\r\n// }\r\n\r\nsend(msg);\r\n",
+      "allowTemplateReuse": true,
+      "variableBindings": [
+        {
+          "name": "WorkOrderAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "AssetPath",
+          "source": "static_string",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        }
+      ]
+    },
+    {
+      "id": "template.script_1772340546636",
+      "name": "TaiyoTimeSpentPerActivity",
+      "description": "",
+      "script": "// ===== INPUT =====\r\nconst rawMode = String(JobActivityCategoryAttribute?.value ?? \"\")\r\n  .trim()\r\n  .toLowerCase();\r\n\r\n// ===== OUTPUT PATHS =====\r\nconst setupPath = SetupDurationSec?.path ?? \"\";\r\nconst idlePath = IdleDurationSec?.path ?? \"\";\r\nconst prodPath = ProductionDurationSec?.path ?? \"\";\r\n\r\nif (!setupPath || !idlePath || !prodPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// ===== AMBIL NILAI SEBELUMNYA =====\r\nlet setupTime = Number(SetupDurationSec?.value ?? 0);\r\nlet idleTime = Number(IdleDurationSec?.value ?? 0);\r\nlet prodTime = Number(ProductionDurationSec?.value ?? 0);\r\n\r\n// ===== IDENTIFIKASI MODE (support Setup/X dll) =====\r\nlet mode = \"\";\r\n\r\nif (rawMode.startsWith(\"setup\")) mode = \"setup\";\r\nelse if (rawMode.startsWith(\"idle\")) mode = \"idle\";\r\nelse if (rawMode.startsWith(\"production\")) mode = \"production\";\r\n\r\n// ===== TAMBAH 1 DETIK SESUAI MODE =====\r\nif (mode === \"setup\") setupTime += 1;\r\nelse if (mode === \"idle\") idleTime += 1;\r\nelse if (mode === \"production\") prodTime += 1;\r\n\r\n// ===== SIMPAN =====\r\nasset.set(setupPath, setupTime);\r\nasset.set(idlePath, idleTime);\r\nasset.set(prodPath, prodTime);\r\n\r\nsend(msg);",
+      "allowTemplateReuse": true,
+      "variableBindings": [
+        {
+          "name": "JobActivityCategoryAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "SetupDurationSec",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "IdleDurationSec",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "ProductionDurationSec",
           "source": "attribute",
           "staticValue": "",
           "attributePath": "",

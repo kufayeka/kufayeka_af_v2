@@ -113,20 +113,35 @@ Query parameters:
 
 Supported operators: `eq`, `neq`, `in`, `not_in`, `exists`, `not_exists`.
 
+Event storage (`af_event`):
+- `context` uses `JSONB`
+- `captured_data_on_open` uses `JSONB`
+- `captured_data_on_close` uses `JSONB`
+
 ### Open event
 
 - `POST /api/events/open`
 - Required: `event_path` (or `path`)
+- Optional:
+  - `context` (object, stored as `JSONB`)
+  - `captured_data_on_open` (object, stored as `JSONB`)
+  - `notes_on_open`, `severity`, `ts`
 
 ### Close by pattern
 
 - `POST /api/events/close`
 - Uses `pattern` (or `event_path`)
+- Optional:
+  - `captured_data_on_close` (object, stored as `JSONB`)
+  - `notes_on_close`, `ts`
 
 ### Close by id
 
 - `POST /api/events/close-id`
 - Required: `id`
+- Optional:
+  - `captured_data_on_close` (object, stored as `JSONB`)
+  - `notes_on_close`, `ts`
 
 ### Acknowledge by id
 

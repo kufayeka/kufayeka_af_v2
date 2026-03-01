@@ -2,9 +2,14 @@ export const INTERNAL_GLOBAL_KEYS = new Set<string>([
   "assetStorage",
   "assetFramework",
   "assetFrameworkMeta",
+  "dbConnectionManager",
+  "dbConfig",
   "eventStore",
+  "eventStoreMeta",
+  "historianStore",
   "historianBridge",
   "historianBridgeStats",
+  "historianIngestStats",
   "scriptTemplates",
   "__runtime.globalValuePersistence",
 ]);
@@ -48,4 +53,3 @@ export function filterSerializableGlobalEntries(
   }
   return out;
 }
-

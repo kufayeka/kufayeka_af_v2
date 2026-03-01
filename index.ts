@@ -11,9 +11,8 @@ import {
 } from "./runtime/globalValuePersistence";
 import path from "node:path";
 import { computeTagID } from "./runtime/historianBridge";
-import { loadHistorianConfig } from "./runtime/historianConfig";
-import { createTimescaleHistorianStore } from "./runtime/historianTimescale";
-import { startHistorianUdpIngestor } from "./runtime/historianUdpIngestor";
+import { loadDbConfig } from "./runtime/dbConfig";
+import { createDbConnectionManager } from "./runtime/dbConnectionManager";
 import type { AssetStore, AssetHierarchyNode } from "./runtime/types";
 
 function getErrorMessage(error: unknown): string {
@@ -28,10 +27,14 @@ async function bootstrap(): Promise<void> {
   });
 
   const programPath = path.resolve(__dirname, "../programs/main.af.json");
-  const globalValueStorePath = path.resolve(
-    __dirname,
-    "../data/global-values.sqlite"
-  );
+  const dbConfig = loadDbConfig();
+  const dbConnectionManager = dbConfig.enabled
+    ? await createDbConnectionManager(dbConfig)
+    : null;
+  rt.setGlobal("dbConnectionManager", dbConnectionManager);
+  rt.setGlobal("dbConfig", dbConfig);
+  rt.setGlobal("historianStore", dbConnectionManager);
+  const globalValueStorePath = path.resolve(__dirname, "../data/global-values.sqlite");
   const loadedGlobalCount = loadPersistedGlobalsIntoRuntime(
     rt,
     process.env.RUNTIME_GLOBAL_VALUES_PATH || globalValueStorePath
@@ -50,12 +53,6 @@ async function bootstrap(): Promise<void> {
   console.log(`[runtime] global persistence seed loaded: ${loadedGlobalCount}`);
   console.log(`[runtime] attribute persistence seed loaded: ${loadedCount}`);
   const stopProgram = startProgram(rt, programWithPersistedValues);
-  const historianConfig = loadHistorianConfig();
-  const historianTimescale = historianConfig.enabled
-    ? await createTimescaleHistorianStore(historianConfig.timescale)
-    : null;
-  rt.setGlobal("historianTimescale", historianTimescale);
-  rt.setGlobal("historianConfig", historianConfig);
 
   const assetStore = rt.getGlobal<AssetStore | undefined>("assetStorage");
   const tagToPath = new Map<number, string>();
@@ -77,20 +74,11 @@ async function bootstrap(): Promise<void> {
   rebuildTagPathMap();
 
   const unsubscribeAssetStore = assetStore ? assetStore.subscribe(() => rebuildTagPathMap()) : () => {};
-  const historianUdpIngestor =
-    historianConfig.enabled && historianTimescale
-      ? startHistorianUdpIngestor({
-          host: historianConfig.udp.host,
-          port: historianConfig.udp.port,
-          resolveAttributePath: (tagId) => tagToPath.get(tagId),
-          ingestRows: async (rows) => {
-            await historianTimescale.ingest(rows);
-          },
-          onStats: (stats) => {
-            rt.setGlobal("historianIngestStats", stats);
-          }
-        })
-      : null;
+  if (dbConnectionManager) {
+    rt.setGlobal("historianIngestStats", {
+      mode: "direct-queue-batch-flush"
+    });
+  }
 
   const attributeValuePersistence = startAttributeValuePersistence(rt, {
     filePath: process.env.RUNTIME_ATTRIBUTE_VALUES_PATH || attributeValueStorePath,
@@ -163,19 +151,11 @@ async function bootstrap(): Promise<void> {
       console.error("[runtime] asset store unsubscribe error:", getErrorMessage(error));
     }
 
-    if (historianUdpIngestor) {
+    if (dbConnectionManager) {
       try {
-        await historianUdpIngestor.stop();
+        await dbConnectionManager.shutdown();
       } catch (error) {
-        console.error("[runtime] historian udp stop error:", getErrorMessage(error));
-      }
-    }
-
-    if (historianTimescale) {
-      try {
-        await historianTimescale.shutdown();
-      } catch (error) {
-        console.error("[runtime] historian timescale shutdown error:", getErrorMessage(error));
+        console.error("[runtime] dbConnectionManager shutdown error:", getErrorMessage(error));
       }
     }
 
@@ -191,7 +171,7 @@ async function bootstrap(): Promise<void> {
     const eventStore = rt.getGlobal<{ shutdown?: () => void } | undefined>("eventStore");
     if (eventStore?.shutdown) {
       try {
-        eventStore.shutdown();
+        await Promise.resolve(eventStore.shutdown());
       } catch (error) {
         console.error("[runtime] eventStore shutdown error:", getErrorMessage(error));
       }

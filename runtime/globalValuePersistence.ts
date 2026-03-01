@@ -6,51 +6,46 @@ import { filterSerializableGlobalEntries, isInternalGlobalKey } from "./globalSt
 
 interface PersistedGlobalRow {
   key: string;
-  value: unknown;
+  value_json: string;
 }
 
-function readPersistedRows(dbPath: string): PersistedGlobalRow[] {
-  if (!fs.existsSync(dbPath)) return [];
+function ensureTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS runtime_global_values (
+      key TEXT PRIMARY KEY,
+      value_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+}
+
+export function loadPersistedGlobalsIntoRuntime(runtime: Runtime, filePathInput: string): number {
+  const filePath = path.resolve(filePathInput);
+  if (!fs.existsSync(filePath)) return 0;
   let db: Database.Database | null = null;
   try {
-    db = new Database(dbPath, { fileMustExist: true });
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS global_values (
-        key TEXT PRIMARY KEY,
-        value_json TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-    `);
-    const rows = db
-      .prepare(`SELECT key, value_json FROM global_values`)
-      .all() as Array<{ key: string; value_json: string }>;
-    const out: PersistedGlobalRow[] = [];
+    db = new Database(filePath, { fileMustExist: true });
+    ensureTable(db);
+    const rows = db.prepare("SELECT key, value_json FROM runtime_global_values").all() as PersistedGlobalRow[];
+    let loaded = 0;
     for (const row of rows) {
-      const key = String(row.key || "");
+      const key = String(row.key || "").trim();
       if (!key || isInternalGlobalKey(key)) continue;
       try {
-        out.push({ key, value: JSON.parse(row.value_json) });
+        runtime.setGlobal(key, JSON.parse(String(row.value_json || "null")));
+        loaded += 1;
       } catch {
-        // Skip invalid JSON rows.
+        continue;
       }
     }
-    return out;
-  } catch (error) {
+    return loaded;
+  } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[runtime] global persistence load error: ${message}`);
-    return [];
+    return 0;
   } finally {
-    db?.close();
+    if (db) db.close();
   }
-}
-
-export function loadPersistedGlobalsIntoRuntime(runtime: Runtime, dbPathInput: string): number {
-  const dbPath = path.resolve(dbPathInput);
-  const rows = readPersistedRows(dbPath);
-  for (const row of rows) {
-    runtime.setGlobal(row.key, row.value);
-  }
-  return rows.length;
 }
 
 export function startGlobalValuePersistence(
@@ -60,64 +55,45 @@ export function startGlobalValuePersistence(
   const dbPath = path.resolve(options.filePath);
   const intervalMs = Math.max(1000, Number(options.intervalMs || 5000));
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-
   const db = new Database(dbPath);
+  ensureTable(db);
   db.pragma("journal_mode = WAL");
   db.pragma("synchronous = NORMAL");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS global_values (
-      key TEXT PRIMARY KEY,
-      value_json TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
 
-  const truncateStmt = db.prepare(`DELETE FROM global_values`);
-  const insertStmt = db.prepare(`
-    INSERT INTO global_values (key, value_json, updated_at)
-    VALUES (?, ?, ?)
-  `);
+  const truncateStmt = db.prepare("DELETE FROM runtime_global_values");
+  const insertStmt = db.prepare(
+    "INSERT INTO runtime_global_values (key, value_json, updated_at) VALUES (@key, @value_json, @updated_at)"
+  );
+  const replaceAllStmt = db.transaction((rows: Array<{ key: string; value_json: string; updated_at: string }>) => {
+    truncateStmt.run();
+    for (const row of rows) insertStmt.run(row);
+  });
 
   let lastSavedRevision = -1;
-  let isWriting = false;
-  let hasPending = false;
 
-  const flushNow = (): void => {
-    if (isWriting) {
-      hasPending = true;
-      return;
-    }
-    const revision = runtime.getGlobalRevision();
-    if (revision === lastSavedRevision) return;
-
-    isWriting = true;
+  const flushNow = () => {
+    const currentRevision = runtime.getGlobalRevision();
+    if (currentRevision === lastSavedRevision) return;
     try {
-      const now = new Date().toISOString();
       const allEntries = runtime.getGlobalEntries();
-      const rows = Object.entries(
-        filterSerializableGlobalEntries(allEntries, { includeInternal: false })
-      );
-      const writeTx = db.transaction(() => {
-        truncateStmt.run();
-        for (const [key, value] of rows) {
-          insertStmt.run(key, JSON.stringify(value), now);
-        }
-      });
-      writeTx();
-      lastSavedRevision = revision;
-    } catch (error) {
+      const serializable = filterSerializableGlobalEntries(allEntries, { includeInternal: false });
+      const nowIso = new Date().toISOString();
+      const rows = Object.entries(serializable).map(([key, value]) => ({
+        key,
+        value_json: JSON.stringify(value),
+        updated_at: nowIso
+      }));
+      replaceAllStmt(rows);
+      lastSavedRevision = currentRevision;
+    } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[runtime] global persistence write error: ${message}`);
-    } finally {
-      isWriting = false;
-      if (hasPending) {
-        hasPending = false;
-        flushNow();
-      }
     }
   };
 
-  const timer = setInterval(flushNow, intervalMs);
+  const timer = setInterval(() => {
+    flushNow();
+  }, intervalMs);
   timer.unref?.();
 
   return {
@@ -125,7 +101,6 @@ export function startGlobalValuePersistence(
       clearInterval(timer);
       db.close();
     },
-    flushNow,
+    flushNow
   };
 }
-

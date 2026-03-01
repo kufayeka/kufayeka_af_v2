@@ -12,6 +12,7 @@ import {
 } from "../runtime/globalStoreUtils";
 import { OPENAPI_RUNTIME_SPEC } from "./openapiRuntimeSpec";
 import type { AttributeQueryMatch, HistorianTarget } from "../runtime/types";
+import type { DbConnectionManager } from "../runtime/dbConnectionManager";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -40,14 +41,18 @@ function queryString(req: Request, key: string): string | undefined {
   return String(value);
 }
 
+function toJsonValueOrNull(value: unknown): unknown | null {
+  if (value === undefined) return null;
+  return value;
+}
+
 export default function createApiServer(runtime: Runtime, options: { port?: number; host?: string } = {}) {
   const port = options.port ?? 4000;
   const host = options.host ?? "0.0.0.0";
   const preferredCorsOrigin = "http://192.168.68.99:3333";
   const assetStore = ensureAssetStorage(runtime, runtime.getGlobal("assetFramework", {}));
   const eventStore = ensureEventStore(runtime);
-  const historianHttpBase = process.env.HISTORIAN_HTTP_BASE || "http://127.0.0.1:8080";
-  type HistorianTimescaleStore = {
+  type HistorianStore = {
     queryRaw: (
       paths: string[],
       options: {
@@ -89,10 +94,11 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     getMetrics: () => Record<string, unknown>;
     getLogs: (kind?: string, limit?: number) => Array<Record<string, unknown>>;
   };
-  const historianStore = runtime.getGlobal<HistorianTimescaleStore | null>("historianTimescale", null);
+  const historianStore = runtime.getGlobal<HistorianStore | null>("historianStore", null);
+  const dbConnectionManager = runtime.getGlobal<DbConnectionManager | null>("dbConnectionManager", null);
   const flushGlobalPersistence = (): void => {
-    const persistence = runtime.getGlobal<{ flushNow?: () => void } | undefined>("__runtime.globalValuePersistence");
-    if (persistence?.flushNow) persistence.flushNow();
+    const persistence = runtime.getGlobal<{ flushNow?: () => Promise<void> | void } | undefined>("__runtime.globalValuePersistence");
+    if (persistence?.flushNow) void persistence.flushNow();
   };
 
   type ResolvedPathMatch = {
@@ -117,9 +123,6 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     return {
       id: "default",
       name: "Default Historian",
-      httpBaseUrl: historianHttpBase,
-      udpHost: "127.0.0.1",
-      udpPort: 9900,
       timestampUnit: "us",
       enabled: true
     };
@@ -453,8 +456,6 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
       res.status(200).json({
         targetId: target.id || "default",
         targetName: target.name,
-        udpHost: target.udpHost,
-        udpPort: target.udpPort,
         timestampUnit: target.timestampUnit,
         enabled: target.enabled,
         metrics: historianStore.getMetrics(),
@@ -483,6 +484,38 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
       });
     } catch (error: unknown) {
       res.status(502).json({ error: `Historian logs upstream error: ${getErrorMessage(error)}` });
+    }
+  });
+
+  app.get("/api/db/config", (_req, res) => {
+    if (!dbConnectionManager) {
+      res.status(503).json({ error: "DB connection manager is not initialized" });
+      return;
+    }
+    res.status(200).json({ config: dbConnectionManager.getConfig(), metrics: dbConnectionManager.getMetrics() });
+  });
+
+  app.post("/api/db/test-connection", async (_req, res) => {
+    if (!dbConnectionManager) {
+      res.status(503).json({ error: "DB connection manager is not initialized" });
+      return;
+    }
+    const result = await dbConnectionManager.testConnection();
+    res.status(result.ok ? 200 : 502).json(result);
+  });
+
+  app.post("/api/db/sql-test", async (req, res) => {
+    if (!dbConnectionManager) {
+      res.status(503).json({ error: "DB connection manager is not initialized" });
+      return;
+    }
+    try {
+      const body = (req.body || {}) as { sql?: unknown };
+      const sql = String(body.sql || "");
+      const result = await dbConnectionManager.executeSql(sql);
+      res.status(200).json({ ok: true, ...result });
+    } catch (error: unknown) {
+      res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -586,7 +619,7 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     res.status(200).json(result);
   });
 
-  app.get("/api/events", (req, res) => {
+  app.get("/api/events", async (req, res) => {
     try {
       const pattern = queryString(req, "pattern") || "*";
       const from = queryString(req, "from") || "*";
@@ -599,7 +632,7 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
       const sortDir = queryString(req, "sortDir") || "desc";
       const contextRaw = queryString(req, "context");
       const contextFilters = contextRaw && contextRaw.trim() ? JSON.parse(contextRaw) : {};
-      const result = eventStore.query(pattern, from, to, status, contextFilters, {
+      const result = await eventStore.query(pattern, from, to, status, contextFilters, {
         limit,
         offset,
         sortBy,
@@ -625,15 +658,27 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     }
   });
 
-  app.post("/api/events/open", (req, res) => {
+  app.get("/api/events/meta", (_req, res) => {
+    try {
+      res.status(200).json({
+        provider: "postgresql",
+        eventStore: eventStore.getMeta()
+      });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
+    }
+  });
+
+  app.post("/api/events/open", async (req, res) => {
     try {
       const body = (req.body || {}) as Record<string, unknown>;
-      const row = eventStore.open(
+      const row = await eventStore.open(
         String(body.event_path || body.path || ""),
         body.start_ts ? String(body.start_ts) : body.ts ? String(body.ts) : undefined,
         body.context && typeof body.context === "object" ? (body.context as Record<string, unknown>) : {},
         String(body.notes_on_open || body.notes || ""),
-        String(body.severity || "other")
+        String(body.severity || "other"),
+        toJsonValueOrNull(body.captured_data_on_open ?? body.capturedDataOnOpen)
       );
       res.status(200).json({ ok: true, row });
     } catch (error: unknown) {
@@ -641,13 +686,14 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     }
   });
 
-  app.post("/api/events/close", (req, res) => {
+  app.post("/api/events/close", async (req, res) => {
     try {
       const body = (req.body || {}) as Record<string, unknown>;
-      const result = eventStore.close(
+      const result = await eventStore.close(
         String(body.pattern || body.event_path || "*"),
         body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : undefined,
-        String(body.notes_on_close || body.notes || "")
+        String(body.notes_on_close || body.notes || ""),
+        toJsonValueOrNull(body.captured_data_on_close ?? body.capturedDataOnClose)
       );
       res.status(200).json({ ok: true, ...result });
     } catch (error: unknown) {
@@ -655,13 +701,14 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     }
   });
 
-  app.post("/api/events/close-id", (req, res) => {
+  app.post("/api/events/close-id", async (req, res) => {
     try {
       const body = (req.body || {}) as Record<string, unknown>;
-      const result = eventStore.closeById(
+      const result = await eventStore.closeById(
         String(body.id || ""),
         body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : undefined,
-        String(body.notes_on_close || body.notes || "")
+        String(body.notes_on_close || body.notes || ""),
+        toJsonValueOrNull(body.captured_data_on_close ?? body.capturedDataOnClose)
       );
       res.status(200).json({ ok: true, ...result });
     } catch (error: unknown) {
@@ -669,10 +716,10 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     }
   });
 
-  app.post("/api/events/ack-id", (req, res) => {
+  app.post("/api/events/ack-id", async (req, res) => {
     try {
       const body = (req.body || {}) as Record<string, unknown>;
-      const result = eventStore.acknowledgeById(
+      const result = await eventStore.acknowledgeById(
         String(body.id || ""),
         body.acknowledged_ts ? String(body.acknowledged_ts) : body.ts ? String(body.ts) : undefined
       );
@@ -682,24 +729,24 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     }
   });
 
-  app.delete("/api/events/by-id", (req, res) => {
+  app.delete("/api/events/by-id", async (req, res) => {
     try {
       const id = queryString(req, "id") || "";
-      const result = eventStore.deleteById(id);
+      const result = await eventStore.deleteById(id);
       res.status(200).json({ ok: true, ...result });
     } catch (error: unknown) {
       res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
-  app.delete("/api/events", (req, res) => {
+  app.delete("/api/events", async (req, res) => {
     try {
       const pattern = queryString(req, "pattern") || "*";
       const status = queryString(req, "status") || "*";
       const from = queryString(req, "from") || "*";
       const to = queryString(req, "to") || "*";
       const severity = queryString(req, "severity") || "*";
-      const result = eventStore.deleteByPattern(pattern, status, from, to, severity);
+      const result = await eventStore.deleteByPattern(pattern, status, from, to, severity);
       res.status(200).json({ ok: true, ...result });
     } catch (error: unknown) {
       res.status(400).json({ error: getErrorMessage(error) });

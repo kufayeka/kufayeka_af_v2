@@ -1,6 +1,7 @@
 import type Runtime from "./Runtime";
 import { createAssetFrameworkStore, normalizeAssetSection } from "./assetFramework";
 import { createHistorianBridge } from "./historianBridge";
+import type { DbConnectionManager } from "./dbConnectionManager";
 import type { AssetStore } from "./types";
 
 interface HistorianBridgeLike {
@@ -24,12 +25,16 @@ export function ensureAssetStorage(runtime: Runtime, initialSection: unknown = {
     runtime.getGlobal<HistorianBridgeLike | undefined>("historianBridge") ||
     (createHistorianBridge({
       enabled: process.env.HISTORIAN_ENABLED !== "0",
-      host: process.env.HISTORIAN_HOST || "127.0.0.1",
-      port: Number(process.env.HISTORIAN_UDP_PORT || 9900),
       timestampUnit: process.env.HISTORIAN_TIMESTAMP_UNIT || "us",
-      flushIntervalMs: Number(process.env.HISTORIAN_FLUSH_INTERVAL_MS || 20),
       maxQueue: Number(process.env.HISTORIAN_MAX_QUEUE || 100000),
       targets: runtime.getGlobal("assetFramework", initialSection as { historians?: unknown[] })?.historians || [],
+      enqueueHistorianRows: (rows) => {
+        const db = runtime.getGlobal<DbConnectionManager | null>("dbConnectionManager", null);
+        if (!db) return;
+        for (const row of rows) {
+          db.enqueueHistorian(row);
+        }
+      }
     }) as HistorianBridgeLike);
   runtime.setGlobal("historianBridge", historianBridge);
 

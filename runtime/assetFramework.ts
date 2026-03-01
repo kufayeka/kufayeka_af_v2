@@ -16,9 +16,6 @@ import type {
 const DEFAULT_HISTORIAN_TARGET: HistorianTarget = {
   id: "default",
   name: "Default Historian",
-  udpHost: "127.0.0.1",
-  udpPort: 9900,
-  httpBaseUrl: "http://127.0.0.1:8080",
   timestampUnit: "us",
   enabled: true,
 };
@@ -103,9 +100,6 @@ function normalizeHistorian(input: unknown): HistorianTarget | null {
   return {
     id,
     name: String(src.name ?? src.id ?? ""),
-    udpHost: String(src.udpHost ?? "127.0.0.1"),
-    udpPort: Math.max(1, Number(src.udpPort) || 9900),
-    httpBaseUrl: String(src.httpBaseUrl ?? "http://127.0.0.1:8080"),
     timestampUnit: String(src.timestampUnit ?? "us") === "ns" ? "ns" : "us",
     enabled: src.enabled !== false,
   };
