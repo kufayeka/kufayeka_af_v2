@@ -21,7 +21,7 @@ function getErrorMessage(error: unknown): string {
 
 async function bootstrap(): Promise<void> {
   const rt = new Runtime({
-    maxInflightPerNode: 50,
+    maxInflightPerNode: 1,
     maxQueuePerNode: 2000,
     nodeExecutionTimeoutMs: Number(process.env.RUNTIME_NODE_TIMEOUT_MS || 30000),
   });

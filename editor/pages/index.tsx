@@ -60,7 +60,29 @@ type HistoryAction =
   | { type: "UNDO" }
   | { type: "REDO" };
 
-const MAX_HISTORY = 200;
+const MAX_HISTORY = 40;
+const MAX_HISTORY_JSON_BYTES = 24 * 1024 * 1024;
+
+function estimateProgramBytes(program: Program): number {
+  try {
+    return JSON.stringify(program).length;
+  } catch {
+    return 0;
+  }
+}
+
+function trimHistorySnapshots(snapshots: Program[]): Program[] {
+  let trimmed = snapshots.slice(Math.max(0, snapshots.length - MAX_HISTORY));
+  if (trimmed.length <= 1) return trimmed;
+
+  const sizes = trimmed.map((item) => estimateProgramBytes(item));
+  let totalBytes = sizes.reduce((sum, size) => sum + size, 0);
+  while (trimmed.length > 1 && totalBytes > MAX_HISTORY_JSON_BYTES) {
+    totalBytes -= sizes.shift() || 0;
+    trimmed = trimmed.slice(1);
+  }
+  return trimmed;
+}
 
 function historyReducer(state: HistoryState, action: HistoryAction): HistoryState {
   if (action.type === "INIT") {
@@ -70,9 +92,9 @@ function historyReducer(state: HistoryState, action: HistoryAction): HistoryStat
   if (action.type === "APPLY") {
     const next = action.updater(state.present);
     if (next === state.present) return state;
-    const nextPast = [...state.past, state.present];
+    const nextPast = trimHistorySnapshots([...state.past, state.present]);
     return {
-      past: nextPast.slice(Math.max(0, nextPast.length - MAX_HISTORY)),
+      past: nextPast,
       present: next,
       future: []
     };
@@ -85,10 +107,10 @@ function historyReducer(state: HistoryState, action: HistoryAction): HistoryStat
   }
 
   if (action.type === "PUSH_SNAPSHOT") {
-    const nextPast = [...state.past, state.present];
+    const nextPast = trimHistorySnapshots([...state.past, state.present]);
     return {
       ...state,
-      past: nextPast.slice(Math.max(0, nextPast.length - MAX_HISTORY)),
+      past: nextPast,
       future: []
     };
   }
@@ -106,10 +128,9 @@ function historyReducer(state: HistoryState, action: HistoryAction): HistoryStat
   if (action.type === "REDO") {
     if (state.future.length === 0) return state;
     const next = state.future[0];
+    const nextPast = trimHistorySnapshots([...state.past, state.present]);
     return {
-      past: [...state.past, state.present].slice(
-        Math.max(0, state.past.length + 1 - MAX_HISTORY)
-      ),
+      past: nextPast,
       present: next,
       future: state.future.slice(1)
     };

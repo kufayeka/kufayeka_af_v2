@@ -392,11 +392,6 @@
         "enabled": true
       },
       {
-        "from": "trigger.watch_1772017838146",
-        "to": "Scripts.debug",
-        "enabled": true
-      },
-      {
         "from": "trigger.tick_1772164929424",
         "to": "Taiyo1.MES.PaperConsumptionPerActivity",
         "enabled": true
@@ -501,8 +496,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": 1772341245444,
-            "ts": "2026-03-01T05:00:44.710Z"
+            "value": 1772346977211,
+            "ts": "2026-03-01T06:36:15.702Z"
           }
         }
       },
@@ -521,12 +516,12 @@
             "ts": "2026-02-26T17:46:10.942Z"
           },
           "Encoder Raw Value": {
-            "value": 67,
-            "ts": "2026-03-01T05:00:45.168Z"
+            "value": 81,
+            "ts": "2026-03-01T06:36:15.371Z"
           },
           "Encoder Prev Value": {
-            "value": 60,
-            "ts": "2026-03-01T05:00:45.112Z"
+            "value": 64,
+            "ts": "2026-03-01T06:36:15.320Z"
           },
           "Work Order": {
             "value": "WO-777",
@@ -549,39 +544,39 @@
           },
           "Job Activity": {
             "value": "-",
-            "ts": "2026-03-01T05:00:24.814Z"
+            "ts": "2026-03-01T05:47:20.551Z"
           },
           "Paper Consumed Setup": {
-            "value": 110616,
-            "ts": "2026-03-01T05:00:45.111Z"
+            "value": 201504,
+            "ts": "2026-03-01T05:47:15.607Z"
           },
           "Paper Total Waste": {
-            "value": 134134,
-            "ts": "2026-03-01T05:00:45.112Z"
+            "value": 225022,
+            "ts": "2026-03-01T05:47:15.607Z"
           },
           "Paper Total Consumed": {
-            "value": 1245433,
-            "ts": "2026-03-01T05:00:45.112Z"
+            "value": 1433605,
+            "ts": "2026-03-01T06:36:15.320Z"
           },
           "Job Activity Category": {
-            "value": "Setup",
-            "ts": "2026-03-01T05:00:20.922Z"
+            "value": "Production",
+            "ts": "2026-03-01T05:47:16.608Z"
           },
           "Paper Consumed Production": {
-            "value": 1111299,
-            "ts": "2026-03-01T05:00:19.937Z"
+            "value": 1208583,
+            "ts": "2026-03-01T06:36:15.319Z"
           },
           "Paper Consumed Idle": {
             "value": 23518,
             "ts": "2026-02-28T19:03:35.459Z"
           },
           "Total Production Time": {
-            "value": 219,
-            "ts": "2026-03-01T05:00:19.944Z"
+            "value": 3066,
+            "ts": "2026-03-01T06:36:15.321Z"
           },
           "Total Setup Time": {
-            "value": 25,
-            "ts": "2026-03-01T05:00:45.113Z"
+            "value": 2793,
+            "ts": "2026-03-01T05:47:15.608Z"
           }
         }
       },

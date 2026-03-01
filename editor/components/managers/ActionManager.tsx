@@ -881,18 +881,20 @@ export default function ActionManager({
  
                   <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <Typography variant="subtitle2">{template.name}</Typography>
+                  </Box>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Typography variant="caption" color="text.secondary">
+                      {template.description || "No description"}
+                    </Typography>                    
                     <Button
                       size="small"
                       color="error"
                       variant="outlined"
                       onClick={() => onRemoveScriptTemplate(template.id)}
                     >
-                      Remove Template
+                      Remove
                     </Button>
                   </Box>
-                  <Typography variant="caption" color="text.secondary">
-                    {template.description || "No description"}
-                  </Typography>
 
                 </Box>
               ))}
