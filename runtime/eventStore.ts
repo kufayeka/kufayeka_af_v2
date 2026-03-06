@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Runtime from "./Runtime";
 import type { DbConnectionManager } from "./dbConnectionManager";
-import type { EventRow, EventStore } from "./types";
+import type { EventRow, EventStore, EventStoreChangeMeta } from "./types";
 
 const VALID_STATUS = new Set(["open", "closed"]);
 const VALID_SEVERITY = new Set(["other", "info", "low", "medium", "high", "critical"]);
@@ -318,6 +318,20 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
   const table = String(dbCfg.tables.event).replace(/"/g, "");
   const database = String(dbCfg.connection.database);
   const tableRef = `"${schema}"."${table}"`;
+  const listeners = new Set<(meta: EventStoreChangeMeta) => void>();
+
+  const emitChange = (meta: Omit<EventStoreChangeMeta, "ts">): void => {
+    if (listeners.size === 0) return;
+    const payload: EventStoreChangeMeta = { ...meta, ts: new Date().toISOString() };
+    for (const listener of listeners) {
+      try {
+        listener(payload);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("[eventStore] subscriber error:", message);
+      }
+    }
+  };
 
   const open: EventStore["open"] = async (
     eventPath,
@@ -353,7 +367,9 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
       row.notes_on_open,
       JSON.stringify(row.captured_data_on_open)
     ]);
-    return mapRow(result.rows[0] || row);
+    const mapped = mapRow(result.rows[0] || row);
+    emitChange({ type: "open", row: mapped, rows: [mapped], count: 1 });
+    return mapped;
   };
 
   const close: EventStore["close"] = async (pattern = "*", ts, notesOnClose = "", capturedDataOnClose = null) => {
@@ -370,8 +386,13 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
         captured_data_on_close = CASE WHEN $3::jsonb IS NULL THEN captured_data_on_close ELSE $3::jsonb END,
         updated_at = NOW()
       WHERE status = 'open' AND event_path LIKE $4 ESCAPE '!'
+      RETURNING id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,captured_data_on_open,captured_data_on_close
     `;
     const result = await db.query(sql, [normalizedTs, normalizedNotes, JSON.stringify(normalizedCapturedOnClose), likePattern]);
+    const rows = result.rows.map((row) => mapRow(row as Record<string, unknown>));
+    if (rows.length > 0) {
+      emitChange({ type: "close", pattern: String(pattern || "*"), rows, count: rows.length });
+    }
     return {
       pattern: String(pattern || "*"),
       closedCount: Number(result.rowCount || 0),
@@ -396,8 +417,13 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
         captured_data_on_close = CASE WHEN $3::jsonb IS NULL THEN captured_data_on_close ELSE $3::jsonb END,
         updated_at = NOW()
       WHERE id = $4 AND status = 'open'
+      RETURNING id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,captured_data_on_open,captured_data_on_close
     `;
     const result = await db.query(sql, [normalizedTs, normalizedNotes, JSON.stringify(normalizedCapturedOnClose), normalizedId]);
+    const rows = result.rows.map((row) => mapRow(row as Record<string, unknown>));
+    if (rows.length > 0) {
+      emitChange({ type: "closeById", id: normalizedId, rows, row: rows[0], count: rows.length });
+    }
     return {
       id: normalizedId,
       closedCount: Number(result.rowCount || 0),
@@ -413,6 +439,9 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
     const normalizedTs = toIsoTs(ts);
     const sql = `UPDATE ${tableRef} SET is_acknowledge = TRUE, acknowledged_ts = $1::timestamptz, updated_at = NOW() WHERE id = $2`;
     const result = await db.query(sql, [normalizedTs, normalizedId]);
+    if (Number(result.rowCount || 0) > 0) {
+      emitChange({ type: "acknowledgeById", id: normalizedId, count: Number(result.rowCount || 0) });
+    }
     return {
       id: normalizedId,
       acknowledgedCount: Number(result.rowCount || 0),
@@ -424,6 +453,9 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
     const normalizedId = String(id || "").trim();
     if (!normalizedId) throw new Error("id is required");
     const result = await db.query(`DELETE FROM ${tableRef} WHERE id = $1`, [normalizedId]);
+    if (Number(result.rowCount || 0) > 0) {
+      emitChange({ type: "deleteById", id: normalizedId, count: Number(result.rowCount || 0) });
+    }
     return { id: normalizedId, deletedCount: Number(result.rowCount || 0) };
   };
 
@@ -431,6 +463,9 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
     const params: unknown[] = [];
     const whereSql = buildBaseWhere({ pattern, status, from, to, contextFilters: {}, severity }, params);
     const result = await db.query(`DELETE FROM ${tableRef} ${whereSql}`, params);
+    if (Number(result.rowCount || 0) > 0) {
+      emitChange({ type: "deleteByPattern", pattern: String(pattern || "*"), count: Number(result.rowCount || 0) });
+    }
     return {
       pattern: String(pattern || "*"),
       status: normalizeStatus(status),
@@ -467,6 +502,13 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
   const get: EventStore["get"] = async (pattern = "*", from = "*", to = "*", status = "*", contextFilters = {}, options = {}) =>
     (await query(pattern, from, to, status, contextFilters, options)).rows;
 
+  const subscribe: EventStore["subscribe"] = (listener) => {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  };
+
   return {
     getMeta: () => ({
       engine: "postgresql",
@@ -482,6 +524,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
     deleteByPattern,
     get,
     query,
+    subscribe,
     shutdown: async () => {}
   };
 }
@@ -493,7 +536,8 @@ export function ensureEventStore(runtime: Runtime, options: EventStoreOptions = 
     typeof existing === "object" &&
     typeof (existing as EventStore).open === "function" &&
     typeof (existing as EventStore).close === "function" &&
-    typeof (existing as EventStore).get === "function"
+    typeof (existing as EventStore).get === "function" &&
+    typeof (existing as EventStore).subscribe === "function"
   ) {
     return existing as EventStore;
   }

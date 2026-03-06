@@ -9,6 +9,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import { scrollBothOverflowSx } from "../common/scrollSx";
 
 interface DbConfigResponse {
   config?: Record<string, unknown>;
@@ -132,7 +133,7 @@ export default function DbConnectionManager() {
             <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
               Config + Metrics
             </Typography>
-            <Box sx={{ maxHeight: 420, overflow: "auto", fontFamily: "monospace", fontSize: 12, whiteSpace: "pre-wrap" }}>
+            <Box sx={{ maxHeight: 420, ...scrollBothOverflowSx, fontFamily: "monospace", fontSize: 12, whiteSpace: "pre-wrap" }}>
               {JSON.stringify(config || {}, null, 2)}
             </Box>
           </Paper>
@@ -164,7 +165,7 @@ export default function DbConnectionManager() {
             <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
               Result
             </Typography>
-            <Box sx={{ maxHeight: 420, overflow: "auto", fontFamily: "monospace", fontSize: 12, whiteSpace: "pre-wrap" }}>
+            <Box sx={{ maxHeight: 420, ...scrollBothOverflowSx, fontFamily: "monospace", fontSize: 12, whiteSpace: "pre-wrap" }}>
               {JSON.stringify(sqlResult || {}, null, 2)}
             </Box>
           </Paper>

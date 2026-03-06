@@ -186,12 +186,22 @@ export function normalizeProgram(program: Program): Program {
             ? "watcher_set"
             : rawType === "watcher_valuechange"
               ? "watcher_valuechange"
+              : rawType === "watcher_event_falling"
+                ? "watcher_event_falling"
+              : rawType === "cron"
+                ? "cron"
               : "interval",
         intervalMs: Math.max(1, Number(trigger.intervalMs) || 1000),
+        cronExpression: String((trigger as { cronExpression?: unknown }).cronExpression || "").trim(),
+        timezone: String((trigger as { timezone?: unknown }).timezone || "").trim(),
+        activeFrom: String((trigger as { activeFrom?: unknown }).activeFrom || "").trim(),
+        activeTo: String((trigger as { activeTo?: unknown }).activeTo || "").trim(),
         watchPath:
           rawType === "watcher_set" ||
           rawType === "watcher_valuechange"
             ? String(trigger.watchPath || "").trim() || "*.*.*"
+            : rawType === "watcher_event_falling"
+              ? String(trigger.watchPath || "").trim() || "*"
             : String(trigger.watchPath || ""),
         message: trigger.message && typeof trigger.message === "object" ? trigger.message : { payload: 0 },
         enabled: trigger.enabled !== false

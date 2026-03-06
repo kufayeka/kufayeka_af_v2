@@ -8,6 +8,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import { scrollBothOverflowSx } from "../common/scrollSx";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -95,7 +96,7 @@ export default function DocsManager() {
             {status}
           </Typography>
         </Box>
-        <Paper variant="outlined" sx={{ overflow: "auto", maxHeight: "calc(100vh - 260px)" }}>
+        <Paper variant="outlined" sx={{ ...scrollBothOverflowSx, maxHeight: "calc(100vh - 260px)" }}>
           <List dense disablePadding>
             {filteredDocs.map((doc) => (
               <ListItemButton
@@ -149,7 +150,7 @@ export default function DocsManager() {
                 </Typography>
               )}
             </Box>
-            <Paper variant="outlined" sx={{ p: 1.25, bgcolor: "#f8fafc", overflow: "auto", maxHeight: "calc(100vh - 320px)" }}>
+            <Paper variant="outlined" sx={{ p: 1.25, bgcolor: "#f8fafc", ...scrollBothOverflowSx, maxHeight: "calc(100vh - 320px)" }}>
               <Box
                 className="markdown-body"
                 sx={{
@@ -164,10 +165,10 @@ export default function DocsManager() {
                   "& table": {
                     display: "block",
                     width: "100%",
-                    overflowX: "auto"
+                    ...scrollBothOverflowSx
                   },
                   "& pre": {
-                    overflowX: "auto"
+                    ...scrollBothOverflowSx
                   }
                 }}
               >

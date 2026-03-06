@@ -1,4 +1,5 @@
 import type { RuntimeNodeContext, RuntimeNodeHandler } from "./types";
+import axios from "axios";
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
   ...args: string[]
@@ -24,6 +25,78 @@ interface ScriptAction {
   script?: string;
   config?: Record<string, unknown>;
   templateBindingOverrides?: Record<string, Partial<VariableBinding>>;
+}
+
+type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+type HttpHeaders = Record<string, string>;
+type HttpCookies = Record<string, string | number | boolean>;
+type HttpParams = Record<string, string | number | boolean | null | undefined>;
+type HttpBody = unknown;
+
+interface HttpRequestOptions {
+  url: string;
+  method?: HttpMethod | string;
+  params?: HttpParams;
+  query?: HttpParams;
+  headers?: HttpHeaders;
+  cookies?: HttpCookies;
+  body?: HttpBody;
+  data?: HttpBody;
+  timeoutMs?: number;
+  responseType?: "json" | "text" | "arraybuffer";
+}
+
+function buildCookieHeader(cookies: HttpCookies | undefined): string {
+  if (!cookies || typeof cookies !== "object") return "";
+  const pairs: string[] = [];
+  for (const [key, value] of Object.entries(cookies)) {
+    if (!key) continue;
+    if (value === undefined || value === null) continue;
+    pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
+  }
+  return pairs.join("; ");
+}
+
+async function httpRequest(rawOptions: HttpRequestOptions): Promise<{
+  ok: boolean;
+  status: number;
+  statusText: string;
+  data: unknown;
+  headers: Record<string, unknown>;
+  request: { method: string; url: string };
+}> {
+  const options = rawOptions && typeof rawOptions === "object" ? rawOptions : ({} as HttpRequestOptions);
+  const url = String(options.url || "").trim();
+  if (!url) throw new Error("helpers.http: url is required");
+
+  const method = String(options.method || "GET").toUpperCase();
+  const headers: Record<string, string> = { ...(options.headers || {}) };
+  const cookieHeader = buildCookieHeader(options.cookies);
+  if (cookieHeader) {
+    headers.Cookie = headers.Cookie ? `${headers.Cookie}; ${cookieHeader}` : cookieHeader;
+  }
+
+  const timeout = Math.max(0, Number(options.timeoutMs || 0)) || undefined;
+  const res = await axios.request({
+    url,
+    method,
+    params: options.query || options.params,
+    headers,
+    data: Object.prototype.hasOwnProperty.call(options, "body") ? options.body : options.data,
+    timeout,
+    responseType: options.responseType || "json",
+    withCredentials: true,
+    validateStatus: () => true
+  });
+
+  return {
+    ok: res.status >= 200 && res.status < 300,
+    status: res.status,
+    statusText: res.statusText,
+    data: res.data,
+    headers: (res.headers || {}) as Record<string, unknown>,
+    request: { method, url }
+  };
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
@@ -121,12 +194,15 @@ export default function createScriptActionHandler(
   const rawScript = (template && template.script) || action.script || "send(msg);";
   const script = rawScript
     .replace(/(?<!\bawait\s)eventSys\.(open|close|get)\s*\(/g, "await eventSys.$1(")
-    .replace(/(?<!\bawait\s)asset\.(set|setMany)\s*\(/g, "await asset.$1(");
-  const scriptWithBindings = `
+    .replace(/(?<!\bawait\s)asset\.(set|setMany)\s*\(/g, "await asset.$1(")
+    .replace(/(?<!\bawait\s)db\.(query|executeSafe|testConnection)\s*\(/g, "await db.$1(")
+    .replace(/(?<!\bawait\s)helpers\.http\s*\(/g, "await helpers.http(");
+const scriptWithBindings = `
 const __bindings = bindings && typeof bindings === "object" ? bindings : {};
 const global = context && context.global ? context.global : null;
 const asset = context && context.asset ? context.asset : null;
 const eventSys = context && context.eventSys ? context.eventSys : null;
+const db = context && context.db ? context.db : null;
 with (__bindings) {
 ${script}
 }
@@ -146,6 +222,8 @@ ${script}
       log: (...args: unknown[]) => console.log(`[${action.id}]`, ...args),
       sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
       fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
+      axios,
+      http: async (options: HttpRequestOptions) => await httpRequest(options),
       now: () => new Date().toISOString(),
     };
 

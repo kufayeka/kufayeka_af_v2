@@ -9,6 +9,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import { scrollBothOverflowSx } from "../common/scrollSx";
 
 interface GlobalStoreManagerProps {
   onStatus: (message: string) => void;
@@ -145,7 +146,7 @@ export default function GlobalStoreManager({ onStatus }: GlobalStoreManagerProps
             Refresh
           </Button>
         </Box>
-        <List dense sx={{ maxHeight: "calc(100vh - 300px)", overflow: "auto", border: "1px solid #e2e8f0" }}>
+        <List dense sx={{ maxHeight: "calc(100vh - 300px)", ...scrollBothOverflowSx, border: "1px solid #e2e8f0" }}>
           {keys.length === 0 && (
             <Typography variant="caption" sx={{ p: 1, color: "#64748b" }}>
               No user global keys.
@@ -203,7 +204,7 @@ export default function GlobalStoreManager({ onStatus }: GlobalStoreManagerProps
           sx={{
             "& .MuiInputBase-root": {
               maxHeight: "50vh",
-              overflow: "auto"
+              ...scrollBothOverflowSx
             },
             "& textarea": {
               overflow: "auto !important",

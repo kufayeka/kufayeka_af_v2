@@ -5,17 +5,6 @@
   },
   "triggers": [
     {
-      "id": "trigger.watch_1772017836959",
-      "label": "taiyo2joblifecycle",
-      "type": "watcher_set",
-      "enabled": true,
-      "intervalMs": 1000,
-      "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle",
-      "message": {
-        "payload": 0
-      }
-    },
-    {
       "id": "trigger.watch_1772017838146",
       "label": "taiyo1joblifecycle",
       "type": "watcher_set",
@@ -24,18 +13,11 @@
       "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
       "message": {
         "payload": 0
-      }
-    },
-    {
-      "id": "trigger.watch_1772123673211",
-      "label": "taiyo1jobactivity",
-      "type": "watcher_valuechange",
-      "enabled": true,
-      "intervalMs": 1000,
-      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
-      "message": {
-        "payload": 0
-      }
+      },
+      "cronExpression": "",
+      "timezone": "",
+      "activeFrom": "",
+      "activeTo": ""
     },
     {
       "id": "trigger.watch_1772152779583",
@@ -46,7 +28,11 @@
       "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
       "message": {
         "payload": 0
-      }
+      },
+      "cronExpression": "",
+      "timezone": "",
+      "activeFrom": "",
+      "activeTo": ""
     },
     {
       "id": "trigger.tick_1772164929424",
@@ -55,6 +41,21 @@
       "enabled": true,
       "intervalMs": 1000,
       "watchPath": "",
+      "message": {
+        "payload": 0
+      },
+      "cronExpression": "",
+      "timezone": "",
+      "activeFrom": "",
+      "activeTo": ""
+    },
+    {
+      "id": "trigger.watch_1772772099483",
+      "label": "event trigger",
+      "type": "watcher_event_falling",
+      "enabled": true,
+      "intervalMs": 1000,
+      "watchPath": "*/Job/*/Activity/*/*",
       "message": {
         "payload": 0
       }
@@ -67,7 +68,7 @@
       "type": "script",
       "enabled": true,
       "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\r\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = await eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventLifecyclePath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\nconst eventActivityPath = `${assetPath}/Job/${workOrderAttribute}/Activity/*`;\r\n\r\nhelpers.log('event mulai:', jobLifecycleAttribute);\r\n\r\n// CEK APAKAH LOAD/UNLOAD\r\nif (![\"load\", \"unload\"].includes(String(jobLifecycleAttribute).toLowerCase())) {\r\n  helpers.log('--- bukan load/unload');\r\n  return;\r\n}\r\n\r\nhelpers.log('--- terdeteksi load/unload');\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  asset.set(jobLifecycleAttributePath, `-`);\r\n\r\n  msg.payload = \"alarm: work order is empty\";\r\n\r\n  send(msg);\r\n\r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);\r\n\r\n  // CREATE EVENT BASED ON LIFECYCLE\r\n  if (jobLifecycleAttribute === \"load\") {\r\n\r\n    if (openedEvents.length === 0) {\r\n\r\n      const jobLifecycleContext = {\r\n        operator: operatorAttribute,\r\n        workOrder: workOrderAttribute,\r\n      }\r\n\r\n      await eventSys.open(\r\n        `${eventLifecyclePath}Running`,\r\n        timestamp,\r\n        jobLifecycleContext,\r\n        `${workOrderAttribute} loaded`,\r\n        \"info\",\r\n        {\r\n          operator: operatorAttribute, workOrder: workOrderAttribute, lifecycle: \"load\", sourceAttribute: jobLifecycleAttributePath\r\n        });\r\n\r\n      msg.payload = \"event opened\";\r\n\r\n      send(msg);\r\n\r\n    }\r\n\r\n  } else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n    if (openedEvents.length > 0) {\r\n\r\n      await eventSys.close(`\r\n        ${eventLifecyclePath}Running`,\r\n        timestamp,\r\n        `${workOrderAttribute} unloaded`,\r\n        {\r\n          operator: operatorAttribute, workOrder: workOrderAttribute, lifecycle: \"unload\", sourceAttribute: jobLifecycleAttributePath\r\n        });\r\n\r\n      await eventSys.close(\r\n        `${eventActivityPath}`,\r\n        timestamp,\r\n        `${workOrderAttribute} unloaded`,\r\n        {\r\n          operator: operatorAttribute, workOrder: workOrderAttribute, lifecycle: \"unload\", closedPattern: eventActivityPath\r\n        });\r\n\r\n      asset.set(workOrderAttributePath, `-`);\r\n      asset.set(jobLifecycleAttributePath, `-`);\r\n      asset.set(jobActivityAttributePath, `-`);\r\n\r\n      msg.payload = \"event closed\";\r\n\r\n      send(msg);\r\n\r\n    }\r\n\r\n  }\r\n\r\n\r\n}\r\n\r\n\r\n\r\nreturn;",
+      "script": "// VARIABLE BINDINGS\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\nconst timestamp = Timestamp?.value || helpers.now();\nconst assetPath = AssetPath || \"-\";\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\n\nconst renderPath = (template, vars = {}) => {\n  return String(template || \"\")\n    .replaceAll(\"{assetPath}\", String(vars.assetPath ?? assetPath))\n    .replaceAll(\"{workOrder}\", String(vars.workOrder ?? workOrderAttribute))\n    .replaceAll(\"{activity}\", String(vars.activity ?? \"*\"));\n};\n\nconst lifecycleRunningEventPath = renderPath(LifecycleRunningEventPathTemplate);\nconst lifecycleActivityEventPath = renderPath(LifecycleActivityEventPathTemplate);\n\n// GET ACTIVE JOB LOAD EVENTS\nconst openedEvents = await eventSys.get(lifecycleRunningEventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\n\nhelpers.log(\"event mulai:\", jobLifecycleAttribute);\n\n// CEK APAKAH LOAD/UNLOAD\nif (![\"load\", \"unload\", \"complete\"].includes(String(jobLifecycleAttribute).trim().toLowerCase())) {\n  helpers.log(\"--- bukan load/unload\");\n  return;\n}\n\nhelpers.log(\"--- terdeteksi load/unload\");\n\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\n  asset.set(alarmAttributePath, \"!!!Work order is empty!!!\");\n  asset.set(jobLifecycleAttributePath, \"-\");\n\n  msg.payload = \"alarm: work order is empty\";\n  send(msg);\n} else {\n  asset.set(alarmAttributePath, \"-\");\n\n  // CREATE EVENT BASED ON LIFECYCLE\n  if (String(jobLifecycleAttribute).trim().toLowerCase() === \"load\") {\n    if (openedEvents.length === 0) {\n\n\n      // RESET ALL MES COUNTERS\n      asset.setMany(\n        [\n          { path: PaperConsumedIdle.path, value: 0 },\n          { path: PaperConsumedProduction.path, value: 0 },\n          { path: PaperConsumedSetup.path, value: 0 },\n          { path: TotalIdleTime.path, value: 0 },\n          { path: TotalProductionTime.path, value: 0 },\n          { path: TotalSetupTime.path, value: 0 },\n          { path: JobActivityCategoryAttribute.path, value: \"-\" }\n        ]\n      );\n\n\n      const jobLifecycleContext = {\n        operator: operatorAttribute,\n        workOrder: workOrderAttribute,\n      };\n\n      await eventSys.open(\n        lifecycleRunningEventPath,\n        timestamp,\n        jobLifecycleContext,\n        `${workOrderAttribute} loaded`,\n        \"info\",\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"load\",\n          sourceAttribute: jobLifecycleAttributePath,\n        }\n      );\n\n      msg.payload = \"event opened\";\n      send(msg);\n    } \n  } else if (String(jobLifecycleAttribute).trim().toLowerCase() === \"unload\") {\n    if (openedEvents.length > 0) {\n      await eventSys.close(\n        lifecycleRunningEventPath,\n        timestamp,\n        `${workOrderAttribute} unloaded`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"unload\",\n          totalIdleTime: TotalIdleTime?.value || 0,\n          totalProductionTime: TotalProductionTime?.value || 0,\n          totalSetupTime: TotalSetupTime?.value || 0,\n          productCount: ProductCount?.value || 0,\n          productGood: ProductGood?.value || 0\n        }\n      );\n\n      await eventSys.close(\n        lifecycleActivityEventPath,\n        timestamp,\n        `${workOrderAttribute} unloaded`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"complete\"\n        }\n      );\n\n      asset.set(workOrderAttributePath, \"-\");\n      asset.set(jobLifecycleAttributePath, \"-\");\n      asset.set(jobActivityAttributePath, \"-\");\n      asset.set(JobActivityCategoryAttribute.path, \"-\");\n\n\n      msg.payload = \"event closed\";\n      send(msg);\n    }\n  } else if (String(jobLifecycleAttribute).trim().toLowerCase() === \"complete\") {\n    if (openedEvents.length > 0) {\n      await eventSys.close(\n        lifecycleRunningEventPath,\n        timestamp,\n        `${workOrderAttribute} completed`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"unload\",\n          totalIdleTime: TotalIdleTime?.value || 0,\n          totalProductionTime: TotalProductionTime?.value || 0,\n          totalSetupTime: TotalSetupTime?.value || 0,\n          productCount: ProductCount?.value || 0,\n          productGood: ProductGood?.value || 0\n        }\n      );\n\n      await eventSys.close(\n        lifecycleActivityEventPath,\n        timestamp,\n        `${workOrderAttribute} completed`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"complete\"\n        }\n      );\n\n      asset.set(workOrderAttributePath, \"-\");\n      asset.set(jobLifecycleAttributePath, \"-\");\n      asset.set(jobActivityAttributePath, \"-\");\n\n      msg.payload = \"event closed\";\n      send(msg);\n    }\n  }\n}\n\nreturn;",
       "templateId": "template.script_1771898442157",
       "templateBindingOverrides": {
         "AssetPath": {
@@ -111,6 +112,69 @@
           "staticValue": "",
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
           "allowOverride": true
+        },
+        "PaperConsumedIdle": {
+          "name": "PaperConsumedIdle",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Idle",
+          "allowOverride": true
+        },
+        "PaperConsumedProduction": {
+          "name": "PaperConsumedProduction",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production",
+          "allowOverride": true
+        },
+        "PaperConsumedSetup": {
+          "name": "PaperConsumedSetup",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Setup",
+          "allowOverride": true
+        },
+        "TotalIdleTime": {
+          "name": "TotalIdleTime",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Idle Time",
+          "allowOverride": true
+        },
+        "TotalProductionTime": {
+          "name": "TotalProductionTime",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Production Time",
+          "allowOverride": true
+        },
+        "TotalSetupTime": {
+          "name": "TotalSetupTime",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Setup Time",
+          "allowOverride": true
+        },
+        "ProductCount": {
+          "name": "ProductCount",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count",
+          "allowOverride": true
+        },
+        "ProductGood": {
+          "name": "ProductGood",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Good",
+          "allowOverride": true
+        },
+        "JobActivityCategoryAttribute": {
+          "name": "JobActivityCategoryAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category",
+          "allowOverride": true
         }
       },
       "allowNodeDuplication": true,
@@ -134,7 +198,7 @@
       "enabled": true,
       "allowNodeDuplication": true,
       "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst jobActivityAttribute = JobActivityAttribute?.value || \"-\";\r\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\r\nconst jobActivityCategoryAttributePath = JobActivityCategoryAttribute?.path || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\n\r\n// STOP jika reset / invalid (jangan bikin event)\r\nif (jobActivityAttribute === \"-\" || jobActivityAttribute === \"\" || jobActivityAttribute === null) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// STOP jika wo not found (jangan bikin event)\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n  asset.set(alarmAttributePath, \"!!!No Active Work Order!!!\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst rawActivity = String(jobActivityAttribute).trim();\r\nconst activityLower = rawActivity.toLowerCase();\r\n\r\nlet activityType = \"\";\r\nif (activityLower === \"production\") {\r\n  activityType = \"Production\";\r\n  asset.set(jobActivityCategoryAttributePath, activityType);\r\n} else if (activityLower.startsWith(\"setup\")) {\r\n  activityType = \"Setup\";\r\n  asset.set(jobActivityCategoryAttributePath, activityType);\r\n} else if (activityLower.startsWith(\"idle\")) {\r\n  activityType = \"Idle\";\r\n  asset.set(jobActivityCategoryAttributePath, activityType);\r\n} else {\r\n  asset.set(alarmAttributePath, `!!!Unknown activity type: ${rawActivity}!!!`);\r\n  asset.set(jobActivityCategoryAttributePath, \"-\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst basePath = `${assetPath}/Job/${workOrderAttribute}/Activity`;\r\nconst eventPath = `${basePath}/${rawActivity}`;\r\n\r\n// Cek duplicate event exact path\r\nconst openedExact = await eventSys.get(eventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\nif (openedExact.length > 0) {\r\n  asset.set(alarmAttributePath, `!!!Activity already open: ${rawActivity}!!!`);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// Selalu enforce single active activity:\r\n// sebelum open activity baru, tutup semua activity type lain\r\nconst setupPattern = `${basePath}/Setup/*`;\r\nconst productionPattern = `${basePath}/Production`;\r\nconst idlePattern = `${basePath}/Idle/*`;\r\n\r\nif (activityType === \"Production\") {\r\n  await eventSys.close(setupPattern, timestamp, \"auto close by Production transition\", { transitionTo: \"Production\", fromType: \"Setup\", workOrder: workOrderAttribute });\r\n  await eventSys.close(idlePattern, timestamp, \"auto close by Production transition\", { transitionTo: \"Production\", fromType: \"Idle\", workOrder: workOrderAttribute });\r\n} else if (activityType === \"Setup\") {\r\n  asset.set(jobActivityCategoryAttributePath, \"Setup\");\r\n  await eventSys.close(productionPattern, timestamp, \"auto close by Setup transition\", { transitionTo: \"Setup\", fromType: \"Production\", workOrder: workOrderAttribute });\r\n  await eventSys.close(idlePattern, timestamp, \"auto close by Setup transition\", { transitionTo: \"Setup\", fromType: \"Idle\", workOrder: workOrderAttribute });\r\n} else if (activityType === \"Idle\") {\r\n  asset.set(jobActivityCategoryAttributePath, \"Idle\");\r\n  await eventSys.close(productionPattern, timestamp, \"auto close by Idle transition\", { transitionTo: \"Idle\", fromType: \"Production\", workOrder: workOrderAttribute });\r\n  await eventSys.close(setupPattern, timestamp, \"auto close by Idle transition\", { transitionTo: \"Idle\", fromType: \"Setup\", workOrder: workOrderAttribute });\r\n}\r\n\r\nasset.set(alarmAttributePath, \"-\");\r\n\r\nconst activityContext = {\r\n  operator: operatorAttribute,\r\n  workOrder: workOrderAttribute,\r\n  activityType\r\n};\r\n\r\nawait eventSys.open(\n  eventPath,\n  timestamp,\n  activityContext,\n  `activity ${rawActivity} created`,\n  \"info\",\n  { operator: operatorAttribute, workOrder: workOrderAttribute, activity: rawActivity, activityType, sourceAttribute: jobActivityAttributePath }\n);\r\n\r\n// AUTO RESET activity biar bisa trigger lagi walau value sama\r\nasset.set(jobActivityAttributePath, \"-\");\r\n\r\nsend(msg);\r\n",
+      "script": "// VARIABLE BINDINGS\nconst jobActivityAttribute = JobActivityAttribute?.value || \"-\";\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\nconst jobActivityCategoryAttributePath = JobActivityCategoryAttribute?.path || \"-\";\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\nconst timestamp = Timestamp?.value || helpers.now();\nconst assetPath = AssetPath || \"-\";\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\nconst totalPaperConsumption = TotalPaperConsumption?.value || 0;\nconst materialBarcode = MaterialBarcode?.value || \"-\";\n\nconst renderPath = (template, vars = {}) => {\n  return String(template || \"\")\n    .replaceAll(\"{assetPath}\", String(vars.assetPath ?? assetPath))\n    .replaceAll(\"{workOrder}\", String(vars.workOrder ?? workOrderAttribute))\n    .replaceAll(\"{activity}\", String(vars.activity ?? \"*\"));\n};\n\n// STOP jika reset / invalid\nif (jobActivityAttribute === \"-\" || jobActivityAttribute === \"\" || jobActivityAttribute === null) {\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\n// STOP jika work order tidak ada\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\n  asset.set(alarmAttributePath, \"!!!No Active Work Order!!!\");\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\nconst rawActivity = String(jobActivityAttribute).trim();\nconst activityLower = rawActivity.toLowerCase();\n\n// Tentukan category dari activity\nlet activityType = \"-\";\nif (activityLower === \"production\" || activityLower.startsWith(\"production/\")) {\n  activityType = \"Production\";\n} else if (activityLower === \"setup\" || activityLower.startsWith(\"setup/\")) {\n  activityType = \"Setup\";\n} else if (activityLower === \"idle\" || activityLower.startsWith(\"idle/\")) {\n  activityType = \"Idle\";\n} else {\n  asset.set(alarmAttributePath, `!!!Unknown activity type: ${rawActivity}!!!`);\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\n// set category attribute\nasset.set(jobActivityCategoryAttributePath, activityType);\n\nconst eventPath = renderPath(JobActivityEventPathTemplate, { activity: rawActivity });\n\n// Cek duplicate exact event path\nconst openedExact = await eventSys.get(eventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\nif (openedExact.length > 0) {\n  asset.set(alarmAttributePath, `!!!Activity already open: ${rawActivity}!!!`);\n  send(msg);\n  return;\n}\n\nconst setupPattern = renderPath(JobActivitySetupPatternTemplate);\nconst productionPattern = renderPath(JobActivityProductionPatternTemplate);\nconst idlePattern = renderPath(JobActivityIdlePatternTemplate);\n\nconst paperConsum = {\n  totalPaperConsumption\n};\n\n// Tutup activity lain sesuai category baru\nif (activityType === \"Production\") {\n  await eventSys.close(setupPattern, timestamp, \"auto close by Production transition\", paperConsum);\n  await eventSys.close(idlePattern, timestamp, \"auto close by Production transition\", paperConsum);\n} else if (activityType === \"Setup\") {\n  await eventSys.close(productionPattern, timestamp, \"auto close by Setup transition\", paperConsum);\n  await eventSys.close(idlePattern, timestamp, \"auto close by Setup transition\", paperConsum);\n} else if (activityType === \"Idle\") {\n  await eventSys.close(productionPattern, timestamp, \"auto close by Idle transition\", paperConsum);\n  await eventSys.close(setupPattern, timestamp, \"auto close by Idle transition\", paperConsum);\n}\n\nasset.set(alarmAttributePath, \"-\");\n\nconst activityContext = {\n  operator: operatorAttribute,\n  workOrder: workOrderAttribute,\n  activityType,\n  materialBarcode\n};\n\nawait eventSys.open(\n  eventPath,\n  timestamp,\n  activityContext,\n  `activity ${rawActivity} created`,\n  \"info\",\n  paperConsum\n);\n\nsend(msg);",
       "templateBindingOverrides": {
         "JobActivityAttribute": {
           "name": "JobActivityAttribute",
@@ -184,6 +248,13 @@
           "staticValue": "",
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category",
           "allowOverride": true
+        },
+        "TotalPaperConsumption": {
+          "name": "TotalPaperConsumption",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Total Consumed",
+          "allowOverride": true
         }
       },
       "templateId": "template.script_1772002036179",
@@ -229,7 +300,7 @@
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "const raw = Number(EncoderRawValue?.value ?? 0);\r\nconst prevRaw = Number(EncoderPrevRaw?.value ?? 0);\r\nconst prevRawPath = EncoderPrevRaw?.path ?? \"\";\r\n\r\n\r\n// counter paths\r\nconst setupPath = PaperConsumedSetup?.path ?? \"\";\r\nconst idlePath = PaperConsumedIdle?.path ?? \"\";\r\nconst prodPath = PaperConsumedProduction?.path ?? \"\";\r\nconst wastePath = PaperWaste?.path ?? \"\";\r\nconst totalConsumedPath = PaperTotalConsumed?.path ?? \"\";\r\nconst jobActivityCategory = JobActivityCategoryAttribute?.value ?? \"\";\r\n\r\n\r\nif (!prevRawPath) { send(msg); return; }\r\n\r\n\r\n\r\n// hitung delta (normal naik -> selisih, reset turun -> raw)\r\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\r\n\r\nif (!Number.isFinite(delta) || delta <= 0) {\r\n  asset.set(prevRawPath, raw);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// baca nilai sebelumnya\r\nconst setupPrev = Number(PaperConsumedSetup?.value ?? 0);\r\nconst idlePrev = Number(PaperConsumedIdle?.value ?? 0);\r\nconst prodPrev = Number(PaperConsumedProduction?.value ?? 0);\r\n\r\nlet setupNew = setupPrev;\r\nlet idleNew = idlePrev;\r\nlet prodNew = prodPrev;\r\n\r\n// routing delta ke jobActivityCategory\r\nif (jobActivityCategory === \"Setup\") setupNew += delta;\r\nelse if (jobActivityCategory === \"Idle\") idleNew += delta;\r\nelse if (jobActivityCategory === \"Production\") prodNew += delta;\r\nelse {\r\n  // jobActivityCategory unknown\r\n  helpers.log(\"no activity\");\r\n}\r\n\r\n// set counters kalau path tersedia\r\nif (setupPath) asset.set(setupPath, setupNew);\r\nif (idlePath) asset.set(idlePath, idleNew);\r\nif (prodPath) asset.set(prodPath, prodNew);\r\n\r\n// waste & total\r\nconst waste = setupNew + idleNew;\r\nconst totalConsumed = waste + prodNew;\r\n\r\nif (wastePath) asset.set(wastePath, waste);\r\nif (totalConsumedPath) asset.set(totalConsumedPath, totalConsumed);\r\n\r\n// simpan raw terakhir\r\nasset.set(prevRawPath, raw);\r\n\r\nsend(msg);",
+      "script": "const raw = Number(EncoderRawValue?.value ?? 0);\r\nconst prevRaw = Number(EncoderPrevRaw?.value ?? 0);\r\nconst prevRawPath = EncoderPrevRaw?.path ?? \"\";\r\nconst machineSpeedPath = MachineSpeed?.path ?? \"\";\r\n\r\n// counter paths\r\nconst setupPath = PaperConsumedSetup?.path ?? \"\";\r\nconst idlePath = PaperConsumedIdle?.path ?? \"\";\r\nconst prodPath = PaperConsumedProduction?.path ?? \"\";\r\nconst wastePath = PaperWaste?.path ?? \"\";\r\nconst totalConsumedPath = PaperTotalConsumed?.path ?? \"\";\r\nconst jobActivityCategory = JobActivityCategoryAttribute?.value ?? \"\";\r\n\r\nif (!prevRawPath) { send(msg); return; }\r\n\r\n// hitung delta (normal naik -> selisih, reset turun -> raw)\r\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\r\n\r\nif (!Number.isFinite(delta) || delta < 0) {\r\n  asset.set(prevRawPath, raw);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// ===== SPEED =====\r\n// 1 pulse = 0.1 m, update tiap 1 detik => m/min = delta * 0.1 * 60 = delta * 6\r\nconst speedMpm = delta * 6;\r\n\r\n// kalau mau 0 speed saat delta=0 juga ke-set\r\nif (machineSpeedPath) asset.set(machineSpeedPath, speedMpm);\r\n\r\n// kalau delta = 0, skip konsumsi kertas tapi prevRaw tetap update\r\nif (delta === 0) {\r\n  asset.set(prevRawPath, raw);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// baca nilai sebelumnya\r\nconst setupPrev = Number(PaperConsumedSetup?.value ?? 0);\r\nconst idlePrev = Number(PaperConsumedIdle?.value ?? 0);\r\nconst prodPrev = Number(PaperConsumedProduction?.value ?? 0);\r\n\r\nlet setupNew = setupPrev;\r\nlet idleNew = idlePrev;\r\nlet prodNew = prodPrev;\r\n\r\n// routing delta ke jobActivityCategory\r\nif (jobActivityCategory === \"Setup\") setupNew += delta;\r\nelse if (jobActivityCategory === \"Idle\") idleNew += delta;\r\nelse if (jobActivityCategory === \"Production\") prodNew += delta;\r\nelse helpers.log(\"no activity\");\r\n\r\n// set counters kalau path tersedia\r\nif (setupPath) asset.set(setupPath, setupNew);\r\nif (idlePath) asset.set(idlePath, idleNew);\r\nif (prodPath) asset.set(prodPath, prodNew);\r\n\r\n// waste & total\r\nconst waste = setupNew + idleNew;\r\nconst totalConsumed = waste + prodNew;\r\n\r\nif (wastePath) asset.set(wastePath, waste);\r\nif (totalConsumedPath) asset.set(totalConsumedPath, totalConsumed);\r\n\r\n// simpan raw terakhir\r\nasset.set(prevRawPath, raw);\r\n\r\nsend(msg);",
       "templateId": "template.script_1772296918869",
       "templateBindingOverrides": {
         "EncoderRawValue": {
@@ -293,6 +364,13 @@
           "source": "attribute",
           "staticValue": "",
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category",
+          "allowOverride": true
+        },
+        "MachineSpeed": {
+          "name": "MachineSpeed",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Machine Speed",
           "allowOverride": true
         }
       }
@@ -400,6 +478,11 @@
         "from": "trigger.tick_1772164929424",
         "to": "Taiyo1.MES.TimeSpentPerActivity",
         "enabled": true
+      },
+      {
+        "from": "trigger.watch_1772772099483",
+        "to": "Scripts.debug",
+        "enabled": true
       }
     ],
     "nodePositions": {
@@ -436,8 +519,8 @@
         "y": 310
       },
       "Scripts.debug": {
-        "x": 1240,
-        "y": 110
+        "x": 1520,
+        "y": 280
       },
       "Taiyo1.Events.JobLifecycle": {
         "x": 1160,
@@ -448,7 +531,7 @@
         "y": 390
       },
       "trigger.watch_1772017838146": {
-        "x": 440,
+        "x": 420,
         "y": 330
       },
       "Taiyo1.Events.JobActivity": {
@@ -480,8 +563,12 @@
         "y": 510
       },
       "Taiyo1.MES.TimeSpentPerActivity": {
-        "x": 1170,
-        "y": 590
+        "x": 1200,
+        "y": 620
+      },
+      "trigger.watch_1772772099483": {
+        "x": 900,
+        "y": 230
       }
     }
   },
@@ -496,8 +583,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": 1772346977211,
-            "ts": "2026-03-01T06:36:15.702Z"
+            "value": 1772773142907,
+            "ts": "2026-03-06T04:58:56.886Z"
           }
         }
       },
@@ -512,71 +599,83 @@
         ],
         "attributes": {
           "Machine Speed": {
-            "value": 100,
-            "ts": "2026-02-26T17:46:10.942Z"
+            "value": 24,
+            "ts": "2026-03-06T04:58:56.667Z"
           },
           "Encoder Raw Value": {
             "value": 81,
-            "ts": "2026-03-01T06:36:15.371Z"
+            "ts": "2026-03-06T04:58:56.765Z"
           },
           "Encoder Prev Value": {
-            "value": 64,
-            "ts": "2026-03-01T06:36:15.320Z"
+            "value": 4,
+            "ts": "2026-03-06T04:58:56.668Z"
           },
           "Work Order": {
-            "value": "WO-777",
-            "ts": "2026-02-28T17:28:47.949Z"
+            "value": "WO123",
+            "ts": "2026-03-06T04:52:35.827Z"
           },
           "Job Lifecycle": {
             "value": "load",
-            "ts": "2026-02-28T17:28:53.974Z"
+            "ts": "2026-03-06T04:52:45.095Z"
           },
           "Machine Operator": {
             "value": {
-              "value": "operator123",
-              "label": "Joni"
+              "value": "operator456",
+              "label": "Agoes"
             },
-            "ts": "2026-02-28T17:08:43.265Z"
+            "ts": "2026-03-04T02:47:41.807Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-02-28T17:28:56.921Z"
+            "ts": "2026-03-06T04:52:30.413Z"
           },
           "Job Activity": {
-            "value": "-",
-            "ts": "2026-03-01T05:47:20.551Z"
+            "value": "Idle/Ngopi",
+            "ts": "2026-03-06T03:10:58.869Z"
           },
           "Paper Consumed Setup": {
-            "value": 201504,
-            "ts": "2026-03-01T05:47:15.607Z"
+            "value": 0,
+            "ts": "2026-03-06T04:52:45.110Z"
           },
           "Paper Total Waste": {
-            "value": 225022,
-            "ts": "2026-03-01T05:47:15.607Z"
+            "value": 0,
+            "ts": "2026-03-06T04:52:45.580Z"
           },
           "Paper Total Consumed": {
-            "value": 1433605,
-            "ts": "2026-03-01T06:36:15.320Z"
+            "value": 0,
+            "ts": "2026-03-06T04:52:45.581Z"
           },
           "Job Activity Category": {
-            "value": "Production",
-            "ts": "2026-03-01T05:47:16.608Z"
+            "value": "-",
+            "ts": "2026-03-06T04:52:45.113Z"
           },
           "Paper Consumed Production": {
-            "value": 1208583,
-            "ts": "2026-03-01T06:36:15.319Z"
+            "value": 0,
+            "ts": "2026-03-06T04:52:45.109Z"
           },
           "Paper Consumed Idle": {
-            "value": 23518,
-            "ts": "2026-02-28T19:03:35.459Z"
+            "value": 0,
+            "ts": "2026-03-06T04:52:45.109Z"
           },
           "Total Production Time": {
-            "value": 3066,
-            "ts": "2026-03-01T06:36:15.321Z"
+            "value": 0,
+            "ts": "2026-03-06T04:52:45.111Z"
           },
           "Total Setup Time": {
-            "value": 2793,
-            "ts": "2026-03-01T05:47:15.608Z"
+            "value": 0,
+            "ts": "2026-03-06T04:52:45.112Z"
+          },
+          "Total Idle Time": {
+            "value": 0,
+            "ts": "2026-03-06T04:52:45.111Z"
+          },
+          "Material Barcode": {
+            "value": "materialABCDEFG",
+            "ts": "2026-03-02T07:05:59.680Z"
+          },
+          "Job Activity Alarm": {
+            "value": "-",
+            "ts": "2026-03-06T02:03:07.120Z"
           }
         }
       },
@@ -585,8 +684,7 @@
         "name": "Taiyo2",
         "parentId": "asset_1772088636848_239",
         "templateIds": [
-          "template_1771523720677_855",
-          "template_1772291867711_154"
+          "template_1771523720677_855"
         ],
         "attributes": {}
       },
@@ -711,6 +809,30 @@
             "valueType": "int32",
             "default": 0,
             "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Ideal Speed",
+            "valueType": "int16",
+            "default": 0,
+            "unit": "meter/minute",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
             "historianTargetId": "default",
@@ -1007,7 +1129,7 @@
           },
           {
             "enabled": true,
-            "name": "Product Length",
+            "name": "Fold Length",
             "valueType": "float32",
             "default": 0,
             "unit": "",
@@ -1105,6 +1227,78 @@
             "enabled": true,
             "name": "Job Activity Category",
             "valueType": "string",
+            "default": 0,
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Product Per Fold",
+            "valueType": "int32",
+            "default": 0,
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Product Good Count",
+            "valueType": "int32",
+            "default": 0,
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Product Reject Count",
+            "valueType": "int32",
             "default": 0,
             "unit": "",
             "historianEnabled": false,
@@ -1322,6 +1516,30 @@
             "numberSuffix": "",
             "numberAllowDecimal": true,
             "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Material Barcode",
+            "valueType": "string",
+            "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           }
         ]
       }
@@ -1402,7 +1620,7 @@
       "id": "template.script_1771898442157",
       "name": "TaiyoJobLifecycleEvent",
       "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\r\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\r\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\r\n\r\n// GET ACTIVE JOB LOAD EVENTS => Jasuindo.Taiyo1/Job/*/Lifecycle/Running\r\nconst openedEvents = await eventSys.get(`${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/Running`, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\n\r\n// TEMPLATE EVENT PATH\r\nconst eventLifecyclePath = `${ assetPath }/Job/${ workOrderAttribute }/Lifecycle/`;\r\nconst eventActivityPath = `${assetPath}/Job/${workOrderAttribute}/Activity/*`;\r\n\r\nhelpers.log('event mulai:', jobLifecycleAttribute);\r\n\r\n// CEK APAKAH LOAD/UNLOAD\r\nif (![\"load\", \"unload\"].includes(String(jobLifecycleAttribute).toLowerCase())) {\r\n  helpers.log('--- bukan load/unload');\r\n  return;\r\n}\r\n\r\nhelpers.log('--- terdeteksi load/unload');\r\n\r\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n\r\n  asset.set(alarmAttributePath, `!!!Work order is empty!!!`);\r\n  asset.set(jobLifecycleAttributePath, `-`);\r\n\r\n  msg.payload = \"alarm: work order is empty\";\r\n\r\n  send(msg);\r\n\r\n} else {\r\n\r\n  asset.set(alarmAttributePath, `-`);\r\n\r\n  // CREATE EVENT BASED ON LIFECYCLE\r\n  if (jobLifecycleAttribute === \"load\") {\r\n\r\n    if (openedEvents.length === 0) {\r\n\r\n      const jobLifecycleContext = {\r\n        operator: operatorAttribute,\r\n        workOrder: workOrderAttribute,\r\n      }\r\n\r\n      await eventSys.open(\r\n        `${eventLifecyclePath}Running`,\r\n        timestamp,\r\n        jobLifecycleContext,\r\n        `${workOrderAttribute} loaded`,\r\n        \"info\",\r\n        {\r\n          operator: operatorAttribute, workOrder: workOrderAttribute, lifecycle: \"load\", sourceAttribute: jobLifecycleAttributePath\r\n        });\r\n\r\n      msg.payload = \"event opened\";\r\n\r\n      send(msg);\r\n\r\n    }\r\n\r\n  } else if (jobLifecycleAttribute === \"unload\") {\r\n\r\n    if (openedEvents.length > 0) {\r\n\r\n      await eventSys.close(`\r\n        ${eventLifecyclePath}Running`,\r\n        timestamp,\r\n        `${workOrderAttribute} unloaded`,\r\n        {\r\n          operator: operatorAttribute, workOrder: workOrderAttribute, lifecycle: \"unload\", sourceAttribute: jobLifecycleAttributePath\r\n        });\r\n\r\n      await eventSys.close(\r\n        `${eventActivityPath}`,\r\n        timestamp,\r\n        `${workOrderAttribute} unloaded`,\r\n        {\r\n          operator: operatorAttribute, workOrder: workOrderAttribute, lifecycle: \"unload\", closedPattern: eventActivityPath\r\n        });\r\n\r\n      asset.set(workOrderAttributePath, `-`);\r\n      asset.set(jobLifecycleAttributePath, `-`);\r\n      asset.set(jobActivityAttributePath, `-`);\r\n\r\n      msg.payload = \"event closed\";\r\n\r\n      send(msg);\r\n\r\n    }\r\n\r\n  }\r\n\r\n\r\n}\r\n\r\n\r\n\r\nreturn;",
+      "script": "// VARIABLE BINDINGS\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\nconst timestamp = Timestamp?.value || helpers.now();\nconst assetPath = AssetPath || \"-\";\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\n\nconst renderPath = (template, vars = {}) => {\n  return String(template || \"\")\n    .replaceAll(\"{assetPath}\", String(vars.assetPath ?? assetPath))\n    .replaceAll(\"{workOrder}\", String(vars.workOrder ?? workOrderAttribute))\n    .replaceAll(\"{activity}\", String(vars.activity ?? \"*\"));\n};\n\nconst lifecycleRunningEventPath = renderPath(LifecycleRunningEventPathTemplate);\nconst lifecycleActivityEventPath = renderPath(LifecycleActivityEventPathTemplate);\n\n// GET ACTIVE JOB LOAD EVENTS\nconst openedEvents = await eventSys.get(lifecycleRunningEventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\n\nhelpers.log(\"event mulai:\", jobLifecycleAttribute);\n\n// CEK APAKAH LOAD/UNLOAD\nif (![\"load\", \"unload\", \"complete\"].includes(String(jobLifecycleAttribute).trim().toLowerCase())) {\n  helpers.log(\"--- bukan load/unload\");\n  return;\n}\n\nhelpers.log(\"--- terdeteksi load/unload\");\n\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\n  asset.set(alarmAttributePath, \"!!!Work order is empty!!!\");\n  asset.set(jobLifecycleAttributePath, \"-\");\n\n  msg.payload = \"alarm: work order is empty\";\n  send(msg);\n} else {\n  asset.set(alarmAttributePath, \"-\");\n\n  // CREATE EVENT BASED ON LIFECYCLE\n  if (String(jobLifecycleAttribute).trim().toLowerCase() === \"load\") {\n    if (openedEvents.length === 0) {\n\n\n      // RESET ALL MES COUNTERS\n      asset.setMany(\n        [\n          { path: PaperConsumedIdle.path, value: 0 },\n          { path: PaperConsumedProduction.path, value: 0 },\n          { path: PaperConsumedSetup.path, value: 0 },\n          { path: TotalIdleTime.path, value: 0 },\n          { path: TotalProductionTime.path, value: 0 },\n          { path: TotalSetupTime.path, value: 0 },\n          { path: JobActivityCategoryAttribute.path, value: \"-\" }\n        ]\n      );\n\n\n      const jobLifecycleContext = {\n        operator: operatorAttribute,\n        workOrder: workOrderAttribute,\n      };\n\n      await eventSys.open(\n        lifecycleRunningEventPath,\n        timestamp,\n        jobLifecycleContext,\n        `${workOrderAttribute} loaded`,\n        \"info\",\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"load\",\n          sourceAttribute: jobLifecycleAttributePath,\n        }\n      );\n\n      msg.payload = \"event opened\";\n      send(msg);\n    } \n  } else if (String(jobLifecycleAttribute).trim().toLowerCase() === \"unload\") {\n    if (openedEvents.length > 0) {\n      await eventSys.close(\n        lifecycleRunningEventPath,\n        timestamp,\n        `${workOrderAttribute} unloaded`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"unload\",\n          totalIdleTime: TotalIdleTime?.value || 0,\n          totalProductionTime: TotalProductionTime?.value || 0,\n          totalSetupTime: TotalSetupTime?.value || 0,\n          productCount: ProductCount?.value || 0,\n          productGood: ProductGood?.value || 0\n        }\n      );\n\n      await eventSys.close(\n        lifecycleActivityEventPath,\n        timestamp,\n        `${workOrderAttribute} unloaded`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"complete\"\n        }\n      );\n\n      asset.set(workOrderAttributePath, \"-\");\n      asset.set(jobLifecycleAttributePath, \"-\");\n      asset.set(jobActivityAttributePath, \"-\");\n      asset.set(JobActivityCategoryAttribute.path, \"-\");\n\n\n      msg.payload = \"event closed\";\n      send(msg);\n    }\n  } else if (String(jobLifecycleAttribute).trim().toLowerCase() === \"complete\") {\n    if (openedEvents.length > 0) {\n      await eventSys.close(\n        lifecycleRunningEventPath,\n        timestamp,\n        `${workOrderAttribute} completed`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"unload\",\n          totalIdleTime: TotalIdleTime?.value || 0,\n          totalProductionTime: TotalProductionTime?.value || 0,\n          totalSetupTime: TotalSetupTime?.value || 0,\n          productCount: ProductCount?.value || 0,\n          productGood: ProductGood?.value || 0\n        }\n      );\n\n      await eventSys.close(\n        lifecycleActivityEventPath,\n        timestamp,\n        `${workOrderAttribute} completed`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"complete\"\n        }\n      );\n\n      asset.set(workOrderAttributePath, \"-\");\n      asset.set(jobLifecycleAttributePath, \"-\");\n      asset.set(jobActivityAttributePath, \"-\");\n\n      msg.payload = \"event closed\";\n      send(msg);\n    }\n  }\n}\n\nreturn;",
       "variableBindings": [
         {
           "name": "JobLifecycleAttribute",
@@ -1452,6 +1670,83 @@
           "staticValue": "",
           "attributePath": "",
           "allowOverride": true
+        },
+        {
+          "name": "LifecycleRunningEventPathTemplate",
+          "source": "static_string",
+          "staticValue": "{assetPath}/Job/{workOrder}/Lifecycle/Running",
+          "attributePath": "",
+          "allowOverride": false
+        },
+        {
+          "name": "LifecycleActivityEventPathTemplate",
+          "source": "static_string",
+          "staticValue": "{assetPath}/Job/{workOrder}/Activity/*",
+          "attributePath": "",
+          "allowOverride": false
+        },
+        {
+          "name": "PaperConsumedIdle",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "PaperConsumedProduction",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "PaperConsumedSetup",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "TotalIdleTime",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "TotalProductionTime",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "TotalSetupTime",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "ProductCount",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "ProductGood",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "JobActivityCategoryAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
         }
       ],
       "allowActionDuplication": true,
@@ -1461,7 +1756,7 @@
       "id": "template.script_1772002036179",
       "name": "TaiyoJobActivityEvent",
       "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst jobActivityAttribute = JobActivityAttribute?.value || \"-\";\r\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\r\nconst jobActivityCategoryAttributePath = JobActivityCategoryAttribute?.path || \"-\";\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\r\nconst timestamp = Timestamp?.value || helpers.now();\r\nconst assetPath = AssetPath || \"-\";\r\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\r\n\r\n// STOP jika reset / invalid (jangan bikin event)\r\nif (jobActivityAttribute === \"-\" || jobActivityAttribute === \"\" || jobActivityAttribute === null) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// STOP jika wo not found (jangan bikin event)\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n  asset.set(alarmAttributePath, \"!!!No Active Work Order!!!\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst rawActivity = String(jobActivityAttribute).trim();\r\nconst activityLower = rawActivity.toLowerCase();\r\n\r\nlet activityType = \"\";\r\nif (activityLower === \"production\") {\r\n  activityType = \"Production\";\r\n  asset.set(jobActivityCategoryAttributePath, activityType);\r\n} else if (activityLower.startsWith(\"setup\")) {\r\n  activityType = \"Setup\";\r\n  asset.set(jobActivityCategoryAttributePath, activityType);\r\n} else if (activityLower.startsWith(\"idle\")) {\r\n  activityType = \"Idle\";\r\n  asset.set(jobActivityCategoryAttributePath, activityType);\r\n} else {\r\n  asset.set(alarmAttributePath, `!!!Unknown activity type: ${rawActivity}!!!`);\r\n  asset.set(jobActivityCategoryAttributePath, \"-\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nconst basePath = `${assetPath}/Job/${workOrderAttribute}/Activity`;\r\nconst eventPath = `${basePath}/${rawActivity}`;\r\n\r\n// Cek duplicate event exact path\r\nconst openedExact = await eventSys.get(eventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\r\nif (openedExact.length > 0) {\r\n  asset.set(alarmAttributePath, `!!!Activity already open: ${rawActivity}!!!`);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// Selalu enforce single active activity:\r\n// sebelum open activity baru, tutup semua activity type lain\r\nconst setupPattern = `${basePath}/Setup/*`;\r\nconst productionPattern = `${basePath}/Production`;\r\nconst idlePattern = `${basePath}/Idle/*`;\r\n\r\nif (activityType === \"Production\") {\r\n  await eventSys.close(setupPattern, timestamp, \"auto close by Production transition\", { transitionTo: \"Production\", fromType: \"Setup\", workOrder: workOrderAttribute });\r\n  await eventSys.close(idlePattern, timestamp, \"auto close by Production transition\", { transitionTo: \"Production\", fromType: \"Idle\", workOrder: workOrderAttribute });\r\n} else if (activityType === \"Setup\") {\r\n  asset.set(jobActivityCategoryAttributePath, \"Setup\");\r\n  await eventSys.close(productionPattern, timestamp, \"auto close by Setup transition\", { transitionTo: \"Setup\", fromType: \"Production\", workOrder: workOrderAttribute });\r\n  await eventSys.close(idlePattern, timestamp, \"auto close by Setup transition\", { transitionTo: \"Setup\", fromType: \"Idle\", workOrder: workOrderAttribute });\r\n} else if (activityType === \"Idle\") {\r\n  asset.set(jobActivityCategoryAttributePath, \"Idle\");\r\n  await eventSys.close(productionPattern, timestamp, \"auto close by Idle transition\", { transitionTo: \"Idle\", fromType: \"Production\", workOrder: workOrderAttribute });\r\n  await eventSys.close(setupPattern, timestamp, \"auto close by Idle transition\", { transitionTo: \"Idle\", fromType: \"Setup\", workOrder: workOrderAttribute });\r\n}\r\n\r\nasset.set(alarmAttributePath, \"-\");\r\n\r\nconst activityContext = {\r\n  operator: operatorAttribute,\r\n  workOrder: workOrderAttribute,\r\n  activityType\r\n};\r\n\r\nawait eventSys.open(\n  eventPath,\n  timestamp,\n  activityContext,\n  `activity ${rawActivity} created`,\n  \"info\",\n  { operator: operatorAttribute, workOrder: workOrderAttribute, activity: rawActivity, activityType, sourceAttribute: jobActivityAttributePath }\n);\r\n\r\n// AUTO RESET activity biar bisa trigger lagi walau value sama\r\nasset.set(jobActivityAttributePath, \"-\");\r\n\r\nsend(msg);\r\n",
+      "script": "// VARIABLE BINDINGS\nconst jobActivityAttribute = JobActivityAttribute?.value || \"-\";\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\nconst jobActivityCategoryAttributePath = JobActivityCategoryAttribute?.path || \"-\";\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\nconst timestamp = Timestamp?.value || helpers.now();\nconst assetPath = AssetPath || \"-\";\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\nconst totalPaperConsumption = TotalPaperConsumption?.value || 0;\nconst materialBarcode = MaterialBarcode?.value || \"-\";\n\nconst renderPath = (template, vars = {}) => {\n  return String(template || \"\")\n    .replaceAll(\"{assetPath}\", String(vars.assetPath ?? assetPath))\n    .replaceAll(\"{workOrder}\", String(vars.workOrder ?? workOrderAttribute))\n    .replaceAll(\"{activity}\", String(vars.activity ?? \"*\"));\n};\n\n// STOP jika reset / invalid\nif (jobActivityAttribute === \"-\" || jobActivityAttribute === \"\" || jobActivityAttribute === null) {\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\n// STOP jika work order tidak ada\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\n  asset.set(alarmAttributePath, \"!!!No Active Work Order!!!\");\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\nconst rawActivity = String(jobActivityAttribute).trim();\nconst activityLower = rawActivity.toLowerCase();\n\n// Tentukan category dari activity\nlet activityType = \"-\";\nif (activityLower === \"production\" || activityLower.startsWith(\"production/\")) {\n  activityType = \"Production\";\n} else if (activityLower === \"setup\" || activityLower.startsWith(\"setup/\")) {\n  activityType = \"Setup\";\n} else if (activityLower === \"idle\" || activityLower.startsWith(\"idle/\")) {\n  activityType = \"Idle\";\n} else {\n  asset.set(alarmAttributePath, `!!!Unknown activity type: ${rawActivity}!!!`);\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\n// set category attribute\nasset.set(jobActivityCategoryAttributePath, activityType);\n\nconst eventPath = renderPath(JobActivityEventPathTemplate, { activity: rawActivity });\n\n// Cek duplicate exact event path\nconst openedExact = await eventSys.get(eventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\nif (openedExact.length > 0) {\n  asset.set(alarmAttributePath, `!!!Activity already open: ${rawActivity}!!!`);\n  send(msg);\n  return;\n}\n\nconst setupPattern = renderPath(JobActivitySetupPatternTemplate);\nconst productionPattern = renderPath(JobActivityProductionPatternTemplate);\nconst idlePattern = renderPath(JobActivityIdlePatternTemplate);\n\nconst paperConsum = {\n  totalPaperConsumption\n};\n\n// Tutup activity lain sesuai category baru\nif (activityType === \"Production\") {\n  await eventSys.close(setupPattern, timestamp, \"auto close by Production transition\", paperConsum);\n  await eventSys.close(idlePattern, timestamp, \"auto close by Production transition\", paperConsum);\n} else if (activityType === \"Setup\") {\n  await eventSys.close(productionPattern, timestamp, \"auto close by Setup transition\", paperConsum);\n  await eventSys.close(idlePattern, timestamp, \"auto close by Setup transition\", paperConsum);\n} else if (activityType === \"Idle\") {\n  await eventSys.close(productionPattern, timestamp, \"auto close by Idle transition\", paperConsum);\n  await eventSys.close(setupPattern, timestamp, \"auto close by Idle transition\", paperConsum);\n}\n\nasset.set(alarmAttributePath, \"-\");\n\nconst activityContext = {\n  operator: operatorAttribute,\n  workOrder: workOrderAttribute,\n  activityType,\n  materialBarcode\n};\n\nawait eventSys.open(\n  eventPath,\n  timestamp,\n  activityContext,\n  `activity ${rawActivity} created`,\n  \"info\",\n  paperConsum\n);\n\nsend(msg);",
       "variableBindings": [
         {
           "name": "JobActivityAttribute",
@@ -1511,6 +1806,48 @@
           "staticValue": "",
           "attributePath": "",
           "allowOverride": true
+        },
+        {
+          "name": "TotalPaperConsumption",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "MaterialBarcode",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Material Barcode",
+          "allowOverride": false
+        },
+        {
+          "name": "JobActivityEventPathTemplate",
+          "source": "static_string",
+          "staticValue": "{assetPath}/Job/{workOrder}/Activity/{activity}",
+          "attributePath": "",
+          "allowOverride": false
+        },
+        {
+          "name": "JobActivitySetupPatternTemplate",
+          "source": "static_string",
+          "staticValue": "{assetPath}/Job/{workOrder}/Activity/Setup/*",
+          "attributePath": "",
+          "allowOverride": false
+        },
+        {
+          "name": "JobActivityProductionPatternTemplate",
+          "source": "static_string",
+          "staticValue": "{assetPath}/Job/{workOrder}/Activity/Production/*",
+          "attributePath": "",
+          "allowOverride": false
+        },
+        {
+          "name": "JobActivityIdlePatternTemplate",
+          "source": "static_string",
+          "staticValue": "{assetPath}/Job/{workOrder}/Activity/Idle/*",
+          "attributePath": "",
+          "allowOverride": false
         }
       ],
       "allowActionDuplication": true,
@@ -1580,7 +1917,7 @@
       "id": "template.script_1772296918869",
       "name": "TaiyoPaperConsumptionPerActivity",
       "description": "",
-      "script": "const raw = Number(EncoderRawValue?.value ?? 0);\r\nconst prevRaw = Number(EncoderPrevRaw?.value ?? 0);\r\nconst prevRawPath = EncoderPrevRaw?.path ?? \"\";\r\n\r\n\r\n// counter paths\r\nconst setupPath = PaperConsumedSetup?.path ?? \"\";\r\nconst idlePath = PaperConsumedIdle?.path ?? \"\";\r\nconst prodPath = PaperConsumedProduction?.path ?? \"\";\r\nconst wastePath = PaperWaste?.path ?? \"\";\r\nconst totalConsumedPath = PaperTotalConsumed?.path ?? \"\";\r\nconst jobActivityCategory = JobActivityCategoryAttribute?.value ?? \"\";\r\n\r\n\r\nif (!prevRawPath) { send(msg); return; }\r\n\r\n\r\n\r\n// hitung delta (normal naik -> selisih, reset turun -> raw)\r\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\r\n\r\nif (!Number.isFinite(delta) || delta <= 0) {\r\n  asset.set(prevRawPath, raw);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// baca nilai sebelumnya\r\nconst setupPrev = Number(PaperConsumedSetup?.value ?? 0);\r\nconst idlePrev = Number(PaperConsumedIdle?.value ?? 0);\r\nconst prodPrev = Number(PaperConsumedProduction?.value ?? 0);\r\n\r\nlet setupNew = setupPrev;\r\nlet idleNew = idlePrev;\r\nlet prodNew = prodPrev;\r\n\r\n// routing delta ke jobActivityCategory\r\nif (jobActivityCategory === \"Setup\") setupNew += delta;\r\nelse if (jobActivityCategory === \"Idle\") idleNew += delta;\r\nelse if (jobActivityCategory === \"Production\") prodNew += delta;\r\nelse {\r\n  // jobActivityCategory unknown\r\n  helpers.log(\"no activity\");\r\n}\r\n\r\n// set counters kalau path tersedia\r\nif (setupPath) asset.set(setupPath, setupNew);\r\nif (idlePath) asset.set(idlePath, idleNew);\r\nif (prodPath) asset.set(prodPath, prodNew);\r\n\r\n// waste & total\r\nconst waste = setupNew + idleNew;\r\nconst totalConsumed = waste + prodNew;\r\n\r\nif (wastePath) asset.set(wastePath, waste);\r\nif (totalConsumedPath) asset.set(totalConsumedPath, totalConsumed);\r\n\r\n// simpan raw terakhir\r\nasset.set(prevRawPath, raw);\r\n\r\nsend(msg);",
+      "script": "const raw = Number(EncoderRawValue?.value ?? 0);\r\nconst prevRaw = Number(EncoderPrevRaw?.value ?? 0);\r\nconst prevRawPath = EncoderPrevRaw?.path ?? \"\";\r\nconst machineSpeedPath = MachineSpeed?.path ?? \"\";\r\n\r\n// counter paths\r\nconst setupPath = PaperConsumedSetup?.path ?? \"\";\r\nconst idlePath = PaperConsumedIdle?.path ?? \"\";\r\nconst prodPath = PaperConsumedProduction?.path ?? \"\";\r\nconst wastePath = PaperWaste?.path ?? \"\";\r\nconst totalConsumedPath = PaperTotalConsumed?.path ?? \"\";\r\nconst jobActivityCategory = JobActivityCategoryAttribute?.value ?? \"\";\r\n\r\nif (!prevRawPath) { send(msg); return; }\r\n\r\n// hitung delta (normal naik -> selisih, reset turun -> raw)\r\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\r\n\r\nif (!Number.isFinite(delta) || delta < 0) {\r\n  asset.set(prevRawPath, raw);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// ===== SPEED =====\r\n// 1 pulse = 0.1 m, update tiap 1 detik => m/min = delta * 0.1 * 60 = delta * 6\r\nconst speedMpm = delta * 6;\r\n\r\n// kalau mau 0 speed saat delta=0 juga ke-set\r\nif (machineSpeedPath) asset.set(machineSpeedPath, speedMpm);\r\n\r\n// kalau delta = 0, skip konsumsi kertas tapi prevRaw tetap update\r\nif (delta === 0) {\r\n  asset.set(prevRawPath, raw);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// baca nilai sebelumnya\r\nconst setupPrev = Number(PaperConsumedSetup?.value ?? 0);\r\nconst idlePrev = Number(PaperConsumedIdle?.value ?? 0);\r\nconst prodPrev = Number(PaperConsumedProduction?.value ?? 0);\r\n\r\nlet setupNew = setupPrev;\r\nlet idleNew = idlePrev;\r\nlet prodNew = prodPrev;\r\n\r\n// routing delta ke jobActivityCategory\r\nif (jobActivityCategory === \"Setup\") setupNew += delta;\r\nelse if (jobActivityCategory === \"Idle\") idleNew += delta;\r\nelse if (jobActivityCategory === \"Production\") prodNew += delta;\r\nelse helpers.log(\"no activity\");\r\n\r\n// set counters kalau path tersedia\r\nif (setupPath) asset.set(setupPath, setupNew);\r\nif (idlePath) asset.set(idlePath, idleNew);\r\nif (prodPath) asset.set(prodPath, prodNew);\r\n\r\n// waste & total\r\nconst waste = setupNew + idleNew;\r\nconst totalConsumed = waste + prodNew;\r\n\r\nif (wastePath) asset.set(wastePath, waste);\r\nif (totalConsumedPath) asset.set(totalConsumedPath, totalConsumed);\r\n\r\n// simpan raw terakhir\r\nasset.set(prevRawPath, raw);\r\n\r\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -1634,6 +1971,13 @@
         },
         {
           "name": "PaperTotalConsumed",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "MachineSpeed",
           "source": "attribute",
           "staticValue": "",
           "attributePath": "",

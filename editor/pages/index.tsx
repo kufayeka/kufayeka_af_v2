@@ -308,13 +308,19 @@ export default function HomePage() {
       type !== "interval"
         ? `trigger.watch_${Date.now()}`
         : `trigger.tick_${Date.now()}`;
+    const defaultWatchPath =
+      type === "watcher_set" || type === "watcher_valuechange"
+        ? "*.*.*"
+        : type === "watcher_event_falling"
+          ? "*"
+          : "";
     const next: TriggerDefinition = {
       id,
       label: "",
       type,
       enabled: true,
       intervalMs: 1000,
-      watchPath: type !== "interval" ? "*.*.*" : "",
+      watchPath: defaultWatchPath,
       message: { payload: 0 }
     };
     applyProgramUpdate((prev) => ({ ...prev, triggers: [...prev.triggers, next] }));
@@ -489,6 +495,17 @@ export default function HomePage() {
     }
     return Array.from(paths).sort((a, b) => a.localeCompare(b));
   }, [program.assets]);
+
+  const eventWatchPathOptions = useMemo(() => {
+    const options = new Set<string>(["*"]);
+    for (const trigger of program.triggers) {
+      if (trigger.type !== "watcher_event_falling") continue;
+      const pattern = String(trigger.watchPath || "").trim();
+      if (!pattern) continue;
+      options.add(pattern);
+    }
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [program.triggers]);
 
   const updateTrigger = (id: string, patch: Partial<TriggerDefinition>): void => {
     applyProgramUpdate((prev) => ({
@@ -733,6 +750,7 @@ export default function HomePage() {
           <TriggerManager
             triggers={program.triggers}
             watchPathOptions={watchPathOptions}
+            eventWatchPathOptions={eventWatchPathOptions}
             selectedTriggerId={selectedTriggerId}
             onSelectTrigger={setSelectedTriggerId}
             onAddTrigger={addTriggerWithType}

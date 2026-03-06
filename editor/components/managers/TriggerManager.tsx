@@ -10,6 +10,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import { scrollBothOverflowSx } from "../common/scrollSx";
 import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
 import { AlarmClock, Eye, FolderTree } from "lucide-react";
@@ -18,6 +19,7 @@ import type { TriggerDefinition } from "../../types/program";
 interface TriggerManagerProps {
   triggers: TriggerDefinition[];
   watchPathOptions?: string[];
+  eventWatchPathOptions?: string[];
   selectedTriggerId: string;
   onSelectTrigger: (id: string) => void;
   onAddTrigger: (type: TriggerDefinition["type"]) => void;
@@ -39,8 +41,10 @@ function buildTriggerHierarchyTree(triggers: TriggerDefinition[], search: string
 
   const categories: Array<{ type: TriggerDefinition["type"]; label: string; icon: ReactNode }> = [
     { type: "interval", label: "Interval", icon: <AlarmClock size={15} /> },
+    { type: "cron", label: "Cron", icon: <AlarmClock size={15} /> },
     { type: "watcher_set", label: "Watcher (Set)", icon: <Eye size={15} /> },
-    { type: "watcher_valuechange", label: "Watcher (Value Change)", icon: <Eye size={15} /> }
+    { type: "watcher_valuechange", label: "Watcher (Value Change)", icon: <Eye size={15} /> },
+    { type: "watcher_event_falling", label: "Watcher (Event Falling)", icon: <Eye size={15} /> }
   ];
 
   const tree: DataNode[] = [];
@@ -95,7 +99,7 @@ function buildTriggerHierarchyTree(triggers: TriggerDefinition[], search: string
         key: `trigger:${trigger.id}`,
         title: (
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-            {category.type === "interval" ? <AlarmClock size={15} /> : <Eye size={15} />}
+            {category.type === "interval" || category.type === "cron" ? <AlarmClock size={15} /> : <Eye size={15} />}
             <Typography variant="body2">{trigger.id.split(".").pop() || trigger.id}</Typography>
             {!!trigger.label?.trim() && (
               <Typography variant="caption" color="text.secondary">
@@ -128,6 +132,7 @@ function buildTriggerHierarchyTree(triggers: TriggerDefinition[], search: string
 export default function TriggerManager({
   triggers,
   watchPathOptions = [],
+  eventWatchPathOptions = ["*"],
   selectedTriggerId,
   onSelectTrigger,
   onAddTrigger,
@@ -168,8 +173,14 @@ export default function TriggerManager({
             <Button fullWidth variant="outlined" onClick={() => onAddTrigger("watcher_set")}>
               Add Watcher (Set)
             </Button>
+            <Button fullWidth variant="outlined" onClick={() => onAddTrigger("cron")}>
+              Add Cron
+            </Button>
             <Button fullWidth variant="outlined" onClick={() => onAddTrigger("watcher_valuechange")}>
               Add Watcher (Value)
+            </Button>
+            <Button fullWidth variant="outlined" onClick={() => onAddTrigger("watcher_event_falling")}>
+              Add Event Falling
             </Button>
           </Box>
           <TextField
@@ -181,7 +192,7 @@ export default function TriggerManager({
         </Box>
         <Box
           sx={{
-            overflow: "auto",
+            ...scrollBothOverflowSx,
             maxHeight: "calc(100vh - 220px)"
           }}
         >
@@ -254,14 +265,70 @@ export default function TriggerManager({
                     intervalMs: Number(e.target.value) || 1
                   })
                 }
-              />
+                />
+            )}
+            {selectedTrigger.type === "cron" && (
+              <>
+                <TextField
+                  label="Cron Expression"
+                  value={selectedTrigger.cronExpression ?? "*/5 * * * * *"}
+                  onChange={(e) =>
+                    onUpdateTrigger(selectedTrigger.id, {
+                      cronExpression: e.target.value
+                    })
+                  }
+                  helperText='Example: "*/5 * * * * *" (every 5s), "0 0 6 * * *" (06:00:00 daily)'
+                />
+                <TextField
+                  label="Timezone (optional)"
+                  value={selectedTrigger.timezone ?? ""}
+                  onChange={(e) =>
+                    onUpdateTrigger(selectedTrigger.id, {
+                      timezone: e.target.value
+                    })
+                  }
+                  helperText='Example: "Asia/Jakarta", "UTC"'
+                />
+              </>
+            )}
+            {(selectedTrigger.type === "interval" || selectedTrigger.type === "cron") && (
+              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
+                <TextField
+                  label="Active From (HH:mm)"
+                  value={selectedTrigger.activeFrom ?? ""}
+                  onChange={(e) =>
+                    onUpdateTrigger(selectedTrigger.id, {
+                      activeFrom: e.target.value
+                    })
+                  }
+                  helperText="Optional time window"
+                />
+                <TextField
+                  label="Active To (HH:mm)"
+                  value={selectedTrigger.activeTo ?? ""}
+                  onChange={(e) =>
+                    onUpdateTrigger(selectedTrigger.id, {
+                      activeTo: e.target.value
+                    })
+                  }
+                  helperText="Optional time window"
+                />
+              </Box>
             )}
             {(selectedTrigger.type === "watcher_set" ||
-              selectedTrigger.type === "watcher_valuechange") && (
+              selectedTrigger.type === "watcher_valuechange" ||
+              selectedTrigger.type === "watcher_event_falling") && (
                 <Autocomplete
                   freeSolo
-                  options={watchPathOptions}
-                  value={selectedTrigger.watchPath ?? "*.*.*"}
+                  options={
+                    selectedTrigger.type === "watcher_event_falling"
+                      ? eventWatchPathOptions
+                      : watchPathOptions
+                  }
+                  value={
+                    selectedTrigger.watchPath ??
+                    (selectedTrigger.type === "watcher_event_falling" ? "*" : "*.*.*")
+                  }
                   onInputChange={(_e, value) =>
                     onUpdateTrigger(selectedTrigger.id, { watchPath: value })
                   }
@@ -269,7 +336,11 @@ export default function TriggerManager({
                     <TextField
                       {...params}
                       label="Watch Path (wildcard supported)"
-                      helperText='Example: "Jasuindo.*.Operator" or "*.*.*"'
+                      helperText={
+                        selectedTrigger.type === "watcher_event_falling"
+                          ? 'Event path example: "Taiyo1.Events.*" or "*"'
+                          : 'Attribute path example: "Jasuindo.*.Operator" or "*.*.*"'
+                      }
                     />
                   )}
                 />

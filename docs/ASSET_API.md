@@ -505,3 +505,8 @@ Do:
 Don't:
 - Assume partial merge on `PUT /api/assets/system`.
 - Run broad delete requests in production without confirmation.
+
+## Script Runtime Docs
+
+- Script action runtime API (global/asset/event/db/cron): `docs/SCRIPT_ACTIONS_MANUAL.md`
+- HTTP requests inside action script (fetch/axios/helpers.http): `docs/ACTION_SCRIPT_HTTP.md`

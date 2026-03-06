@@ -1,7 +1,9 @@
 export type TriggerType =
   | "interval"
+  | "cron"
   | "watcher_set"
-  | "watcher_valuechange";
+  | "watcher_valuechange"
+  | "watcher_event_falling";
 export type ActionType = "script";
 export type AssetAttributeType =
   | "int8"
@@ -75,6 +77,10 @@ export interface TriggerDefinition {
   type: TriggerType;
   enabled: boolean;
   intervalMs: number;
+  cronExpression?: string;
+  timezone?: string;
+  activeFrom?: string;
+  activeTo?: string;
   watchPath?: string;
   message: {
     payload?: unknown;

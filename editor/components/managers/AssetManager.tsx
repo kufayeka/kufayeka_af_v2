@@ -27,6 +27,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import { scrollBothOverflowSx } from "../common/scrollSx";
 import type { SelectChangeEvent } from "@mui/material/Select";
 import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
@@ -714,7 +715,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
 
       {mainTab === 0 && (
         <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
-          <Paper sx={{ p: 1.25, maxHeight: "74vh", overflow: "auto" }}>
+          <Paper sx={{ p: 1.25, maxHeight: "74vh", ...scrollBothOverflowSx }}>
             <Box sx={{ display: "flex", gap: 0.75, mb: 1 }}>
               <Button
                 size="small"
@@ -769,7 +770,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
             />
           </Paper>
 
-          <Paper sx={{ p: 1.25, minHeight: "74vh", overflow: "auto" }}>
+          <Paper sx={{ p: 1.25, minHeight: "74vh", ...scrollBothOverflowSx }}>
             {!selectedAsset ? (
               <Typography variant="body2" color="text.secondary">
                 Select an asset from the left panel.
@@ -887,7 +888,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                   </Button>
               </Box>
 
-                <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1 }}>
+                <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1, ...scrollBothOverflowSx }}>
                   <Table size="small" stickyHeader>
                     <TableHead>
                       <TableRow>
@@ -1025,7 +1026,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
 
       {mainTab === 1 && (
         <Box sx={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 1.25 }}>
-          <Paper sx={{ p: 1.25, maxHeight: "74vh", overflow: "auto" }}>
+          <Paper sx={{ p: 1.25, maxHeight: "74vh", ...scrollBothOverflowSx }}>
             <Box sx={{ display: "flex", gap: 0.75, mb: 1 }}>
               <Button
                 size="small"
@@ -1067,7 +1068,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
             </Box>
           </Paper>
 
-          <Paper sx={{ p: 1.25, minHeight: "74vh", overflow: "auto" }}>
+          <Paper sx={{ p: 1.25, minHeight: "74vh", ...scrollBothOverflowSx }}>
             {!selectedTemplate ? (
               <Typography variant="body2" color="text.secondary">
                 Select a template from the left panel.
@@ -1087,17 +1088,17 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                   sx={{ maxWidth: 460 }}
                 />
 
-                <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1 }}>
+                <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1, ...scrollBothOverflowSx }}>
                   <Table size="small" stickyHeader>
                     <TableHead>
                       <TableRow>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Enabled</TableCell>
-                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Name</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 400 }}>Name</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Type</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Default</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Unit</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 140 }}>Historian</TableCell>
-                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 260 }}>Time Source</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 400 }}>Time Source</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 180 }}>Historian Target</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Action</TableCell>
                       </TableRow>
@@ -1125,6 +1126,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           </TableCell>
                           <TableCell>
                             <TextField
+                              fullWidth
                               key={`template-attr-name:${selectedTemplate.id}:${idx}:${attribute.name}`}
                               size="small"
                               defaultValue={attribute.name}
@@ -1214,6 +1216,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           </TableCell>
                           <TableCell>
                             <TextField
+                              fullWidth
                               key={`template-attr-time-source:${selectedTemplate.id}:${idx}:${attribute.historianTimeSourcePath ?? ""}`}
                               size="small"
                               defaultValue={attribute.historianTimeSourcePath ?? ""}
@@ -1330,7 +1333,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
 
       {mainTab === 2 && (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
-          <Paper sx={{ p: 1.25, overflow: "auto" }}>
+          <Paper sx={{ p: 1.25, ...scrollBothOverflowSx }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                 Historian Targets
@@ -1352,7 +1355,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                 Add Historian
               </Button>
             </Box>
-            <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1, maxHeight: 340 }}>
+            <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1, maxHeight: 340, ...scrollBothOverflowSx }}>
               <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
@@ -1595,7 +1598,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                     Attribute Metadata
                   </Typography>
-                  <TableContainer sx={{ maxHeight: 300 }}>
+                  <TableContainer sx={{ maxHeight: 300, ...scrollBothOverflowSx }}>
                     <Table size="small" stickyHeader>
                       <TableHead>
                         <TableRow>
@@ -1637,7 +1640,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                   <Box
                     sx={{
                       maxHeight: 300,
-                      overflow: "auto",
+                      ...scrollBothOverflowSx,
                       border: "1px solid #edf1f7",
                       borderRadius: 1,
                       p: 1,
@@ -1754,7 +1757,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
               Logs ({monitorLogs.length})
             </Typography>
-            <Box sx={{ maxHeight: 420, overflow: "auto", border: "1px solid #edf1f7", borderRadius: 1 }}>
+            <Box sx={{ maxHeight: 420, ...scrollBothOverflowSx, border: "1px solid #edf1f7", borderRadius: 1 }}>
               {monitorLogs.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
                   No logs found.

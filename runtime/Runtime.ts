@@ -7,6 +7,7 @@ import type {
   RuntimeNodeContext,
   RuntimeNodeHandler,
 } from "./types";
+import type { DbConnectionManager } from "./dbConnectionManager";
 
 interface RuntimeOptions {
   maxInflightPerNode?: number;
@@ -103,6 +104,7 @@ class Runtime {
   createNodeContext(nodeId: string): RuntimeNodeContext {
     const getAssetStorage = (): AssetStore | undefined => this.getGlobal<AssetStore | undefined>("assetStorage");
     const getEventStore = (): EventStore | undefined => this.getGlobal<EventStore | undefined>("eventStore");
+    const getDbManager = (): DbConnectionManager | null => this.getGlobal<DbConnectionManager | null>("dbConnectionManager", null);
 
     return {
       nodeId,
@@ -174,6 +176,23 @@ class Runtime {
           if (!store) throw new Error("eventStore is not available");
           return await store.get(pattern, from, to, status, contextFilters, options);
         },
+      },
+      db: {
+        query: async (sql: string, params: unknown[] = []) => {
+          const manager = getDbManager();
+          if (!manager) throw new Error("dbConnectionManager is not available");
+          return await manager.query(sql, params);
+        },
+        executeSafe: async (sql: string) => {
+          const manager = getDbManager();
+          if (!manager) throw new Error("dbConnectionManager is not available");
+          return await manager.executeSql(sql);
+        },
+        testConnection: async () => {
+          const manager = getDbManager();
+          if (!manager) throw new Error("dbConnectionManager is not available");
+          return await manager.testConnection();
+        }
       },
     };
   }

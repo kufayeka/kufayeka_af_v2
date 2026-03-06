@@ -5,7 +5,7 @@ import createScriptActionHandler from "./createScriptActionHandler";
 import { normalizeAssetSection } from "./assetFramework";
 import { ensureAssetStorage } from "./assetStorage";
 import { ensureEventStore } from "./eventStore";
-import type { ProgramDefinition, RuntimeMessage, RuntimeNodeContext, RuntimeNodeHandler } from "./types";
+import type { EventStore, EventStoreChangeMeta, ProgramDefinition, RuntimeMessage, RuntimeNodeContext, RuntimeNodeHandler } from "./types";
 
 interface ProgramAction {
   id: string;
@@ -28,7 +28,8 @@ interface ProgramTrigger {
   type:
     | "interval"
     | "watcher_set"
-    | "watcher_valuechange";
+    | "watcher_valuechange"
+    | "watcher_event_falling";
   enabled?: boolean;
   intervalMs?: number;
   message?: Record<string, unknown>;
@@ -102,6 +103,27 @@ function matchWildcardPath(pattern: string, value: string): boolean {
   for (let i = 0; i < p.length; i += 1) {
     if (p[i] !== "*" && p[i] !== v[i]) return false;
   }
+  return true;
+}
+
+function matchWildcardText(pattern: string, value: string): boolean {
+  const normalizedPattern = String(pattern || "").trim() || "*";
+  const normalizedValue = String(value || "").trim();
+  if (!normalizedValue) return false;
+
+  const patternParts = normalizedPattern.split("/").map((part) => part.trim());
+  const valueParts = normalizedValue.split("/").map((part) => part.trim());
+  if (patternParts.length !== valueParts.length) return false;
+
+  for (let i = 0; i < patternParts.length; i += 1) {
+    const pp = patternParts[i];
+    const vp = valueParts[i];
+    if (pp === "*") continue;
+    const escaped = pp.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+    const segmentRegex = new RegExp(`^${escaped.replace(/\*/g, ".*")}$`);
+    if (!segmentRegex.test(vp)) return false;
+  }
+
   return true;
 }
 
@@ -212,6 +234,51 @@ function startWatcherTrigger(runtime: Runtime, trigger: ProgramTrigger, mode: Wa
   throw new Error(`Unsupported watcher mode "${String(mode)}"`);
 }
 
+function startEventFallingTrigger(runtime: Runtime, trigger: ProgramTrigger): () => void {
+  const watchPath = String(trigger.watchPath || "").trim() || "*";
+  const baseMsg = trigger.message || {};
+  const eventStore = runtime.getGlobal<EventStore | undefined>("eventStore");
+  if (!eventStore || typeof eventStore.subscribe !== "function") {
+    throw new Error(`Watcher trigger "${trigger.id}" failed: eventStore is not available`);
+  }
+
+  const emitChange = (meta: EventStoreChangeMeta, row: Record<string, unknown>): void => {
+    const msg = structuredClone(baseMsg) as Record<string, unknown>;
+    msg.payload = row;
+    msg._trigger = {
+      id: trigger.id,
+      type: "watcher_event_falling",
+      watchPath,
+      source: meta.type,
+      ts: new Date().toISOString()
+    };
+    runtime.send(trigger.id, msg as RuntimeMessage);
+  };
+
+  const unsubscribe = eventStore.subscribe((meta) => {
+    if (meta.type !== "close" && meta.type !== "closeById") return;
+    const rows = Array.isArray(meta.rows) ? meta.rows : meta.row ? [meta.row] : [];
+    for (const row of rows) {
+      if (!row || row.status !== "closed") continue;
+      if (!matchWildcardText(watchPath, row.event_path)) continue;
+      emitChange(meta, {
+        id: row.id,
+        event_path: row.event_path,
+        start_ts: row.start_ts,
+        end_ts: row.end_ts,
+        status_before: "open",
+        status_after: "closed",
+        source: meta.type,
+        event: row
+      });
+    }
+  });
+
+  return () => {
+    if (typeof unsubscribe === "function") unsubscribe();
+  };
+}
+
 function startTriggers(runtime: Runtime, triggers: unknown[] = []): Array<() => void> {
   const stops: Array<() => void> = [];
   for (const rawTrigger of triggers) {
@@ -228,6 +295,10 @@ function startTriggers(runtime: Runtime, triggers: unknown[] = []): Array<() => 
     }
     if (trigger.type === "watcher_valuechange") {
       stops.push(startWatcherTrigger(runtime, trigger, "valuechange"));
+      continue;
+    }
+    if (trigger.type === "watcher_event_falling") {
+      stops.push(startEventFallingTrigger(runtime, trigger));
       continue;
     }
     throw new Error(`Unsupported trigger type "${String(trigger.type)}"`);

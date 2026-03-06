@@ -16,6 +16,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import { scrollBothOverflowSx } from "../common/scrollSx";
 
 type EventStatusFilter = "*" | "open" | "closed";
 type EventSeverity = "other" | "info" | "low" | "medium" | "high" | "critical";
@@ -332,8 +333,7 @@ export default function EventManager() {
             width: "100%",
             maxWidth: "100%",
             maxHeight: "calc(100vh - 300px)",
-            overflowX: "auto",
-            overflowY: "auto"
+            ...scrollBothOverflowSx
           }}
         >
           <Table size="small" stickyHeader sx={{ width: "max-content", minWidth: "100%" }}>

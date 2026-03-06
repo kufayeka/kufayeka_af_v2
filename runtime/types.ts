@@ -211,6 +211,16 @@ export interface EventRow {
   captured_data_on_close: unknown | null;
 }
 
+export interface EventStoreChangeMeta {
+  type: "open" | "close" | "closeById" | "acknowledgeById" | "deleteById" | "deleteByPattern";
+  ts: string;
+  pattern?: string;
+  id?: string;
+  row?: EventRow;
+  rows?: EventRow[];
+  count?: number;
+}
+
 export interface RuntimeEventApi {
   open(
     eventPath: string,
@@ -236,11 +246,18 @@ export interface RuntimeEventApi {
   ): Promise<EventRow[]>;
 }
 
+export interface RuntimeDbApi {
+  query(sql: string, params?: unknown[]): Promise<{ rows: Array<Record<string, unknown>>; rowCount: number }>;
+  executeSafe(sql: string): Promise<{ rows: Array<Record<string, unknown>>; rowCount: number }>;
+  testConnection(): Promise<{ ok: boolean; message: string; latencyMs: number }>;
+}
+
 export interface RuntimeNodeContext {
   nodeId: string;
   global: RuntimeGlobalApi;
   asset: RuntimeAssetApi;
   eventSys: RuntimeEventApi;
+  db: RuntimeDbApi;
 }
 
 export type RuntimeNodeHandler = (
@@ -307,6 +324,7 @@ export interface EventStore {
     sortBy: string;
     sortDir: "ASC" | "DESC";
   }>;
+  subscribe(listener: (meta: EventStoreChangeMeta) => void): () => void;
   shutdown?(): Promise<void>;
 }
 

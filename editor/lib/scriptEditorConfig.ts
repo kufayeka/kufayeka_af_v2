@@ -68,6 +68,7 @@ export const SCRIPT_EDITOR_SETTINGS = {
       suggestOnTriggerCharacters: true,
       acceptSuggestionOnEnter: "smart",
       parameterHints: { enabled: true },
+      inlayHints: { enabled: "on" },
       autoClosingBrackets: "always",
       autoClosingQuotes: "always",
       matchBrackets: "always",
@@ -170,18 +171,18 @@ declare interface ScriptContext {
   };
   eventSys: {
     open: (
-      path: string,
-      ts: string,
+      eventPath: string,
+      eventTime: string,
       context: Record<string, any>,
       notes: string,
       severity?: string,
-      captured_data_on_open?: Record<string, any> | null
+      capturedDataOnOpen?: Record<string, any> | null
     ) => Promise<any>;
     close: (
-      pattern: string,
-      ts: string,
+      eventPattern: string,
+      eventTime: string,
       notes: string,
-      captured_data_on_close?: Record<string, any> | null
+      capturedDataOnClose?: Record<string, any> | null
     ) => Promise<any>;
     get: (
       pattern: string,
@@ -192,12 +193,44 @@ declare interface ScriptContext {
       options?: { limit?: number }
     ) => Promise<any[]>;
   };
+  db: {
+    query: (sql: string, params?: any[]) => Promise<{ rows: Array<Record<string, any>>; rowCount: number }>;
+    executeSafe: (sql: string) => Promise<{ rows: Array<Record<string, any>>; rowCount: number }>;
+    testConnection: () => Promise<{ ok: boolean; message: string; latencyMs: number }>;
+  };
 }
 
 declare interface ScriptHelpers {
   log: (...args: any[]) => void;
   sleep: (ms: number) => Promise<void>;
   fetch: typeof fetch;
+  axios: {
+    request: (options: any) => Promise<any>;
+    get: (url: string, config?: any) => Promise<any>;
+    post: (url: string, data?: any, config?: any) => Promise<any>;
+    put: (url: string, data?: any, config?: any) => Promise<any>;
+    patch: (url: string, data?: any, config?: any) => Promise<any>;
+    delete: (url: string, config?: any) => Promise<any>;
+  };
+  http: (options: {
+    url: string;
+    method?: string;
+    query?: Record<string, any>;
+    params?: Record<string, any>;
+    headers?: Record<string, string>;
+    cookies?: Record<string, string | number | boolean>;
+    body?: any;
+    data?: any;
+    timeoutMs?: number;
+    responseType?: "json" | "text" | "arraybuffer";
+  }) => Promise<{
+    ok: boolean;
+    status: number;
+    statusText: string;
+    data: any;
+    headers: Record<string, any>;
+    request: { method: string; url: string };
+  }>;
   now: () => string;
 }
 
@@ -209,6 +242,7 @@ declare const config: Record<string, any>;
 declare const global: ScriptContext["global"];
 declare const asset: ScriptContext["asset"];
 declare const eventSys: ScriptContext["eventSys"];
+declare const db: ScriptContext["db"];
 `
   },
   completion: {
@@ -232,6 +266,19 @@ declare const eventSys: ScriptContext["eventSys"];
         documentation: "HTTP request helper from runtime."
       },
       {
+        label: "helpers.http",
+        insertText:
+          "const res = await helpers.http({\\n  url: ${1:\"https://api.example.com/orders\"},\\n  method: ${2:\"POST\"},\\n  query: ${3:{ line: \"A\" }},\\n  headers: ${4:{ \"x-api-key\": \"token\" }},\\n  cookies: ${5:{ session: \"abc\" }},\\n  body: ${6:{ workOrder: \"WO-1\" }}\\n});",
+        detail: "HTTP helper (axios-powered)",
+        documentation: "HTTP request helper with query/headers/cookies/body/timeout."
+      },
+      {
+        label: "helpers.axios",
+        insertText: "const res = await helpers.axios.get(${1:\"https://api.example.com/status\"});",
+        detail: "Axios instance",
+        documentation: "Direct axios client (get/post/put/patch/delete/request)."
+      },
+      {
         label: "helpers.now",
         insertText: "helpers.now()",
         detail: "ISO timestamp now",
@@ -239,13 +286,15 @@ declare const eventSys: ScriptContext["eventSys"];
       },
       {
         label: "eventSys.open",
-        insertText: "eventSys.open(${1:path}, ${2:msg.ts}, ${3:{}}, ${4:notes}, ${5:\"low\"}, ${6:{}});",
+        insertText:
+          "await eventSys.open(\\n  /* event path */ ${1:eventPath},\\n  /* event time */ ${2:timestamp},\\n  /* context */ ${3:activityContext},\\n  /* notes */ ${4:`activity ${rawActivity} created`},\\n  /* severity */ ${5:\"info\"},\\n  /* captured data */ ${6:paperConsum}\\n);",
         detail: "Open event",
-        documentation: "Create new event row."
+        documentation: "Create new event row with guided argument labels."
       },
       {
         label: "eventSys.close",
-        insertText: "eventSys.close(${1:pattern}, ${2:msg.ts}, ${3:notes}, ${4:{}});",
+        insertText:
+          "await eventSys.close(\\n  /* event pattern */ ${1:eventPattern},\\n  /* event time */ ${2:timestamp},\\n  /* notes */ ${3:\"manual close\"},\\n  /* captured data */ ${4:{}}\\n);",
         detail: "Close event(s)",
         documentation: "Close open events by wildcard pattern."
       },
@@ -254,6 +303,24 @@ declare const eventSys: ScriptContext["eventSys"];
         insertText: "eventSys.get(${1:pattern}, \"*\", \"*\", \"*\", ${2:{}}, ${3:{ limit: 100 }});",
         detail: "Query events",
         documentation: "Query events by path/time/status/context."
+      },
+      {
+        label: "db.query",
+        insertText: "const r = await db.query(${1:\"SELECT * FROM public.af_event WHERE status = $1 LIMIT $2\"}, [${2:\"open\"}, ${3:100}]);",
+        detail: "Run parameterized SQL",
+        documentation: "Execute SQL with bind params against runtime DB connection."
+      },
+      {
+        label: "db.executeSafe",
+        insertText: "const r = await db.executeSafe(${1:\"SELECT NOW() AS ts\"});",
+        detail: "Run safe SQL (restricted)",
+        documentation: "Execute SQL using safe tester guard (blocks destructive DDL)."
+      },
+      {
+        label: "db.testConnection",
+        insertText: "const dbHealth = await db.testConnection();",
+        detail: "Test DB connection",
+        documentation: "Returns {ok,message,latencyMs}."
       },
       {
         label: "asset.get",
@@ -406,6 +473,14 @@ export function configureScriptEditorMonaco(monaco: typeof Monaco): void {
   };
   tsLang.javascriptDefaults.setCompilerOptions(compilerOptions);
   tsLang.typescriptDefaults.setCompilerOptions(compilerOptions);
+  tsLang.javascriptDefaults.setInlayHintsOptions?.({
+    includeInlayParameterNameHints: "all",
+    includeInlayParameterNameHintsWhenArgumentMatchesName: false
+  });
+  tsLang.typescriptDefaults.setInlayHintsOptions?.({
+    includeInlayParameterNameHints: "all",
+    includeInlayParameterNameHintsWhenArgumentMatchesName: false
+  });
 
   tsLang.javascriptDefaults.addExtraLib(
     SCRIPT_EDITOR_SETTINGS.diagnostics.extraLibSource,

@@ -1,14 +1,14 @@
 {
   "enabled": true,
   "connection": {
-    "host": "192.168.68.99",
-    "port": 5432,
-    "user": "jvt",
-    "password": "jvt",
-    "database": "af",
-    "adminDatabase": "af",
+    "host": "iwdt6pl48t.bv1x9l2srf.tsdb.cloud.timescale.com",
+    "port": 31370,
+    "user": "tsdbadmin",
+    "password": "png82d865krb1ug6",
+    "database": "tsdb",
+    "adminDatabase": "tsdb",
     "schema": "public",
-    "ssl": "false",
+    "ssl": "require",
     "maxQueryRows": 100000
   },
   "tables": {

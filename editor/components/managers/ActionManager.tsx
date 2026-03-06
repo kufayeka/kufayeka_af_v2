@@ -23,6 +23,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import { scrollBothOverflowSx } from "../common/scrollSx";
 import type { SelectChangeEvent } from "@mui/material/Select";
 import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
@@ -476,7 +477,7 @@ export default function ActionManager({
                 onChange={(e) => setSearch(e.target.value)}
               />
             </Box>
-            <Box sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, overflow: "auto", maxHeight: "calc(100vh - 260px)" }}>
+            <Box sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, ...scrollBothOverflowSx, maxHeight: "calc(100vh - 260px)" }}>
               <Tree
                 treeData={hierarchyTree}
                 expandedKeys={expandedKeys}
@@ -516,7 +517,7 @@ export default function ActionManager({
                   helperText="Example: areaA.line1.printer.offset.startup"
                 />
 
-                <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, maxHeight: 260 }}>
+                <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, maxHeight: 260, ...scrollBothOverflowSx }}>
                   <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
@@ -579,7 +580,7 @@ export default function ActionManager({
                 {selectedActionTemplate && (
                   <Box sx={{ display: "grid", gap: 0.75 }}>
                     <Typography variant="subtitle2">Template Bindings</Typography>
-                    <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, maxHeight: 260 }}>
+                    <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, maxHeight: 260, ...scrollBothOverflowSx }}>
                       <Table size="small" stickyHeader>
                         <TableHead>
                           <TableRow>
@@ -865,7 +866,7 @@ export default function ActionManager({
             <Button variant="outlined" onClick={onAddScriptTemplate}>
               Add Script Template
             </Button>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, maxHeight: "calc(100vh - 260px)", overflow: "auto" }}>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, maxHeight: "calc(100vh - 260px)", ...scrollBothOverflowSx }}>
               {scriptTemplates.map((template) => (
                 <Box
                   key={template.id}
@@ -960,7 +961,7 @@ export default function ActionManager({
                       Add Binding
                     </Button>
                   </Box>
-                  <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, overflowX: "auto" }}>
+                  <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, ...scrollBothOverflowSx }}>
                     <Table size="small" sx={{ minWidth: 1120 }} stickyHeader>
                       <TableHead>
                         <TableRow>
@@ -1252,4 +1253,3 @@ export default function ActionManager({
     </Box>
   );
 }
-
