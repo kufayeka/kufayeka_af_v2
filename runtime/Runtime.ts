@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   AssetStore,
+  EventTemplateDefinition,
   EventStore,
   FindAttributesResult,
   RuntimeMessage,
@@ -8,6 +9,12 @@ import type {
   RuntimeNodeHandler,
 } from "./types";
 import type { DbConnectionManager } from "./dbConnectionManager";
+import {
+  closeEventsWithAutoCapture,
+  closeEventFromTemplate,
+  normalizeEventTemplates,
+  openEventFromTemplate
+} from "./eventTemplateRuntime";
 
 interface RuntimeOptions {
   maxInflightPerNode?: number;
@@ -105,6 +112,10 @@ class Runtime {
     const getAssetStorage = (): AssetStore | undefined => this.getGlobal<AssetStore | undefined>("assetStorage");
     const getEventStore = (): EventStore | undefined => this.getGlobal<EventStore | undefined>("eventStore");
     const getDbManager = (): DbConnectionManager | null => this.getGlobal<DbConnectionManager | null>("dbConnectionManager", null);
+    const getEventTemplateMap = (): Map<string, EventTemplateDefinition> => {
+      const list = normalizeEventTemplates(this.getGlobal("eventTemplates", []));
+      return new Map(list.map((item) => [item.id, item]));
+    };
 
     return {
       nodeId,
@@ -161,14 +172,46 @@ class Runtime {
         },
       },
       eventSys: {
-        open: async (eventPath, ts, context, notes, severity, capturedDataOnOpen) => {
+        open: async (eventPath, ts, context, notes, severity, capturedDataOnOpen, eventMetadata) => {
           const store = getEventStore();
           if (!store) throw new Error("eventStore is not available");
-          return await store.open(eventPath, ts, context, notes, severity, capturedDataOnOpen);
+          return await store.open(eventPath, ts, context, notes, severity, capturedDataOnOpen, eventMetadata);
         },
         close: async (pattern, ts, notes, capturedDataOnClose) => {
           const store = getEventStore();
+          const assetStore = getAssetStorage();
           if (!store) throw new Error("eventStore is not available");
+          if (!assetStore) throw new Error("assetStorage is not available");
+          const rows = await store.get(pattern, "*", "*", "open", {}, { limit: 5000 });
+          const templatedRows = rows.filter((row) => row.event_metadata && Object.keys(row.event_metadata).length > 0);
+          if (templatedRows.length > 0) {
+            const result = await closeEventsWithAutoCapture({
+              assetStore,
+              eventStore: store,
+              templateMap: getEventTemplateMap(),
+              rows: templatedRows,
+              notes,
+              ts,
+              explicitCaptured: capturedDataOnClose
+            });
+            if (templatedRows.length === rows.length) {
+              return {
+                pattern: String(pattern || "*"),
+                closedCount: result.closedCount,
+                ts: result.ts,
+                notes_on_close: result.notes_on_close,
+                captured_data_on_close: capturedDataOnClose ?? null
+              };
+            }
+            const normalResult = await store.close(pattern, ts, notes, capturedDataOnClose);
+            return {
+              pattern: normalResult.pattern,
+              closedCount: Number(normalResult.closedCount || 0) + result.closedCount,
+              ts: result.ts || normalResult.ts,
+              notes_on_close: normalResult.notes_on_close,
+              captured_data_on_close: normalResult.captured_data_on_close
+            };
+          }
           return await store.close(pattern, ts, notes, capturedDataOnClose);
         },
         get: async (pattern, from, to, status, contextFilters, options) => {
@@ -176,6 +219,32 @@ class Runtime {
           if (!store) throw new Error("eventStore is not available");
           return await store.get(pattern, from, to, status, contextFilters, options);
         },
+        openTemplate: async (templateId, options) => {
+          const store = getEventStore();
+          const assetStore = getAssetStorage();
+          if (!store) throw new Error("eventStore is not available");
+          if (!assetStore) throw new Error("assetStorage is not available");
+          return await openEventFromTemplate({
+            assetStore,
+            eventStore: store,
+            templateMap: getEventTemplateMap(),
+            templateId,
+            openOptions: options
+          });
+        },
+        closeTemplate: async (templateId, options) => {
+          const store = getEventStore();
+          const assetStore = getAssetStorage();
+          if (!store) throw new Error("eventStore is not available");
+          if (!assetStore) throw new Error("assetStorage is not available");
+          return await closeEventFromTemplate({
+            assetStore,
+            eventStore: store,
+            templateMap: getEventTemplateMap(),
+            templateId,
+            closeOptions: options
+          });
+        }
       },
       db: {
         query: async (sql: string, params: unknown[] = []) => {

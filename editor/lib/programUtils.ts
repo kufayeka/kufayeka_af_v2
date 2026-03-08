@@ -1,6 +1,13 @@
 import type {
   ActionDefinition,
   AssetFrameworkDefinition,
+  EventActionBindingDefinition,
+  EventActionDefinition,
+  EventTemplateAssetPathDefinition,
+  EventTemplateInputBindingDefinition,
+  EventTemplateFieldDefinition,
+  EventTemplateDefinition,
+  EventTemplatePathSegmentDefinition,
   FlowLink,
   NodePosition,
   Program,
@@ -48,6 +55,113 @@ export function parseMaybeJson(input: string): unknown {
   } catch {
     return input;
   }
+}
+
+export function normalizeEventTemplatePathSegment(
+  value: EventTemplatePathSegmentDefinition
+): EventTemplatePathSegmentDefinition {
+  const type = String(value.type || "static");
+  return {
+    type:
+      type === "binding" ||
+      type === "asset_path" ||
+      type === "variable" ||
+      type === "context_field" ||
+      type === "captured_value" ||
+      type === "wildcard"
+        ? type
+        : "static",
+    value: String(value.value ?? ""),
+    separator:
+      value.separator === "/" || value.separator === "." || value.separator === "-" ? value.separator : ""
+  };
+}
+
+export function normalizeEventTemplateInputBinding(
+  value: Partial<EventTemplateInputBindingDefinition>
+): EventTemplateInputBindingDefinition {
+  const source = String(value.source || "msg_path");
+  return {
+    name: String(value.name ?? "").trim(),
+    source:
+      source === "asset" ||
+      source === "attribute" ||
+      source === "static_number" ||
+      source === "static_string" ||
+      source === "static_boolean" ||
+      source === "static_array" ||
+      source === "static_object"
+        ? source
+        : "msg_path",
+    templateId: String(value.templateId ?? "").trim(),
+    defaultValue: value.defaultValue
+  };
+}
+
+export function renderEventTemplatePathBuilder(
+  builder: EventTemplatePathSegmentDefinition[] | undefined
+): string {
+  return (builder || [])
+    .map((segment) => {
+      const normalized = normalizeEventTemplatePathSegment(segment);
+      const body =
+        normalized.type === "wildcard"
+          ? "*"
+          : normalized.type === "static"
+            ? normalized.value || ""
+            : normalized.value
+              ? `{${normalized.value}}`
+              : "";
+      return `${body}${normalized.separator || ""}`;
+    })
+    .join("")
+    .trim();
+}
+
+export function parseEventTemplatePathBuilder(template: string | undefined): EventTemplatePathSegmentDefinition[] {
+  const input = String(template || "").trim();
+  if (!input) return [];
+  const output: EventTemplatePathSegmentDefinition[] = [];
+  let i = 0;
+  while (i < input.length) {
+    let type: EventTemplatePathSegmentDefinition["type"] = "static";
+    let value = "";
+    if (input[i] === "{") {
+      const end = input.indexOf("}", i + 1);
+      if (end > i) {
+        type = "variable";
+        value = input.slice(i + 1, end).trim();
+        i = end + 1;
+      } else {
+        value = input[i];
+        i += 1;
+      }
+    } else if (input[i] === "*") {
+      type = "wildcard";
+      value = "*";
+      i += 1;
+    } else {
+      const start = i;
+      while (i < input.length && input[i] !== "{" && input[i] !== "*" && input[i] !== "/" && input[i] !== "." && input[i] !== "-") {
+        i += 1;
+      }
+      value = input.slice(start, i);
+    }
+    let separator: EventTemplatePathSegmentDefinition["separator"] = "";
+    if (i < input.length && (input[i] === "/" || input[i] === "." || input[i] === "-")) {
+      separator = input[i] as EventTemplatePathSegmentDefinition["separator"];
+      i += 1;
+    }
+    if (type === "static" && !value && !separator) continue;
+    output.push(normalizeEventTemplatePathSegment({ type, value, separator }));
+  }
+  return output;
+}
+
+function normalizeEventTemplateConcurrencyMode(value: unknown): EventTemplateDefinition["concurrencyMode"] {
+  const mode = String(value || "").trim();
+  if (mode === "unique_exact_path" || mode === "unique_pattern") return mode;
+  return "parallel";
 }
 
 export function normalizeProgram(program: Program): Program {
@@ -103,6 +217,8 @@ export function normalizeProgram(program: Program): Program {
         ? "asset"
         : rawSource === "attribute" || rawSource === "assetAttribute"
         ? "attribute"
+        : rawSource === "msg_path"
+          ? "msg_path"
         : rawSource === "static_number" ||
             rawSource === "static_string" ||
             rawSource === "static_boolean" ||
@@ -126,6 +242,56 @@ export function normalizeProgram(program: Program): Program {
       allowOverride: binding.allowOverride === true
     };
   };
+  const normalizeEventActionBinding = (
+    binding: Partial<EventActionBindingDefinition> & {
+      source?: string;
+      staticType?: string;
+      assetPath?: string;
+      attribute?: { path?: string };
+    }
+  ): EventActionBindingDefinition => {
+    const normalized = normalizeBinding({
+      name: "event_binding",
+      source: binding.source,
+      staticType: binding.staticType,
+      staticValue: binding.staticValue,
+      attributePath: binding.attributePath,
+      assetPath: binding.assetPath,
+      attribute: binding.attribute
+    });
+    return {
+      source: normalized.source,
+      staticValue: normalized.staticValue,
+      attributePath: normalized.attributePath
+    };
+  };
+  const normalizeEventTemplateAssetPath = (
+    item: Partial<EventTemplateAssetPathDefinition>
+  ): EventTemplateAssetPathDefinition => ({
+    id: String(item.id ?? "").trim(),
+    source: item.source === "static" ? "static" : "variable",
+    key: String(item.key ?? "").trim(),
+    value: String(item.value ?? "").trim(),
+    templateId: String(item.templateId ?? "").trim()
+  });
+  const normalizeEventTemplateField = (
+    item: Partial<EventTemplateFieldDefinition>
+  ): EventTemplateFieldDefinition => ({
+    key: String(item.key ?? "").trim(),
+    source:
+      item.source === "asset_path_attribute"
+        ? "asset_path_attribute"
+        : item.source === "captured_value"
+          ? "captured_value"
+          : item.source === "static"
+            ? "static"
+            : "variable",
+    variableKey: String(item.variableKey ?? "").trim(),
+    value: item.value ?? "",
+    assetPathId: String(item.assetPathId ?? "").trim(),
+    attributeName: String(item.attributeName ?? "").trim(),
+    capturedKey: String(item.capturedKey ?? "").trim()
+  });
 
   const normalizedAssets: AssetFrameworkDefinition = {
     assets: (program.assets?.assets || []).map((asset) => ({
@@ -173,8 +339,213 @@ export function normalizeProgram(program: Program): Program {
     ].filter((h, i, arr) => arr.findIndex((x) => x.id === h.id) === i)
   };
 
+  const normalizedEventTemplates: EventTemplateDefinition[] = Array.isArray(program.eventTemplates)
+    ? program.eventTemplates
+        .map((item) => {
+          const snapshotTemplateId = String((item as { snapshotTemplateId?: unknown }).snapshotTemplateId ?? "").trim();
+          const bindings = Array.isArray((item as { bindings?: unknown[] }).bindings)
+            ? ((item as { bindings?: unknown[] }).bindings || [])
+                .map((entry) => normalizeEventTemplateInputBinding(entry as EventTemplateInputBindingDefinition))
+                .filter((entry) => entry.name.length > 0)
+            : [];
+          const normalizedAssetPaths = Array.isArray((item as { assetPaths?: unknown[] }).assetPaths)
+            ? ((item as { assetPaths?: unknown[] }).assetPaths || [])
+                .map((entry) => normalizeEventTemplateAssetPath(entry as EventTemplateAssetPathDefinition))
+                .filter((entry) => entry.id.length > 0)
+            : [];
+          const legacyAssetPathTemplate = String((item as { assetPathTemplate?: unknown }).assetPathTemplate ?? "").trim();
+          const derivedAssetPaths = bindings
+            .filter((entry) => entry.source === "asset")
+            .map((entry) => normalizeEventTemplateAssetPath({
+              id: entry.name,
+              source: "variable",
+              key: entry.name,
+              value: "",
+              templateId: entry.templateId || ""
+            }));
+          const assetPaths = derivedAssetPaths.length > 0
+            ? derivedAssetPaths
+            : normalizedAssetPaths.length > 0
+              ? normalizedAssetPaths
+            : (() => {
+                const match = legacyAssetPathTemplate.match(/^\{([^}]+)\}$/);
+                if (match) {
+                  return [{
+                    id: String(match[1] || "").trim() || "assetPath",
+                    source: "variable" as const,
+                    key: String(match[1] || "").trim() || "assetPath",
+                    value: "",
+                    templateId: snapshotTemplateId
+                  }];
+                }
+                if (legacyAssetPathTemplate) {
+                  return [{
+                    id: "assetPath",
+                    source: "static" as const,
+                    key: "",
+                    value: legacyAssetPathTemplate,
+                    templateId: snapshotTemplateId
+                  }];
+                }
+                return [];
+              })();
+
+          const normalizedContextFields = Array.isArray((item as { contextFields?: unknown[] }).contextFields)
+            ? ((item as { contextFields?: unknown[] }).contextFields || [])
+                .map((entry) => normalizeEventTemplateField(entry as EventTemplateFieldDefinition))
+                .filter((entry) => entry.key.length > 0)
+            : [];
+          const normalizedEventPathBuilder = Array.isArray((item as { eventPathBuilder?: unknown[] }).eventPathBuilder)
+            ? ((item as { eventPathBuilder?: unknown[] }).eventPathBuilder || [])
+                .map((entry) => normalizeEventTemplatePathSegment(entry as EventTemplatePathSegmentDefinition))
+            : parseEventTemplatePathBuilder(String(item.eventPathTemplate ?? ""));
+          const normalizedClosePatternBuilder = Array.isArray((item as { closePatternBuilder?: unknown[] }).closePatternBuilder)
+            ? ((item as { closePatternBuilder?: unknown[] }).closePatternBuilder || [])
+                .map((entry) => normalizeEventTemplatePathSegment(entry as EventTemplatePathSegmentDefinition))
+            : parseEventTemplatePathBuilder(String(item.closePatternTemplate ?? item.eventPathTemplate ?? ""));
+          const normalizedUniquePatternBuilder = Array.isArray((item as { uniquePatternBuilder?: unknown[] }).uniquePatternBuilder)
+            ? ((item as { uniquePatternBuilder?: unknown[] }).uniquePatternBuilder || [])
+                .map((entry) => normalizeEventTemplatePathSegment(entry as EventTemplatePathSegmentDefinition))
+            : parseEventTemplatePathBuilder(String((item as { uniquePatternTemplate?: unknown }).uniquePatternTemplate ?? ""));
+          const normalizedRequiredParentBuilder = Array.isArray((item as { requiredParentBuilder?: unknown[] }).requiredParentBuilder)
+            ? ((item as { requiredParentBuilder?: unknown[] }).requiredParentBuilder || [])
+                .map((entry) => normalizeEventTemplatePathSegment(entry as EventTemplatePathSegmentDefinition))
+            : parseEventTemplatePathBuilder(String((item as { requiredParentPattern?: unknown }).requiredParentPattern ?? ""));
+          const normalizedCloseOnOpenPatternBuilders = Array.isArray((item as { closeOnOpenPatternBuilders?: unknown[] }).closeOnOpenPatternBuilders)
+            ? ((item as { closeOnOpenPatternBuilders?: unknown[] }).closeOnOpenPatternBuilders || [])
+                .map((builder) => Array.isArray(builder) ? builder.map((entry) => normalizeEventTemplatePathSegment(entry as EventTemplatePathSegmentDefinition)) : [])
+            : [];
+          const normalizedCloseChildrenPatternBuilders = Array.isArray((item as { closeChildrenOnClosePatternBuilders?: unknown[] }).closeChildrenOnClosePatternBuilders)
+            ? ((item as { closeChildrenOnClosePatternBuilders?: unknown[] }).closeChildrenOnClosePatternBuilders || [])
+                .map((builder) => Array.isArray(builder) ? builder.map((entry) => normalizeEventTemplatePathSegment(entry as EventTemplatePathSegmentDefinition)) : [])
+            : [];
+          const eventPathTemplate = normalizedEventPathBuilder.length > 0
+            ? renderEventTemplatePathBuilder(normalizedEventPathBuilder)
+            : String(item.eventPathTemplate ?? "").trim();
+          const closePatternTemplate = normalizedClosePatternBuilder.length > 0
+            ? renderEventTemplatePathBuilder(normalizedClosePatternBuilder)
+            : String(item.closePatternTemplate ?? "").trim();
+          const uniquePatternTemplate = normalizedUniquePatternBuilder.length > 0
+            ? renderEventTemplatePathBuilder(normalizedUniquePatternBuilder)
+            : String((item as { uniquePatternTemplate?: unknown }).uniquePatternTemplate ?? "").trim();
+          const requiredParentPattern = normalizedRequiredParentBuilder.length > 0
+            ? renderEventTemplatePathBuilder(normalizedRequiredParentBuilder)
+            : String((item as { requiredParentPattern?: unknown }).requiredParentPattern ?? "").trim();
+          const contextBindings =
+            item.contextBindings && typeof item.contextBindings === "object"
+              ? item.contextBindings
+              : {};
+          const contextFields = normalizedContextFields.length > 0
+            ? normalizedContextFields
+            : Object.entries(contextBindings).map(([key, binding]) => {
+                const src = (binding || {}) as { source?: unknown; key?: unknown; value?: unknown; pathTemplate?: unknown };
+                if (String(src.source || "") === "attribute") {
+                  const match = String(src.pathTemplate ?? "").trim().match(/^\{([^}]+)\}\.(.+)$/);
+                  return normalizeEventTemplateField({
+                    key,
+                    source: "asset_path_attribute",
+                    assetPathId: String(match?.[1] || "assetPath").trim(),
+                    attributeName: String(match?.[2] || "").trim()
+                  });
+                }
+                if (String(src.source || "") === "static") {
+                  return normalizeEventTemplateField({
+                    key,
+                    source: "static",
+                    value: src.value
+                  });
+                }
+                return normalizeEventTemplateField({
+                  key,
+                  source: "variable",
+                  variableKey: String(src.key ?? "").trim()
+                });
+              }).filter((entry) => entry.key.length > 0);
+
+          return {
+            id: String(item.id ?? "").trim(),
+            enabled: item.enabled !== false,
+            allowParallel: (item as { allowParallel?: unknown }).allowParallel !== false,
+            concurrencyMode: normalizeEventTemplateConcurrencyMode((item as { concurrencyMode?: unknown }).concurrencyMode),
+            eventPathTemplate,
+            closePatternTemplate,
+            eventPathBuilder: normalizedEventPathBuilder,
+            closePatternBuilder: normalizedClosePatternBuilder,
+            uniquePatternTemplate,
+            uniquePatternBuilder: normalizedUniquePatternBuilder,
+            closeOnOpenPatterns: normalizedCloseOnOpenPatternBuilders.length > 0
+              ? normalizedCloseOnOpenPatternBuilders.map((builder) => renderEventTemplatePathBuilder(builder)).filter((entry) => entry.length > 0)
+              : Array.isArray((item as { closeOnOpenPatterns?: unknown[] }).closeOnOpenPatterns)
+                ? ((item as { closeOnOpenPatterns?: unknown[] }).closeOnOpenPatterns || []).map((entry) => String(entry || "").trim()).filter((entry) => entry.length > 0)
+                : [],
+            closeOnOpenPatternBuilders: normalizedCloseOnOpenPatternBuilders.length > 0
+              ? normalizedCloseOnOpenPatternBuilders
+              : Array.isArray((item as { closeOnOpenPatterns?: unknown[] }).closeOnOpenPatterns)
+                ? ((item as { closeOnOpenPatterns?: unknown[] }).closeOnOpenPatterns || []).map((entry) => parseEventTemplatePathBuilder(String(entry || "")))
+                : [],
+            requiredParentPattern,
+            requiredParentBuilder: normalizedRequiredParentBuilder,
+            closeChildrenOnClosePatterns: normalizedCloseChildrenPatternBuilders.length > 0
+              ? normalizedCloseChildrenPatternBuilders.map((builder) => renderEventTemplatePathBuilder(builder)).filter((entry) => entry.length > 0)
+              : Array.isArray((item as { closeChildrenOnClosePatterns?: unknown[] }).closeChildrenOnClosePatterns)
+                ? ((item as { closeChildrenOnClosePatterns?: unknown[] }).closeChildrenOnClosePatterns || []).map((entry) => String(entry || "").trim()).filter((entry) => entry.length > 0)
+                : [],
+            closeChildrenOnClosePatternBuilders: normalizedCloseChildrenPatternBuilders.length > 0
+              ? normalizedCloseChildrenPatternBuilders
+              : Array.isArray((item as { closeChildrenOnClosePatterns?: unknown[] }).closeChildrenOnClosePatterns)
+                ? ((item as { closeChildrenOnClosePatterns?: unknown[] }).closeChildrenOnClosePatterns || []).map((entry) => parseEventTemplatePathBuilder(String(entry || "")))
+                : [],
+            bindings,
+            snapshotTemplateId,
+            severity: String(item.severity ?? "").trim() || "other",
+            assetPaths,
+            contextBindings,
+            contextFields,
+            timeSource:
+              item.timeSource && typeof item.timeSource === "object"
+                ? item.timeSource
+                : {},
+            capture:
+              item.capture && typeof item.capture === "object"
+                ? item.capture
+                : { onOpen: true, onClose: true },
+            captureFields: Array.isArray((item as { captureFields?: unknown[] }).captureFields)
+              ? ((item as { captureFields?: unknown[] }).captureFields || [])
+                  .map((entry) => normalizeEventTemplateField(entry as EventTemplateFieldDefinition))
+                  .filter((entry) => entry.key.length > 0)
+              : []
+          };
+        })
+        .filter((item) => item.id.length > 0)
+    : [];
+
   return {
     ...program,
+    eventTemplates: normalizedEventTemplates,
+    eventActions: (program.eventActions || []).map(
+      (item): EventActionDefinition => ({
+        ...item,
+        label: typeof item.label === "string" ? item.label : "",
+        enabled: item.enabled !== false,
+        description: typeof item.description === "string" ? item.description : "",
+        templateId: typeof item.templateId === "string" ? item.templateId : "",
+        templateOverrides:
+          item.templateOverrides && typeof item.templateOverrides === "object"
+            ? item.templateOverrides
+            : {},
+        bindings:
+          item.bindings && typeof item.bindings === "object"
+            ? Object.fromEntries(
+                Object.entries(item.bindings).map(([key, value]) => {
+                  if (!value || typeof value !== "object") return [key, normalizeEventActionBinding({})];
+                  return [key, normalizeEventActionBinding(value as EventActionBindingDefinition)];
+                })
+              )
+            : {},
+        openNotes: typeof item.openNotes === "string" ? item.openNotes : "",
+        closeNotes: typeof item.closeNotes === "string" ? item.closeNotes : ""
+      })
+    ),
     triggers: (program.triggers || []).map(
       (trigger): TriggerDefinition => {
         const rawType = String((trigger as { type?: unknown }).type || "interval");
@@ -215,6 +586,11 @@ export function normalizeProgram(program: Program): Program {
         enabled: action.enabled !== false,
         allowTreeDuplicate: (action.allowTreeDuplicate ?? action.allowNodeDuplication) !== false,
         description: action.description ?? "",
+        eventTemplateId: typeof action.eventTemplateId === "string" ? action.eventTemplateId : "",
+        eventTemplateOverrides:
+          action.eventTemplateOverrides && typeof action.eventTemplateOverrides === "object"
+            ? action.eventTemplateOverrides
+            : {},
         templateBindingOverrides:
           action.templateBindingOverrides && typeof action.templateBindingOverrides === "object"
             ? Object.fromEntries(

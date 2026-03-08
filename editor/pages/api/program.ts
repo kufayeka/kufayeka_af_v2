@@ -67,6 +67,8 @@ function ensureProgramFile(programPath: string) {
   fs.mkdirSync(path.dirname(programPath), { recursive: true });
   const initialProgram: Program = {
     meta: { name: "Kufayeka AF Program", version: 1 },
+    eventTemplates: [],
+    eventActions: [],
     triggers: [],
     actions: [],
     scriptTemplates: [],

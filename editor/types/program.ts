@@ -21,11 +21,18 @@ export type AssetAttributeType =
 export type ScriptBindingSource =
   | "asset"
   | "attribute"
+  | "msg_path"
   | "static_number"
   | "static_string"
   | "static_boolean"
   | "static_array"
   | "static_object";
+export type EventTemplateBindingSource = "variable" | "static" | "attribute";
+export type EventTemplateTimeSourceType = "now" | "variable" | "asset_path_attribute";
+export type EventTemplateFieldSource = "variable" | "static" | "asset_path_attribute" | "captured_value";
+export type EventTemplatePathSegmentType = "static" | "binding" | "asset_path" | "variable" | "context_field" | "captured_value" | "wildcard";
+export type EventTemplatePathSegmentSeparator = "" | "/" | "." | "-";
+export type EventTemplateConcurrencyMode = "parallel" | "unique_exact_path" | "unique_pattern";
 
 export interface AssetTemplateAttributeDefinition {
   enabled?: boolean;
@@ -97,8 +104,107 @@ export interface ActionDefinition {
   allowNodeDuplication?: boolean;
   description?: string;
   templateId?: string;
+  eventTemplateId?: string;
+  eventTemplateOverrides?: Record<string, unknown>;
   templateBindingOverrides?: Record<string, ScriptVariableBindingDefinition>;
   script: string;
+}
+
+export interface EventActionBindingDefinition {
+  source: ScriptBindingSource;
+  staticValue?: unknown;
+  attributePath?: string;
+}
+
+export interface EventActionDefinition {
+  id: string;
+  label?: string;
+  enabled: boolean;
+  description?: string;
+  templateId?: string;
+  templateOverrides?: Record<string, unknown>;
+  bindings?: Record<string, EventActionBindingDefinition>;
+  openNotes?: string;
+  closeNotes?: string;
+}
+
+export interface EventTemplateBindingDefinition {
+  source: EventTemplateBindingSource;
+  key?: string;
+  value?: unknown;
+  pathTemplate?: string;
+}
+
+export interface EventTemplateAssetPathDefinition {
+  id: string;
+  source: "variable" | "static";
+  key?: string;
+  value?: string;
+  templateId?: string;
+}
+
+export interface EventTemplateFieldDefinition {
+  key: string;
+  source: EventTemplateFieldSource;
+  variableKey?: string;
+  value?: unknown;
+  assetPathId?: string;
+  attributeName?: string;
+  capturedKey?: string;
+}
+
+export interface EventTemplateTimeSourceDefinition {
+  source: EventTemplateTimeSourceType;
+  key?: string;
+  assetPathId?: string;
+  attributeName?: string;
+}
+
+export interface EventTemplatePathSegmentDefinition {
+  type: EventTemplatePathSegmentType;
+  value?: string;
+  separator?: EventTemplatePathSegmentSeparator;
+}
+
+export interface EventTemplateInputBindingDefinition {
+  name: string;
+  source: ScriptBindingSource;
+  templateId?: string;
+  defaultValue?: unknown;
+}
+
+export interface EventTemplateDefinition {
+  id: string;
+  enabled?: boolean;
+  allowParallel?: boolean;
+  concurrencyMode?: EventTemplateConcurrencyMode;
+  eventPathTemplate: string;
+  closePatternTemplate?: string;
+  eventPathBuilder?: EventTemplatePathSegmentDefinition[];
+  closePatternBuilder?: EventTemplatePathSegmentDefinition[];
+  uniquePatternTemplate?: string;
+  uniquePatternBuilder?: EventTemplatePathSegmentDefinition[];
+  closeOnOpenPatterns?: string[];
+  closeOnOpenPatternBuilders?: EventTemplatePathSegmentDefinition[][];
+  requiredParentPattern?: string;
+  requiredParentBuilder?: EventTemplatePathSegmentDefinition[];
+  closeChildrenOnClosePatterns?: string[];
+  closeChildrenOnClosePatternBuilders?: EventTemplatePathSegmentDefinition[][];
+  bindings?: EventTemplateInputBindingDefinition[];
+  severity?: string;
+  assetPaths?: EventTemplateAssetPathDefinition[];
+  snapshotTemplateId?: string;
+  contextBindings?: Record<string, EventTemplateBindingDefinition>;
+  contextFields?: EventTemplateFieldDefinition[];
+  timeSource?: {
+    open?: EventTemplateTimeSourceDefinition;
+    close?: EventTemplateTimeSourceDefinition;
+  };
+  capture?: {
+    onOpen?: boolean;
+    onClose?: boolean;
+  };
+  captureFields?: EventTemplateFieldDefinition[];
 }
 
 export interface ScriptVariableBindingDefinition {
@@ -135,6 +241,8 @@ export interface Program {
     name: string;
     version: number;
   };
+  eventTemplates?: EventTemplateDefinition[];
+  eventActions?: EventActionDefinition[];
   triggers: TriggerDefinition[];
   actions: ActionDefinition[];
   scriptTemplates: ScriptTemplateDefinition[];

@@ -6,6 +6,7 @@ import FlowDiagram from "./FlowDiagram";
 interface FlowManagerProps {
   triggerIds: string[];
   actionIds: string[];
+  eventNodeIds?: string[];
   nodeLabels?: Record<string, string>;
   links: FlowLink[];
   nodePositions: Record<string, NodePosition>;
@@ -16,6 +17,7 @@ interface FlowManagerProps {
   onRemoveLink: (index: number) => void;
   onRemoveNodeFromFlow?: (nodeId: string) => void;
   onActionNodeDoubleClick?: (actionId: string) => void;
+  onEventNodeDoubleClick?: (nodeId: string) => void;
   onNodePositionDragStart?: () => void;
   onNodePositionChange?: (nodeId: string, position: NodePosition) => void;
   onConnectNodes?: (fromId: string, toId: string) => void;
@@ -24,6 +26,7 @@ interface FlowManagerProps {
 export default function FlowManager({
   triggerIds,
   actionIds,
+  eventNodeIds = [],
   nodeLabels = {},
   links,
   nodePositions,
@@ -32,6 +35,7 @@ export default function FlowManager({
   onRemoveLink,
   onRemoveNodeFromFlow,
   onActionNodeDoubleClick,
+  onEventNodeDoubleClick,
   onNodePositionDragStart,
   onNodePositionChange,
   onConnectNodes
@@ -43,9 +47,10 @@ export default function FlowManager({
   const allNodes = useMemo(
     () => [
       ...triggerIds.map((id) => ({ id, kind: "trigger" as const })),
-      ...actionIds.map((id) => ({ id, kind: "action" as const }))
+      ...actionIds.map((id) => ({ id, kind: "action" as const })),
+      ...eventNodeIds.map((id) => ({ id, kind: "event" as const }))
     ],
-    [triggerIds, actionIds]
+    [triggerIds, actionIds, eventNodeIds]
   );
 
   const placedIds = useMemo(() => new Set(Object.keys(nodePositions || {})), [nodePositions]);
@@ -108,8 +113,8 @@ export default function FlowManager({
                 py: 0.75,
                 borderRadius: 1,
                 border: "1px solid",
-                borderColor: node.kind === "action" ? "#14f4b4" : "#94a3b8",
-                background: node.kind === "action" ? "#01806b" : "#676e6c",
+                borderColor: node.kind === "action" ? "#14f4b4" : node.kind === "event" ? "#7dd3fc" : "#94a3b8",
+                background: node.kind === "action" ? "#01806b" : node.kind === "event" ? "#1d4ed8" : "#676e6c",
                 cursor: "grab",
                 display: "flex",
                 alignItems: "center",
@@ -139,6 +144,7 @@ export default function FlowManager({
         <FlowDiagram
           triggerIds={triggerIds}
           actionIds={actionIds}
+          eventNodeIds={eventNodeIds}
           nodeLabels={nodeLabels}
           links={links}
           nodePositions={nodePositions}
@@ -153,6 +159,7 @@ export default function FlowManager({
           onSelectNode={setSelectedNodeId}
           onNodeDoubleClick={(nodeId, kind) => {
             if (kind === "action") onActionNodeDoubleClick?.(nodeId);
+            if (kind === "event") onEventNodeDoubleClick?.(nodeId);
           }}
           onNodeDragStart={onNodePositionDragStart}
           onNodePositionChange={onNodePositionChange}

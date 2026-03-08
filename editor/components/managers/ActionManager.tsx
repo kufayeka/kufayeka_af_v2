@@ -66,6 +66,14 @@ function serializeValue(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+function serializeJsonObject(value: unknown): string {
+  return JSON.stringify(
+    value && typeof value === "object" && !Array.isArray(value) ? value : {},
+    null,
+    2
+  );
+}
+
 function defaultBinding(): ScriptVariableBindingDefinition {
   return {
     name: "binding_1",

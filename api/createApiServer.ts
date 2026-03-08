@@ -4,6 +4,12 @@ import express, { Request } from "express";
 import Runtime from "../runtime/Runtime";
 import { ensureAssetStorage } from "../runtime/assetStorage";
 import { ensureEventStore } from "../runtime/eventStore";
+import {
+  closeEventFromTemplate,
+  closeEventsWithAutoCapture,
+  normalizeEventTemplates,
+  openEventFromTemplate
+} from "../runtime/eventTemplateRuntime";
 import { computeTagID } from "../runtime/historianBridge";
 import {
   filterSerializableGlobalEntries,
@@ -11,7 +17,7 @@ import {
   toSerializableJsonValue
 } from "../runtime/globalStoreUtils";
 import { OPENAPI_RUNTIME_SPEC } from "./openapiRuntimeSpec";
-import type { AttributeQueryMatch, HistorianTarget } from "../runtime/types";
+import type { AttributeQueryMatch, EventTemplateDefinition, HistorianTarget } from "../runtime/types";
 import type { DbConnectionManager } from "../runtime/dbConnectionManager";
 
 function getErrorMessage(error: unknown): string {
@@ -52,6 +58,9 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   const preferredCorsOrigin = "http://192.168.68.99:3333";
   const assetStore = ensureAssetStorage(runtime, runtime.getGlobal("assetFramework", {}));
   const eventStore = ensureEventStore(runtime);
+  const eventTemplateMap = new Map<string, EventTemplateDefinition>(
+    normalizeEventTemplates(runtime.getGlobal("eventTemplates", [])).map((item) => [item.id, item])
+  );
   type HistorianStore = {
     queryRaw: (
       paths: string[],
@@ -672,6 +681,25 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   app.post("/api/events/open", async (req, res) => {
     try {
       const body = (req.body || {}) as Record<string, unknown>;
+      const templateId = String(body.template_id || body.templateId || "").trim();
+      if (templateId) {
+        const row = await openEventFromTemplate({
+          assetStore,
+          eventStore,
+          templateMap: eventTemplateMap,
+          templateId,
+          openOptions: {
+            vars: body.vars && typeof body.vars === "object" ? (body.vars as Record<string, unknown>) : {},
+            context: body.context && typeof body.context === "object" ? (body.context as Record<string, unknown>) : {},
+            notes: String(body.notes_on_open || body.notes || ""),
+            severity: String(body.severity || ""),
+            ts: body.start_ts ? String(body.start_ts) : body.ts ? String(body.ts) : undefined,
+            capturedDataOnOpen: toJsonValueOrNull(body.captured_data_on_open ?? body.capturedDataOnOpen)
+          }
+        });
+        res.status(200).json({ ok: true, row });
+        return;
+      }
       const row = await eventStore.open(
         String(body.event_path || body.path || ""),
         body.start_ts ? String(body.start_ts) : body.ts ? String(body.ts) : undefined,
@@ -689,6 +717,85 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   app.post("/api/events/close", async (req, res) => {
     try {
       const body = (req.body || {}) as Record<string, unknown>;
+      const templateId = String(body.template_id || body.templateId || "").trim();
+      if (templateId) {
+        const result = await closeEventFromTemplate({
+          assetStore,
+          eventStore,
+          templateMap: eventTemplateMap,
+          templateId,
+          closeOptions: {
+            id: body.id ? String(body.id) : undefined,
+            vars: body.vars && typeof body.vars === "object" ? (body.vars as Record<string, unknown>) : {},
+            pattern: body.pattern ? String(body.pattern) : body.event_path ? String(body.event_path) : undefined,
+            context: body.context && typeof body.context === "object" ? (body.context as Record<string, unknown>) : {},
+            notes: String(body.notes_on_close || body.notes || ""),
+            severity: String(body.severity || ""),
+            ts: body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : undefined,
+            capturedDataOnClose: toJsonValueOrNull(body.captured_data_on_close ?? body.capturedDataOnClose)
+          }
+        });
+        res.status(200).json({ ok: true, ...result });
+        return;
+      }
+      if (parseBoolean(String(body.capture_auto ?? body.captureAuto ?? "false"), false)) {
+        const rows = await eventStore.get(
+          String(body.pattern || body.event_path || "*"),
+          "*",
+          "*",
+          "open",
+          {},
+          { limit: 5000 }
+        );
+        const result = await closeEventsWithAutoCapture({
+          assetStore,
+          eventStore,
+          templateMap: eventTemplateMap,
+          rows,
+          notes: String(body.notes_on_close || body.notes || ""),
+          ts: body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : undefined,
+          explicitCaptured: toJsonValueOrNull(body.captured_data_on_close ?? body.capturedDataOnClose)
+        });
+        res.status(200).json({ ok: true, ...result });
+        return;
+      }
+      const rows = await eventStore.get(
+        String(body.pattern || body.event_path || "*"),
+        "*",
+        "*",
+        "open",
+        {},
+        { limit: 5000 }
+      );
+      const templatedRows = rows.filter((row) => row.event_metadata && Object.keys(row.event_metadata).length > 0);
+      if (templatedRows.length > 0) {
+        const autoResult = await closeEventsWithAutoCapture({
+          assetStore,
+          eventStore,
+          templateMap: eventTemplateMap,
+          rows: templatedRows,
+          notes: String(body.notes_on_close || body.notes || ""),
+          ts: body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : undefined,
+          explicitCaptured: toJsonValueOrNull(body.captured_data_on_close ?? body.capturedDataOnClose)
+        });
+        if (templatedRows.length === rows.length) {
+          res.status(200).json({ ok: true, ...autoResult });
+          return;
+        }
+        const normalResult = await eventStore.close(
+          String(body.pattern || body.event_path || "*"),
+          body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : undefined,
+          String(body.notes_on_close || body.notes || ""),
+          toJsonValueOrNull(body.captured_data_on_close ?? body.capturedDataOnClose)
+        );
+        res.status(200).json({
+          ok: true,
+          ...normalResult,
+          closedCount: Number(normalResult.closedCount || 0) + autoResult.closedCount,
+          ts: autoResult.ts || normalResult.ts
+        });
+        return;
+      }
       const result = await eventStore.close(
         String(body.pattern || body.event_path || "*"),
         body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : undefined,
@@ -704,6 +811,42 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   app.post("/api/events/close-id", async (req, res) => {
     try {
       const body = (req.body || {}) as Record<string, unknown>;
+      if (parseBoolean(String(body.capture_auto ?? body.captureAuto ?? "false"), false)) {
+        const row = await eventStore.getById(String(body.id || ""));
+        const result = row
+          ? await closeEventsWithAutoCapture({
+              assetStore,
+              eventStore,
+              templateMap: eventTemplateMap,
+              rows: row.status === "open" ? [row] : [],
+              notes: String(body.notes_on_close || body.notes || ""),
+              ts: body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : undefined,
+              explicitCaptured: toJsonValueOrNull(body.captured_data_on_close ?? body.capturedDataOnClose)
+            })
+          : {
+              pattern: String(body.id || ""),
+              closedCount: 0,
+              ts: body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : new Date().toISOString(),
+              notes_on_close: String(body.notes_on_close || body.notes || ""),
+              rows: []
+            };
+        res.status(200).json({ ok: true, ...result });
+        return;
+      }
+      const row = await eventStore.getById(String(body.id || ""));
+      if (row && row.status === "open" && row.event_metadata && Object.keys(row.event_metadata).length > 0) {
+        const result = await closeEventsWithAutoCapture({
+          assetStore,
+          eventStore,
+          templateMap: eventTemplateMap,
+          rows: [row],
+          notes: String(body.notes_on_close || body.notes || ""),
+          ts: body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : undefined,
+          explicitCaptured: toJsonValueOrNull(body.captured_data_on_close ?? body.capturedDataOnClose)
+        });
+        res.status(200).json({ ok: true, ...result });
+        return;
+      }
       const result = await eventStore.closeById(
         String(body.id || ""),
         body.end_ts ? String(body.end_ts) : body.ts ? String(body.ts) : undefined,

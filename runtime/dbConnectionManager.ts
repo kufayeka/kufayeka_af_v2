@@ -19,6 +19,7 @@ export interface EventMirrorRow {
   acknowledged_ts: string | null;
   notes_on_open: string | null;
   notes_on_close: string | null;
+  event_metadata: Record<string, unknown> | null;
   captured_data_on_open: unknown | null;
   captured_data_on_close: unknown | null;
 }
@@ -250,13 +251,20 @@ export class DbConnectionManager {
           acknowledged_ts TIMESTAMPTZ NULL,
           notes_on_open TEXT NULL,
           notes_on_close TEXT NULL,
+          event_metadata JSONB NULL,
           captured_data_on_open JSONB NULL,
           captured_data_on_close JSONB NULL,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )`
       );
+      await client.query(`ALTER TABLE ${this.eventTableRef} ADD COLUMN IF NOT EXISTS event_metadata JSONB NULL`);
       await client.query(`ALTER TABLE ${this.eventTableRef} ADD COLUMN IF NOT EXISTS captured_data_on_open JSONB NULL`);
       await client.query(`ALTER TABLE ${this.eventTableRef} ADD COLUMN IF NOT EXISTS captured_data_on_close JSONB NULL`);
+      await client.query(
+        `ALTER TABLE ${this.eventTableRef}
+         ALTER COLUMN event_metadata TYPE JSONB
+         USING event_metadata::jsonb`
+      );
       await client.query(
         `ALTER TABLE ${this.eventTableRef}
          ALTER COLUMN captured_data_on_open TYPE JSONB
@@ -397,7 +405,7 @@ export class DbConnectionManager {
           let idx = 1;
           for (const { row } of upserts) {
             valuesSql.push(
-              `($${idx},$${idx + 1},$${idx + 2},$${idx + 3},$${idx + 4},$${idx + 5},$${idx + 6}::jsonb,$${idx + 7},$${idx + 8},$${idx + 9},$${idx + 10},$${idx + 11}::jsonb,$${idx + 12}::jsonb,NOW())`
+              `($${idx},$${idx + 1},$${idx + 2},$${idx + 3},$${idx + 4},$${idx + 5},$${idx + 6}::jsonb,$${idx + 7},$${idx + 8},$${idx + 9},$${idx + 10},$${idx + 11}::jsonb,$${idx + 12}::jsonb,$${idx + 13}::jsonb,NOW())`
             );
             params.push(
               row.id,
@@ -411,14 +419,15 @@ export class DbConnectionManager {
               row.acknowledged_ts,
               row.notes_on_open,
               row.notes_on_close,
+              JSON.stringify((row as { event_metadata?: unknown }).event_metadata ?? null),
               JSON.stringify(row.captured_data_on_open ?? null),
               JSON.stringify(row.captured_data_on_close ?? null)
             );
-            idx += 13;
+            idx += 14;
           }
           const sql = `
             INSERT INTO ${this.eventTableRef}
-            (id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,captured_data_on_open,captured_data_on_close,updated_at)
+            (id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,event_metadata,captured_data_on_open,captured_data_on_close,updated_at)
             VALUES ${valuesSql.join(",")}
             ON CONFLICT (id) DO UPDATE SET
               event_path = EXCLUDED.event_path,
@@ -431,6 +440,7 @@ export class DbConnectionManager {
               acknowledged_ts = EXCLUDED.acknowledged_ts,
               notes_on_open = EXCLUDED.notes_on_open,
               notes_on_close = EXCLUDED.notes_on_close,
+              event_metadata = EXCLUDED.event_metadata,
               captured_data_on_open = EXCLUDED.captured_data_on_open,
               captured_data_on_close = EXCLUDED.captured_data_on_close,
               updated_at = NOW()

@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import TriggerManager from "../components/managers/TriggerManager";
 import ActionManager from "../components/managers/ActionManager";
+import EventDesignerManager from "../components/managers/EventDesignerManager";
 import FlowManager from "../components/managers/FlowManager";
 import AssetManager from "../components/managers/AssetManager";
 import EventManager from "../components/managers/EventManager";
@@ -21,6 +22,7 @@ import DbConnectionManager from "../components/managers/DbConnectionManager";
 import {
   normalizeProgram,
   parseMaybeJson,
+  renderEventTemplatePathBuilder,
   removeNodeFromLinks,
   renameNodePositionKey,
   renameNodeInLinks,
@@ -29,6 +31,8 @@ import {
 import type {
   ActionDefinition,
   AssetFrameworkDefinition,
+  EventActionDefinition,
+  EventTemplateDefinition,
   FlowLink,
   Program,
   ScriptTemplateDefinition,
@@ -37,11 +41,64 @@ import type {
 
 const EMPTY_PROGRAM: Program = {
   meta: { name: "Kufayeka AF Program", version: 1 },
+  eventTemplates: [],
+  eventActions: [],
   triggers: [],
   actions: [],
   scriptTemplates: [],
   flows: { links: [] },
   assets: { assets: [], attributeTemplates: [] }
+};
+
+const getEventActionOpenNodeId = (id: string): string => `event.open.${id}`;
+const getEventActionCloseNodeId = (id: string): string => `event.close.${id}`;
+const getBaseEventActionIdFromNode = (nodeId: string): string =>
+  nodeId.startsWith("event.open.")
+    ? nodeId.slice("event.open.".length)
+    : nodeId.startsWith("event.close.")
+      ? nodeId.slice("event.close.".length)
+      : nodeId;
+
+const collectTemplateVariables = (template: EventTemplateDefinition | undefined): string[] => {
+  if (!template) return [];
+  if ((template.bindings || []).length > 0) {
+    return (template.bindings || []).map((item) => item.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }
+  const keys = new Set<string>();
+  const collectFromString = (input: string | undefined) => {
+    for (const match of String(input || "").matchAll(/\{([^}]+)\}/g)) {
+      const key = String(match[1] || "").trim();
+      if (key) keys.add(key);
+    }
+  };
+  (template.eventPathBuilder || []).forEach((segment) => {
+    if (segment.type === "variable" && segment.value) keys.add(segment.value);
+  });
+  (template.closePatternBuilder || []).forEach((segment) => {
+    if (segment.type === "variable" && segment.value) keys.add(segment.value);
+  });
+  (template.assetPaths || []).forEach((item) => {
+    if (item.source === "variable" && item.key) keys.add(item.key);
+  });
+  Object.values(template.contextBindings || {}).forEach((binding) => {
+    if (binding.source === "variable" && binding.key) keys.add(binding.key);
+    if (binding.source === "attribute" && binding.pathTemplate) collectFromString(binding.pathTemplate);
+  });
+  (template.contextFields || []).forEach((field) => {
+    if (field.source === "variable" && field.variableKey) keys.add(field.variableKey);
+  });
+  (template.captureFields || []).forEach((field) => {
+    if (field.source === "variable" && field.variableKey) keys.add(field.variableKey);
+  });
+  if (template.timeSource?.open?.source === "variable" && template.timeSource.open.key) keys.add(template.timeSource.open.key);
+  if (template.timeSource?.close?.source === "variable" && template.timeSource.close.key) keys.add(template.timeSource.close.key);
+  return Array.from(keys).sort((a, b) => a.localeCompare(b));
+};
+
+const defaultEventBindingForVariable = (name: string) => {
+  if (name.toLowerCase().includes("asset")) return { source: "asset" as const, attributePath: "" };
+  if (name.toLowerCase().includes("time") || name === "timestamp") return { source: "msg_path" as const, attributePath: "ts" };
+  return { source: "msg_path" as const, attributePath: `payload.${name}` };
 };
 
 type ProgramUpdater = (program: Program) => Program;
@@ -148,6 +205,8 @@ export default function HomePage() {
   });
   const [selectedTriggerId, setSelectedTriggerId] = useState("");
   const [selectedActionId, setSelectedActionId] = useState("");
+  const [selectedEventActionId, setSelectedEventActionId] = useState("");
+  const [selectedEventTemplateId, setSelectedEventTemplateId] = useState("");
   const [flowZoom, setFlowZoom] = useState(0.5);
   const [status, setStatus] = useState("Loading...");
   const latestActionScriptsRef = useRef<Record<string, string>>({});
@@ -175,6 +234,8 @@ export default function HomePage() {
         dispatch({ type: "INIT", program: next });
         setSelectedTriggerId(next.triggers[0]?.id ?? "");
         setSelectedActionId(next.actions[0]?.id ?? "");
+        setSelectedEventActionId(next.eventActions?.[0]?.id ?? "");
+        setSelectedEventTemplateId(next.eventTemplates?.[0]?.id ?? "");
         setStatus("Program loaded");
       })
       .catch((error: Error) => {
@@ -348,6 +409,49 @@ export default function HomePage() {
     setSelectedActionId(id);
   };
 
+  const addEventAction = (): void => {
+    const id = `events.group.event_${Date.now()}`;
+    const next: EventActionDefinition = {
+      id,
+      label: "",
+      enabled: true,
+      description: "",
+      templateId: "",
+      bindings: {},
+      openNotes: "",
+      closeNotes: ""
+    };
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      eventActions: [...(prev.eventActions || []), next]
+    }));
+    setSelectedEventActionId(id);
+  };
+
+  const addEventActionFromTemplate = (templateId: string): void => {
+    const template = (program.eventTemplates || []).find((item) => item.id === templateId);
+    if (!template) return;
+    const id = `events.group.${templateId}_${Date.now()}`;
+    const bindings = Object.fromEntries(
+      collectTemplateVariables(template).map((key) => [key, defaultEventBindingForVariable(key)])
+    );
+    const next: EventActionDefinition = {
+      id,
+      label: template.id,
+      enabled: true,
+      description: `Event action for template ${template.id}`,
+      templateId: template.id,
+      bindings,
+      openNotes: "",
+      closeNotes: ""
+    };
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      eventActions: [...(prev.eventActions || []), next]
+    }));
+    setSelectedEventActionId(id);
+  };
+
   const duplicateAction = (id: string): void => {
     const source = program.actions.find((item) => item.id === id);
     if (!source) return;
@@ -410,6 +514,26 @@ export default function HomePage() {
     if (selectedActionId === id) setSelectedActionId("");
   };
 
+  const removeEventAction = (id: string): void => {
+    const openNodeId = getEventActionOpenNodeId(id);
+    const closeNodeId = getEventActionCloseNodeId(id);
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      eventActions: (prev.eventActions || []).filter((item) => item.id !== id),
+      flows: {
+        ...prev.flows,
+        links: removeNodeFromLinks(removeNodeFromLinks(prev.flows.links, openNodeId), closeNodeId),
+        nodePositions: (() => {
+          const next = { ...(prev.flows.nodePositions || {}) };
+          delete next[openNodeId];
+          delete next[closeNodeId];
+          return next;
+        })()
+      }
+    }));
+    if (selectedEventActionId === id) setSelectedEventActionId("");
+  };
+
   const renameTrigger = (oldId: string, newId: string): void => {
     setSelectedTriggerId(newId);
     applyProgramUpdate((prev) => ({
@@ -441,13 +565,42 @@ export default function HomePage() {
     }));
   };
 
+  const renameEventAction = (oldId: string, newId: string): void => {
+    const oldOpen = getEventActionOpenNodeId(oldId);
+    const oldClose = getEventActionCloseNodeId(oldId);
+    const nextOpen = getEventActionOpenNodeId(newId);
+    const nextClose = getEventActionCloseNodeId(newId);
+    setSelectedEventActionId(newId);
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      eventActions: upsertById(prev.eventActions || [], oldId, { id: newId }),
+      flows: {
+        ...prev.flows,
+        links: renameNodeInLinks(
+          renameNodeInLinks(prev.flows.links, oldOpen, nextOpen),
+          oldClose,
+          nextClose
+        ),
+        nodePositions: renameNodePositionKey(
+          renameNodePositionKey(prev.flows.nodePositions, oldOpen, nextOpen),
+          oldClose,
+          nextClose
+        )
+      }
+    }));
+  };
+
   const flowNodeLabels = useMemo(
     () =>
       Object.fromEntries([
         ...program.triggers.map((item) => [item.id, (item.label || item.id).trim() || item.id]),
-        ...program.actions.map((item) => [item.id, (item.label || item.id).trim() || item.id])
+        ...program.actions.map((item) => [item.id, (item.label || item.id).trim() || item.id]),
+        ...(program.eventActions || []).flatMap((item) => [
+          [getEventActionOpenNodeId(item.id), `OPEN ${item.label || item.id}`],
+          [getEventActionCloseNodeId(item.id), `CLOSE ${item.label || item.id}`]
+        ])
       ]),
-    [program.actions, program.triggers]
+    [program.actions, program.eventActions, program.triggers]
   );
 
   const watchPathOptions = useMemo(() => {
@@ -538,9 +691,26 @@ export default function HomePage() {
       resolvedPatch.templateBindingOverrides = nextTemplateId ? current?.templateBindingOverrides || {} : {};
       latestActionScriptsRef.current[id] = resolvedPatch.script;
     }
+    if (Object.prototype.hasOwnProperty.call(patch, "eventTemplateId")) {
+      const nextEventTemplateId = patch.eventTemplateId;
+      const current = program.actions.find((item) => item.id === id);
+      resolvedPatch.eventTemplateOverrides = nextEventTemplateId ? current?.eventTemplateOverrides || {} : {};
+    }
     applyProgramUpdate((prev) => ({
       ...prev,
       actions: upsertById(prev.actions, id, resolvedPatch)
+    }));
+  };
+
+  const updateEventAction = (id: string, patch: Partial<EventActionDefinition>): void => {
+    const resolvedPatch: Partial<EventActionDefinition> = { ...patch };
+    if (Object.prototype.hasOwnProperty.call(patch, "templateId")) {
+      const current = (program.eventActions || []).find((item) => item.id === id);
+      resolvedPatch.bindings = patch.templateId ? current?.bindings || {} : {};
+    }
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      eventActions: upsertById(prev.eventActions || [], id, resolvedPatch)
     }));
   };
 
@@ -558,6 +728,294 @@ export default function HomePage() {
       ...prev,
       scriptTemplates: [...prev.scriptTemplates, next]
     }));
+  };
+
+  const addEventTemplate = (): void => {
+    const id = `template.event_${Date.now()}`;
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      eventTemplates: [
+        ...(prev.eventTemplates || []),
+        {
+          id,
+          enabled: true,
+          allowParallel: true,
+          concurrencyMode: "parallel",
+          eventPathTemplate: "",
+          closePatternTemplate: "",
+          eventPathBuilder: [],
+          closePatternBuilder: [],
+          uniquePatternTemplate: "",
+          uniquePatternBuilder: [],
+          closeOnOpenPatterns: [],
+          closeOnOpenPatternBuilders: [],
+          requiredParentPattern: "",
+          requiredParentBuilder: [],
+          closeChildrenOnClosePatterns: [],
+          closeChildrenOnClosePatternBuilders: [],
+          bindings: [],
+          assetPaths: [],
+          snapshotTemplateId: "",
+          severity: "other",
+          contextBindings: {},
+          contextFields: [],
+          timeSource: {
+            open: { source: "now" },
+            close: { source: "now" }
+          },
+          capture: {
+            onOpen: true,
+            onClose: true
+          },
+          captureFields: []
+        }
+      ]
+    }));
+    setSelectedEventTemplateId(id);
+  };
+
+  const addPresetEventTemplate = (
+    preset: "job_lifecycle" | "job_activity" | "machine_alarm"
+  ): void => {
+    const suffix = Date.now();
+    const presetMap: Record<string, EventTemplateDefinition> = {
+      job_lifecycle: {
+        id: `job_lifecycle_${suffix}`,
+        enabled: true,
+        allowParallel: false,
+        concurrencyMode: "unique_pattern",
+        eventPathTemplate: "{assetPath}/Job/{workOrder}/Lifecycle/{state}",
+        closePatternTemplate: "{assetPath}/Job/{workOrder}/Lifecycle/*",
+        eventPathBuilder: [
+          { type: "asset_path", value: "assetPath", separator: "/" },
+          { type: "static", value: "Job", separator: "/" },
+          { type: "binding", value: "workOrder", separator: "/" },
+          { type: "static", value: "Lifecycle", separator: "/" },
+          { type: "binding", value: "state", separator: "" }
+        ],
+        closePatternBuilder: [
+          { type: "asset_path", value: "assetPath", separator: "/" },
+          { type: "static", value: "Job", separator: "/" },
+          { type: "binding", value: "workOrder", separator: "/" },
+          { type: "static", value: "Lifecycle", separator: "/" },
+          { type: "wildcard", value: "*", separator: "" }
+        ],
+        uniquePatternTemplate: "{assetPath}/Job/{workOrder}/Lifecycle/*",
+        uniquePatternBuilder: [
+          { type: "asset_path", value: "assetPath", separator: "/" },
+          { type: "static", value: "Job", separator: "/" },
+          { type: "binding", value: "workOrder", separator: "/" },
+          { type: "static", value: "Lifecycle", separator: "/" },
+          { type: "wildcard", value: "*", separator: "" }
+        ],
+        closeOnOpenPatterns: [],
+        closeOnOpenPatternBuilders: [],
+        requiredParentPattern: "",
+        requiredParentBuilder: [],
+        closeChildrenOnClosePatterns: [
+          "{assetPath}/Job/{workOrder}/Activity/*"
+        ],
+        closeChildrenOnClosePatternBuilders: [[
+          { type: "asset_path", value: "assetPath", separator: "/" },
+          { type: "static", value: "Job", separator: "/" },
+          { type: "binding", value: "workOrder", separator: "/" },
+          { type: "static", value: "Activity", separator: "/" },
+          { type: "wildcard", value: "*", separator: "" }
+        ]],
+        bindings: [
+          { name: "assetPath", source: "asset", templateId: "", defaultValue: "" },
+          { name: "workOrder", source: "msg_path", templateId: "", defaultValue: "payload.workOrder" },
+          { name: "operator", source: "msg_path", templateId: "", defaultValue: "payload.operator" },
+          { name: "state", source: "msg_path", templateId: "", defaultValue: "payload.state" }
+        ],
+        assetPaths: [{ id: "assetPath", source: "variable", key: "assetPath", value: "", templateId: "" }],
+        snapshotTemplateId: "",
+        severity: "other",
+        contextBindings: {},
+        contextFields: [
+          { key: "workOrder", source: "variable", variableKey: "workOrder" },
+          { key: "operator", source: "variable", variableKey: "operator" },
+          { key: "state", source: "variable", variableKey: "state" }
+        ],
+        timeSource: {
+          open: { source: "now" },
+          close: { source: "now" }
+        },
+        capture: {
+          onOpen: true,
+          onClose: true
+        },
+        captureFields: []
+      },
+      job_activity: {
+        id: `job_activity_${suffix}`,
+        enabled: true,
+        allowParallel: true,
+        concurrencyMode: "parallel",
+        eventPathTemplate: "{assetPath}/Job/{workOrder}/Activity/{activity}",
+        closePatternTemplate: "{assetPath}/Job/{workOrder}/Activity/{activity}",
+        eventPathBuilder: [
+          { type: "asset_path", value: "assetPath", separator: "/" },
+          { type: "static", value: "Job", separator: "/" },
+          { type: "binding", value: "workOrder", separator: "/" },
+          { type: "static", value: "Activity", separator: "/" },
+          { type: "binding", value: "activity", separator: "" }
+        ],
+        closePatternBuilder: [
+          { type: "asset_path", value: "assetPath", separator: "/" },
+          { type: "static", value: "Job", separator: "/" },
+          { type: "binding", value: "workOrder", separator: "/" },
+          { type: "static", value: "Activity", separator: "/" },
+          { type: "binding", value: "activity", separator: "" }
+        ],
+        uniquePatternTemplate: "",
+        uniquePatternBuilder: [],
+        closeOnOpenPatterns: [],
+        closeOnOpenPatternBuilders: [],
+        requiredParentPattern: "{assetPath}/Job/{workOrder}/Lifecycle/*",
+        requiredParentBuilder: [
+          { type: "asset_path", value: "assetPath", separator: "/" },
+          { type: "static", value: "Job", separator: "/" },
+          { type: "binding", value: "workOrder", separator: "/" },
+          { type: "static", value: "Lifecycle", separator: "/" },
+          { type: "wildcard", value: "*", separator: "" }
+        ],
+        closeChildrenOnClosePatterns: [],
+        closeChildrenOnClosePatternBuilders: [],
+        bindings: [
+          { name: "assetPath", source: "asset", templateId: "", defaultValue: "" },
+          { name: "workOrder", source: "msg_path", templateId: "", defaultValue: "payload.workOrder" },
+          { name: "activity", source: "msg_path", templateId: "", defaultValue: "payload.activity" },
+          { name: "activityType", source: "msg_path", templateId: "", defaultValue: "payload.activityType" },
+          { name: "operator", source: "msg_path", templateId: "", defaultValue: "payload.operator" },
+          { name: "timestamp", source: "msg_path", templateId: "", defaultValue: "ts" }
+        ],
+        assetPaths: [{ id: "assetPath", source: "variable", key: "assetPath", value: "", templateId: "" }],
+        snapshotTemplateId: "",
+        severity: "other",
+        contextBindings: {},
+        contextFields: [
+          { key: "workOrder", source: "variable", variableKey: "workOrder" },
+          { key: "activity", source: "variable", variableKey: "activity" },
+          { key: "activityType", source: "variable", variableKey: "activityType" },
+          { key: "operator", source: "variable", variableKey: "operator" }
+        ],
+        timeSource: {
+          open: { source: "variable", key: "timestamp" },
+          close: { source: "now" }
+        },
+        capture: {
+          onOpen: true,
+          onClose: true
+        },
+        captureFields: []
+      },
+      machine_alarm: {
+        id: `machine_alarm_${suffix}`,
+        enabled: true,
+        allowParallel: true,
+        concurrencyMode: "parallel",
+        eventPathTemplate: "{assetPath}/Alarm/{alarmCode}",
+        closePatternTemplate: "{assetPath}/Alarm/{alarmCode}",
+        eventPathBuilder: [
+          { type: "asset_path", value: "assetPath", separator: "/" },
+          { type: "static", value: "Alarm", separator: "/" },
+          { type: "binding", value: "alarmCode", separator: "" }
+        ],
+        closePatternBuilder: [
+          { type: "asset_path", value: "assetPath", separator: "/" },
+          { type: "static", value: "Alarm", separator: "/" },
+          { type: "binding", value: "alarmCode", separator: "" }
+        ],
+        uniquePatternTemplate: "",
+        uniquePatternBuilder: [],
+        closeOnOpenPatterns: [],
+        closeOnOpenPatternBuilders: [],
+        requiredParentPattern: "",
+        requiredParentBuilder: [],
+        closeChildrenOnClosePatterns: [],
+        closeChildrenOnClosePatternBuilders: [],
+        bindings: [
+          { name: "assetPath", source: "asset", templateId: "", defaultValue: "" },
+          { name: "alarmCode", source: "msg_path", templateId: "", defaultValue: "payload.alarmCode" },
+          { name: "alarmText", source: "msg_path", templateId: "", defaultValue: "payload.alarmText" }
+        ],
+        assetPaths: [{ id: "assetPath", source: "variable", key: "assetPath", value: "", templateId: "" }],
+        snapshotTemplateId: "",
+        severity: "high",
+        contextBindings: {},
+        contextFields: [
+          { key: "alarmCode", source: "variable", variableKey: "alarmCode" },
+          { key: "alarmText", source: "variable", variableKey: "alarmText" },
+          { key: "machine", source: "variable", variableKey: "assetPath" }
+        ],
+        timeSource: {
+          open: { source: "now" },
+          close: { source: "now" }
+        },
+        capture: {
+          onOpen: true,
+          onClose: true
+        },
+        captureFields: []
+      }
+    };
+    const next = presetMap[preset];
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      eventTemplates: [...(prev.eventTemplates || []), next]
+    }));
+    setSelectedEventTemplateId(next.id);
+  };
+
+  const updateEventTemplate = (id: string, patch: Partial<EventTemplateDefinition>): void => {
+    const current = (program.eventTemplates || []).find((item) => item.id === id);
+    const merged = current ? { ...current, ...patch } : patch;
+    const normalizedPatch: Partial<EventTemplateDefinition> = { ...patch };
+    if (Object.prototype.hasOwnProperty.call(merged, "eventPathBuilder")) {
+      normalizedPatch.eventPathTemplate = renderEventTemplatePathBuilder(merged.eventPathBuilder);
+    }
+    if (Object.prototype.hasOwnProperty.call(merged, "closePatternBuilder")) {
+      normalizedPatch.closePatternTemplate = renderEventTemplatePathBuilder(merged.closePatternBuilder);
+    }
+    if (Object.prototype.hasOwnProperty.call(merged, "uniquePatternBuilder")) {
+      normalizedPatch.uniquePatternTemplate = renderEventTemplatePathBuilder(merged.uniquePatternBuilder);
+    }
+    if (Object.prototype.hasOwnProperty.call(merged, "requiredParentBuilder")) {
+      normalizedPatch.requiredParentPattern = renderEventTemplatePathBuilder(merged.requiredParentBuilder);
+    }
+    if (Object.prototype.hasOwnProperty.call(merged, "closeOnOpenPatternBuilders")) {
+      normalizedPatch.closeOnOpenPatterns = (merged.closeOnOpenPatternBuilders || []).map((builder) => renderEventTemplatePathBuilder(builder)).filter(Boolean);
+    }
+    if (Object.prototype.hasOwnProperty.call(merged, "closeChildrenOnClosePatternBuilders")) {
+      normalizedPatch.closeChildrenOnClosePatterns = (merged.closeChildrenOnClosePatternBuilders || []).map((builder) => renderEventTemplatePathBuilder(builder)).filter(Boolean);
+    }
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      eventTemplates: (prev.eventTemplates || []).map((item) =>
+        item.id === id ? { ...item, ...normalizedPatch } : item
+      )
+    }));
+    if (Object.prototype.hasOwnProperty.call(normalizedPatch, "id")) {
+      setSelectedEventTemplateId(String(normalizedPatch.id || ""));
+      applyProgramUpdate((prev) => ({
+        ...prev,
+        actions: prev.actions.map((action) =>
+          action.eventTemplateId === id ? { ...action, eventTemplateId: String(normalizedPatch.id || "") } : action
+        )
+      }));
+    }
+  };
+
+  const removeEventTemplate = (id: string): void => {
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      eventTemplates: (prev.eventTemplates || []).filter((item) => item.id !== id),
+      actions: prev.actions.map((action) =>
+        action.eventTemplateId === id ? { ...action, eventTemplateId: undefined } : action
+      )
+    }));
+    if (selectedEventTemplateId === id) setSelectedEventTemplateId("");
   };
 
   const removeScriptTemplate = (id: string): void => {
@@ -734,9 +1192,10 @@ export default function HomePage() {
           <Tab label="Asset Manager" />
           <Tab label="Trigger Manager" />
           <Tab label="Action Script Manager" />
+          <Tab label="Event Manager" />
           <Tab label="Flow Manager" />
           <Tab label="DB Connection" />
-          <Tab label="Event" />
+          <Tab label="Event View" />
           <Tab label="Global Store" />
           <Tab label="Docs" />
         </Tabs>
@@ -778,9 +1237,33 @@ export default function HomePage() {
           />
         )}
         {tab === 3 && (
+          <EventDesignerManager
+            eventActions={program.eventActions || []}
+            eventTemplates={program.eventTemplates || []}
+            assets={program.assets}
+            selectedEventActionId={selectedEventActionId}
+            selectedEventTemplateId={selectedEventTemplateId}
+            onSelectEventAction={setSelectedEventActionId}
+            onSelectEventTemplate={setSelectedEventTemplateId}
+            onAddEventAction={addEventAction}
+            onAddEventActionFromTemplate={addEventActionFromTemplate}
+            onUpdateEventAction={updateEventAction}
+            onRenameEventAction={renameEventAction}
+            onRemoveEventAction={removeEventAction}
+            onAddEventTemplate={addEventTemplate}
+            onAddPresetTemplate={addPresetEventTemplate}
+            onRemoveEventTemplate={removeEventTemplate}
+            onUpdateEventTemplate={updateEventTemplate}
+          />
+        )}
+        {tab === 4 && (
           <FlowManager
             triggerIds={program.triggers.map((item) => item.id)}
             actionIds={program.actions.map((item) => item.id)}
+            eventNodeIds={(program.eventActions || []).flatMap((item) => [
+              getEventActionOpenNodeId(item.id),
+              getEventActionCloseNodeId(item.id)
+            ])}
             nodeLabels={flowNodeLabels}
             links={program.flows.links}
             nodePositions={program.flows.nodePositions || {}}
@@ -792,17 +1275,21 @@ export default function HomePage() {
             onRemoveNodeFromFlow={removeNodeFromFlow}
             onActionNodeDoubleClick={(actionId) => {
               setSelectedActionId(actionId);
-              setTab(1);
+              setTab(2);
+            }}
+            onEventNodeDoubleClick={(nodeId) => {
+              setSelectedEventActionId(getBaseEventActionIdFromNode(nodeId));
+              setTab(3);
             }}
             onNodePositionDragStart={() => dispatch({ type: "PUSH_SNAPSHOT" })}
             onNodePositionChange={updateNodePosition}
             onConnectNodes={(fromId, toId) => addLink({ from: fromId, to: toId, enabled: true })}
           />
         )}
-        {tab === 4 && <DbConnectionManager />}
-        {tab === 5 && <EventManager />}
-        {tab === 6 && <GlobalStoreManager onStatus={setStatus} />}
-        {tab === 7 && <DocsManager />}
+        {tab === 5 && <DbConnectionManager />}
+        {tab === 6 && <EventManager />}
+        {tab === 7 && <GlobalStoreManager onStatus={setStatus} />}
+        {tab === 8 && <DocsManager />}
       </Box>
     </Box>
   );

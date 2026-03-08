@@ -22,6 +22,8 @@ interface ScriptTemplate {
 interface ScriptAction {
   id: string;
   templateId?: string;
+  eventTemplateId?: string;
+  eventTemplateOverrides?: Record<string, unknown>;
   script?: string;
   config?: Record<string, unknown>;
   templateBindingOverrides?: Record<string, Partial<VariableBinding>>;
@@ -193,7 +195,7 @@ export default function createScriptActionHandler(
   const template = action.templateId ? templateById.get(action.templateId) : null;
   const rawScript = (template && template.script) || action.script || "send(msg);";
   const script = rawScript
-    .replace(/(?<!\bawait\s)eventSys\.(open|close|get)\s*\(/g, "await eventSys.$1(")
+    .replace(/(?<!\bawait\s)eventSys\.(openTemplateFromAction|closeTemplateFromAction|openTemplate|closeTemplate|open|close|get)\s*\(/g, "await eventSys.$1(")
     .replace(/(?<!\bawait\s)asset\.(set|setMany)\s*\(/g, "await asset.$1(")
     .replace(/(?<!\bawait\s)db\.(query|executeSafe|testConnection)\s*\(/g, "await db.$1(")
     .replace(/(?<!\bawait\s)helpers\.http\s*\(/g, "await helpers.http(");
@@ -201,8 +203,39 @@ const scriptWithBindings = `
 const __bindings = bindings && typeof bindings === "object" ? bindings : {};
 const global = context && context.global ? context.global : null;
 const asset = context && context.asset ? context.asset : null;
-const eventSys = context && context.eventSys ? context.eventSys : null;
+const __eventSysRaw = context && context.eventSys ? context.eventSys : null;
 const db = context && context.db ? context.db : null;
+const __actionEventTemplateId = config && typeof config.__eventTemplateId === "string" ? config.__eventTemplateId : "";
+const __actionEventTemplateOverrides = config && config.__eventTemplateOverrides && typeof config.__eventTemplateOverrides === "object"
+  ? config.__eventTemplateOverrides
+  : undefined;
+const eventSys = __eventSysRaw
+  ? {
+      ...__eventSysRaw,
+      openTemplateFromAction: async (options = {}) => {
+        if (!__actionEventTemplateId) throw new Error("eventTemplateId is not configured on this action");
+        const src = options && typeof options === "object" ? options : {};
+        return await __eventSysRaw.openTemplate(__actionEventTemplateId, {
+          ...src,
+          templateOverrides:
+            src.templateOverrides && typeof src.templateOverrides === "object"
+              ? { ...__actionEventTemplateOverrides, ...src.templateOverrides }
+              : __actionEventTemplateOverrides
+        });
+      },
+      closeTemplateFromAction: async (options = {}) => {
+        if (!__actionEventTemplateId) throw new Error("eventTemplateId is not configured on this action");
+        const src = options && typeof options === "object" ? options : {};
+        return await __eventSysRaw.closeTemplate(__actionEventTemplateId, {
+          ...src,
+          templateOverrides:
+            src.templateOverrides && typeof src.templateOverrides === "object"
+              ? { ...__actionEventTemplateOverrides, ...src.templateOverrides }
+              : __actionEventTemplateOverrides
+        });
+      }
+    }
+  : null;
 with (__bindings) {
 ${script}
 }
@@ -233,7 +266,20 @@ ${script}
       Number((action.config && action.config.timeoutMs) ?? process.env.RUNTIME_SCRIPT_TIMEOUT_MS ?? 0) || 0
     );
     const runPromise = Promise.resolve(
-      compiled(msg, send, context, helpers, action.config || {}, bindings)
+      compiled(
+        msg,
+        send,
+        context,
+        helpers,
+        {
+          ...(action.config || {}),
+          __eventTemplateId: action.eventTemplateId || "",
+          __eventTemplateOverrides: action.eventTemplateOverrides && typeof action.eventTemplateOverrides === "object"
+            ? action.eventTemplateOverrides
+            : undefined
+        },
+        bindings
+      )
     ) as Promise<unknown>;
     if (timeoutMs > 0) {
       await withTimeout(runPromise, timeoutMs, `Script action "${action.id}" timeout after ${timeoutMs}ms`);

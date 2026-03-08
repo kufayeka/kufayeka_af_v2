@@ -207,6 +207,7 @@ export interface EventRow {
   acknowledged_ts: string | null;
   notes_on_open: string | null;
   notes_on_close: string | null;
+  event_metadata: Record<string, unknown> | null;
   captured_data_on_open: unknown | null;
   captured_data_on_close: unknown | null;
 }
@@ -221,6 +222,145 @@ export interface EventStoreChangeMeta {
   count?: number;
 }
 
+export interface EventTemplateBinding {
+  source: "variable" | "static" | "attribute";
+  key?: string;
+  value?: unknown;
+  pathTemplate?: string;
+}
+
+export interface EventTemplateTimeSource {
+  source: "now" | "variable" | "asset_path_attribute";
+  key?: string;
+  assetPathId?: string;
+  attributeName?: string;
+}
+
+export interface EventTemplatePathSegment {
+  type: "static" | "binding" | "asset_path" | "variable" | "context_field" | "captured_value" | "wildcard";
+  value?: string;
+  separator?: "" | "/" | "." | "-";
+}
+
+export type EventTemplateConcurrencyMode = "parallel" | "unique_exact_path" | "unique_pattern";
+
+export interface EventTemplateInputBinding {
+  name: string;
+  source: "asset" | "attribute" | "msg_path" | "static_number" | "static_string" | "static_boolean" | "static_array" | "static_object";
+  templateId?: string;
+  defaultValue?: unknown;
+}
+
+export interface EventTemplateAssetPath {
+  id: string;
+  source: "variable" | "static";
+  key?: string;
+  value?: string;
+  templateId?: string;
+}
+
+export interface EventTemplateField {
+  key: string;
+  source: "variable" | "static" | "asset_path_attribute" | "captured_value";
+  variableKey?: string;
+  value?: unknown;
+  assetPathId?: string;
+  attributeName?: string;
+  capturedKey?: string;
+}
+
+export interface EventTemplateDefinition {
+  id: string;
+  enabled?: boolean;
+  allowParallel?: boolean;
+  concurrencyMode?: EventTemplateConcurrencyMode;
+  eventPathTemplate: string;
+  closePatternTemplate?: string;
+  eventPathBuilder?: EventTemplatePathSegment[];
+  closePatternBuilder?: EventTemplatePathSegment[];
+  uniquePatternTemplate?: string;
+  uniquePatternBuilder?: EventTemplatePathSegment[];
+  closeOnOpenPatterns?: string[];
+  closeOnOpenPatternBuilders?: EventTemplatePathSegment[][];
+  requiredParentPattern?: string;
+  requiredParentBuilder?: EventTemplatePathSegment[];
+  closeChildrenOnClosePatterns?: string[];
+  closeChildrenOnClosePatternBuilders?: EventTemplatePathSegment[][];
+  bindings?: EventTemplateInputBinding[];
+  severity?: string;
+  assetPaths?: EventTemplateAssetPath[];
+  snapshotTemplateId?: string;
+  contextBindings?: Record<string, EventTemplateBinding>;
+  contextFields?: EventTemplateField[];
+  timeSource?: {
+    open?: EventTemplateTimeSource;
+    close?: EventTemplateTimeSource;
+  };
+  capture?: {
+    onOpen?: boolean;
+    onClose?: boolean;
+  };
+  captureFields?: EventTemplateField[];
+}
+
+export interface EventActionBinding {
+  source: "asset" | "attribute" | "msg_path" | "static_number" | "static_string" | "static_boolean" | "static_array" | "static_object";
+  staticValue?: unknown;
+  attributePath?: string;
+}
+
+export interface EventActionDefinition {
+  id: string;
+  enabled?: boolean;
+  label?: string;
+  description?: string;
+  templateId?: string;
+  templateOverrides?: Record<string, unknown>;
+  bindings?: Record<string, EventActionBinding>;
+  openNotes?: string;
+  closeNotes?: string;
+}
+
+export interface EventTemplateMetadata {
+  id: string;
+  eventPath: string;
+  closePattern: string;
+  assetPath: string;
+  assetPaths?: Record<string, string>;
+  vars: Record<string, unknown>;
+  closeTimeSource?: EventTemplateTimeSource | null;
+  parent_event_id?: string | null;
+  policy?: {
+    concurrencyMode?: EventTemplateConcurrencyMode;
+    uniquePattern?: string;
+    requiredParentPattern?: string;
+    closeOnOpenPatterns?: string[];
+    closeChildrenOnClosePatterns?: string[];
+  };
+}
+
+export interface EventTemplateOpenOptions {
+  vars?: Record<string, unknown>;
+  context?: Record<string, unknown>;
+  notes?: string;
+  severity?: string;
+  ts?: string;
+  capturedDataOnOpen?: unknown | null;
+  templateOverrides?: Partial<EventTemplateDefinition>;
+}
+
+export interface EventTemplateCloseOptions {
+  id?: string;
+  vars?: Record<string, unknown>;
+  pattern?: string;
+  context?: Record<string, unknown>;
+  notes?: string;
+  severity?: string;
+  ts?: string;
+  capturedDataOnClose?: unknown | null;
+  templateOverrides?: Partial<EventTemplateDefinition>;
+}
+
 export interface RuntimeEventApi {
   open(
     eventPath: string,
@@ -228,7 +368,8 @@ export interface RuntimeEventApi {
     context?: Record<string, unknown>,
     notes?: string,
     severity?: string,
-    capturedDataOnOpen?: unknown | null
+    capturedDataOnOpen?: unknown | null,
+    eventMetadata?: Record<string, unknown> | null
   ): Promise<EventRow>;
   close(
     pattern?: string,
@@ -244,6 +385,11 @@ export interface RuntimeEventApi {
     contextFilters?: Record<string, unknown>,
     options?: Record<string, unknown>
   ): Promise<EventRow[]>;
+  openTemplate(templateId: string, options?: EventTemplateOpenOptions): Promise<EventRow>;
+  closeTemplate(
+    templateId: string,
+    options?: EventTemplateCloseOptions
+  ): Promise<{ pattern: string; closedCount: number; ts: string; notes_on_close: string | null; rows: EventRow[] }>;
 }
 
 export interface RuntimeDbApi {
@@ -279,7 +425,8 @@ export interface EventStore {
     context?: Record<string, unknown>,
     notesOnOpen?: string,
     severity?: string,
-    capturedDataOnOpen?: unknown | null
+    capturedDataOnOpen?: unknown | null,
+    eventMetadata?: Record<string, unknown> | null
   ): Promise<EventRow>;
   close(
     pattern?: string,
@@ -309,6 +456,7 @@ export interface EventStore {
     contextFilters?: Record<string, unknown>,
     options?: Record<string, unknown>
   ): Promise<EventRow[]>;
+  getById(id: string): Promise<EventRow | null>;
   query(
     pattern?: string,
     from?: string,
@@ -332,6 +480,8 @@ export interface ProgramDefinition {
   assets?: unknown;
   scriptTemplates?: unknown[];
   actions?: unknown[];
+  eventActions?: unknown[];
   flows?: { links?: unknown[] };
   triggers?: unknown[];
+  eventTemplates?: unknown[];
 }

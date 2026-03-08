@@ -58,128 +58,25 @@
       "watchPath": "*/Job/*/Activity/*/*",
       "message": {
         "payload": 0
+      },
+      "cronExpression": "",
+      "timezone": "",
+      "activeFrom": "",
+      "activeTo": ""
+    },
+    {
+      "id": "trigger.watch_1772991808347",
+      "label": "Jasuindo.OffsetPrinter.Taiyo1.test",
+      "type": "watcher_set",
+      "enabled": true,
+      "intervalMs": 1000,
+      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.test",
+      "message": {
+        "payload": 0
       }
     }
   ],
   "actions": [
-    {
-      "id": "Taiyo1.Events.JobLifecycle",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "description": "",
-      "script": "// VARIABLE BINDINGS\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\nconst timestamp = Timestamp?.value || helpers.now();\nconst assetPath = AssetPath || \"-\";\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\n\nconst renderPath = (template, vars = {}) => {\n  return String(template || \"\")\n    .replaceAll(\"{assetPath}\", String(vars.assetPath ?? assetPath))\n    .replaceAll(\"{workOrder}\", String(vars.workOrder ?? workOrderAttribute))\n    .replaceAll(\"{activity}\", String(vars.activity ?? \"*\"));\n};\n\nconst lifecycleRunningEventPath = renderPath(LifecycleRunningEventPathTemplate);\nconst lifecycleActivityEventPath = renderPath(LifecycleActivityEventPathTemplate);\n\n// GET ACTIVE JOB LOAD EVENTS\nconst openedEvents = await eventSys.get(lifecycleRunningEventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\n\nhelpers.log(\"event mulai:\", jobLifecycleAttribute);\n\n// CEK APAKAH LOAD/UNLOAD\nif (![\"load\", \"unload\", \"complete\"].includes(String(jobLifecycleAttribute).trim().toLowerCase())) {\n  helpers.log(\"--- bukan load/unload\");\n  return;\n}\n\nhelpers.log(\"--- terdeteksi load/unload\");\n\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\n  asset.set(alarmAttributePath, \"!!!Work order is empty!!!\");\n  asset.set(jobLifecycleAttributePath, \"-\");\n\n  msg.payload = \"alarm: work order is empty\";\n  send(msg);\n} else {\n  asset.set(alarmAttributePath, \"-\");\n\n  // CREATE EVENT BASED ON LIFECYCLE\n  if (String(jobLifecycleAttribute).trim().toLowerCase() === \"load\") {\n    if (openedEvents.length === 0) {\n\n\n      // RESET ALL MES COUNTERS\n      asset.setMany(\n        [\n          { path: PaperConsumedIdle.path, value: 0 },\n          { path: PaperConsumedProduction.path, value: 0 },\n          { path: PaperConsumedSetup.path, value: 0 },\n          { path: TotalIdleTime.path, value: 0 },\n          { path: TotalProductionTime.path, value: 0 },\n          { path: TotalSetupTime.path, value: 0 },\n          { path: JobActivityCategoryAttribute.path, value: \"-\" }\n        ]\n      );\n\n\n      const jobLifecycleContext = {\n        operator: operatorAttribute,\n        workOrder: workOrderAttribute,\n      };\n\n      await eventSys.open(\n        lifecycleRunningEventPath,\n        timestamp,\n        jobLifecycleContext,\n        `${workOrderAttribute} loaded`,\n        \"info\",\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"load\",\n          sourceAttribute: jobLifecycleAttributePath,\n        }\n      );\n\n      msg.payload = \"event opened\";\n      send(msg);\n    } \n  } else if (String(jobLifecycleAttribute).trim().toLowerCase() === \"unload\") {\n    if (openedEvents.length > 0) {\n      await eventSys.close(\n        lifecycleRunningEventPath,\n        timestamp,\n        `${workOrderAttribute} unloaded`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"unload\",\n          totalIdleTime: TotalIdleTime?.value || 0,\n          totalProductionTime: TotalProductionTime?.value || 0,\n          totalSetupTime: TotalSetupTime?.value || 0,\n          productCount: ProductCount?.value || 0,\n          productGood: ProductGood?.value || 0\n        }\n      );\n\n      await eventSys.close(\n        lifecycleActivityEventPath,\n        timestamp,\n        `${workOrderAttribute} unloaded`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"complete\"\n        }\n      );\n\n      asset.set(workOrderAttributePath, \"-\");\n      asset.set(jobLifecycleAttributePath, \"-\");\n      asset.set(jobActivityAttributePath, \"-\");\n      asset.set(JobActivityCategoryAttribute.path, \"-\");\n\n\n      msg.payload = \"event closed\";\n      send(msg);\n    }\n  } else if (String(jobLifecycleAttribute).trim().toLowerCase() === \"complete\") {\n    if (openedEvents.length > 0) {\n      await eventSys.close(\n        lifecycleRunningEventPath,\n        timestamp,\n        `${workOrderAttribute} completed`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"unload\",\n          totalIdleTime: TotalIdleTime?.value || 0,\n          totalProductionTime: TotalProductionTime?.value || 0,\n          totalSetupTime: TotalSetupTime?.value || 0,\n          productCount: ProductCount?.value || 0,\n          productGood: ProductGood?.value || 0\n        }\n      );\n\n      await eventSys.close(\n        lifecycleActivityEventPath,\n        timestamp,\n        `${workOrderAttribute} completed`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"complete\"\n        }\n      );\n\n      asset.set(workOrderAttributePath, \"-\");\n      asset.set(jobLifecycleAttributePath, \"-\");\n      asset.set(jobActivityAttributePath, \"-\");\n\n      msg.payload = \"event closed\";\n      send(msg);\n    }\n  }\n}\n\nreturn;",
-      "templateId": "template.script_1771898442157",
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "static_string",
-          "staticValue": "Jasuindo.OffsetPrinter.Taiyo1",
-          "attributePath": "",
-          "allowOverride": true
-        },
-        "JobLifecycleAttribute": {
-          "name": "JobLifecycleAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
-          "allowOverride": true
-        },
-        "WorkOrderAttribute": {
-          "name": "WorkOrderAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order",
-          "allowOverride": true
-        },
-        "OperatorAttribute": {
-          "name": "OperatorAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Machine Operator",
-          "allowOverride": true
-        },
-        "AlarmAttribute": {
-          "name": "AlarmAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle Alarm",
-          "allowOverride": true
-        },
-        "JobActivityAttribute": {
-          "name": "JobActivityAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
-          "allowOverride": true
-        },
-        "PaperConsumedIdle": {
-          "name": "PaperConsumedIdle",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Idle",
-          "allowOverride": true
-        },
-        "PaperConsumedProduction": {
-          "name": "PaperConsumedProduction",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production",
-          "allowOverride": true
-        },
-        "PaperConsumedSetup": {
-          "name": "PaperConsumedSetup",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Setup",
-          "allowOverride": true
-        },
-        "TotalIdleTime": {
-          "name": "TotalIdleTime",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Idle Time",
-          "allowOverride": true
-        },
-        "TotalProductionTime": {
-          "name": "TotalProductionTime",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Production Time",
-          "allowOverride": true
-        },
-        "TotalSetupTime": {
-          "name": "TotalSetupTime",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Setup Time",
-          "allowOverride": true
-        },
-        "ProductCount": {
-          "name": "ProductCount",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count",
-          "allowOverride": true
-        },
-        "ProductGood": {
-          "name": "ProductGood",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Good",
-          "allowOverride": true
-        },
-        "JobActivityCategoryAttribute": {
-          "name": "JobActivityCategoryAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category",
-          "allowOverride": true
-        }
-      },
-      "allowNodeDuplication": true,
-      "allowTreeDuplicate": true
-    },
     {
       "id": "Scripts.debug",
       "label": "",
@@ -189,76 +86,9 @@
       "script": "helpers.log(\"msg:\", msg.payload);",
       "templateBindingOverrides": {},
       "allowNodeDuplication": true,
-      "allowTreeDuplicate": true
-    },
-    {
-      "id": "Taiyo1.Events.JobActivity",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowNodeDuplication": true,
-      "description": "",
-      "script": "// VARIABLE BINDINGS\nconst jobActivityAttribute = JobActivityAttribute?.value || \"-\";\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\nconst jobActivityCategoryAttributePath = JobActivityCategoryAttribute?.path || \"-\";\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\nconst timestamp = Timestamp?.value || helpers.now();\nconst assetPath = AssetPath || \"-\";\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\nconst totalPaperConsumption = TotalPaperConsumption?.value || 0;\nconst materialBarcode = MaterialBarcode?.value || \"-\";\n\nconst renderPath = (template, vars = {}) => {\n  return String(template || \"\")\n    .replaceAll(\"{assetPath}\", String(vars.assetPath ?? assetPath))\n    .replaceAll(\"{workOrder}\", String(vars.workOrder ?? workOrderAttribute))\n    .replaceAll(\"{activity}\", String(vars.activity ?? \"*\"));\n};\n\n// STOP jika reset / invalid\nif (jobActivityAttribute === \"-\" || jobActivityAttribute === \"\" || jobActivityAttribute === null) {\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\n// STOP jika work order tidak ada\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\n  asset.set(alarmAttributePath, \"!!!No Active Work Order!!!\");\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\nconst rawActivity = String(jobActivityAttribute).trim();\nconst activityLower = rawActivity.toLowerCase();\n\n// Tentukan category dari activity\nlet activityType = \"-\";\nif (activityLower === \"production\" || activityLower.startsWith(\"production/\")) {\n  activityType = \"Production\";\n} else if (activityLower === \"setup\" || activityLower.startsWith(\"setup/\")) {\n  activityType = \"Setup\";\n} else if (activityLower === \"idle\" || activityLower.startsWith(\"idle/\")) {\n  activityType = \"Idle\";\n} else {\n  asset.set(alarmAttributePath, `!!!Unknown activity type: ${rawActivity}!!!`);\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\n// set category attribute\nasset.set(jobActivityCategoryAttributePath, activityType);\n\nconst eventPath = renderPath(JobActivityEventPathTemplate, { activity: rawActivity });\n\n// Cek duplicate exact event path\nconst openedExact = await eventSys.get(eventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\nif (openedExact.length > 0) {\n  asset.set(alarmAttributePath, `!!!Activity already open: ${rawActivity}!!!`);\n  send(msg);\n  return;\n}\n\nconst setupPattern = renderPath(JobActivitySetupPatternTemplate);\nconst productionPattern = renderPath(JobActivityProductionPatternTemplate);\nconst idlePattern = renderPath(JobActivityIdlePatternTemplate);\n\nconst paperConsum = {\n  totalPaperConsumption\n};\n\n// Tutup activity lain sesuai category baru\nif (activityType === \"Production\") {\n  await eventSys.close(setupPattern, timestamp, \"auto close by Production transition\", paperConsum);\n  await eventSys.close(idlePattern, timestamp, \"auto close by Production transition\", paperConsum);\n} else if (activityType === \"Setup\") {\n  await eventSys.close(productionPattern, timestamp, \"auto close by Setup transition\", paperConsum);\n  await eventSys.close(idlePattern, timestamp, \"auto close by Setup transition\", paperConsum);\n} else if (activityType === \"Idle\") {\n  await eventSys.close(productionPattern, timestamp, \"auto close by Idle transition\", paperConsum);\n  await eventSys.close(setupPattern, timestamp, \"auto close by Idle transition\", paperConsum);\n}\n\nasset.set(alarmAttributePath, \"-\");\n\nconst activityContext = {\n  operator: operatorAttribute,\n  workOrder: workOrderAttribute,\n  activityType,\n  materialBarcode\n};\n\nawait eventSys.open(\n  eventPath,\n  timestamp,\n  activityContext,\n  `activity ${rawActivity} created`,\n  \"info\",\n  paperConsum\n);\n\nsend(msg);",
-      "templateBindingOverrides": {
-        "JobActivityAttribute": {
-          "name": "JobActivityAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
-          "allowOverride": true
-        },
-        "WorkOrderAttribute": {
-          "name": "WorkOrderAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order",
-          "allowOverride": true
-        },
-        "OperatorAttribute": {
-          "name": "OperatorAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Machine Operator",
-          "allowOverride": true
-        },
-        "AlarmAttribute": {
-          "name": "AlarmAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity Alarm",
-          "allowOverride": true
-        },
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "static_string",
-          "staticValue": "Jasuindo.OffsetPrinter.Taiyo1",
-          "attributePath": "",
-          "allowOverride": true
-        },
-        "JobActivityModeAttribute": {
-          "name": "JobActivityModeAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category",
-          "allowOverride": true
-        },
-        "JobActivityCategoryAttribute": {
-          "name": "JobActivityCategoryAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category",
-          "allowOverride": true
-        },
-        "TotalPaperConsumption": {
-          "name": "TotalPaperConsumption",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Total Consumed",
-          "allowOverride": true
-        }
-      },
-      "templateId": "template.script_1772002036179",
-      "allowTreeDuplicate": true
+      "allowTreeDuplicate": true,
+      "eventTemplateId": "",
+      "eventTemplateOverrides": {}
     },
     {
       "id": "Taiyo1.MES.ProductCounter",
@@ -291,7 +121,9 @@
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count",
           "allowOverride": true
         }
-      }
+      },
+      "eventTemplateId": "",
+      "eventTemplateOverrides": {}
     },
     {
       "id": "Taiyo1.MES.PaperConsumptionPerActivity",
@@ -349,14 +181,14 @@
           "name": "PaperWaste",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Total Waste",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Paper Waste",
           "allowOverride": true
         },
         "PaperTotalConsumed": {
           "name": "PaperTotalConsumed",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Total Consumed",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Paper Consumed",
           "allowOverride": true
         },
         "JobActivityCategoryAttribute": {
@@ -373,33 +205,9 @@
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Machine Speed",
           "allowOverride": true
         }
-      }
-    },
-    {
-      "id": "Taiyo1.Events.EventDetector",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "// VARIABLE BINDINGS\r\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\r\nconst assetPath = AssetPath || \"-\";\r\n\r\n// STOP jika WO invalid\r\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\r\n  helpers.log(\"[ActivityDetector] skip: work order empty\");\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// BASE PATH activity\r\nconst base = `${assetPath}/Job/${workOrderAttribute}/Activity`;\r\n\r\n// PATTERN yang mau dicek (status open)\r\nconst setupPattern = `${base}/Setup/*`;\r\nconst productionPattern = `${base}/Production`;\r\nconst idlePattern = `${base}/Idle/*`;\r\n\r\n// QUERY OPEN EVENTS\r\nconst setupOpen = await eventSys.get(setupPattern, \"*\", \"*\", \"open\", {}, { limit: 200 });\r\nconst productionOpen = await eventSys.get(productionPattern, \"*\", \"*\", \"open\", {}, { limit: 200 });\r\nconst idleOpen = await eventSys.get(idlePattern, \"*\", \"*\", \"open\", {}, { limit: 200 });\r\n\r\n// GABUNG + DEDUPE by id\r\nconst dedup = new Map();\r\nfor (const row of [...setupOpen, ...productionOpen, ...idleOpen]) {\r\n  if (!row?.id) continue;\r\n  dedup.set(row.id, row);\r\n}\r\nconst activeEvents = Array.from(dedup.values());\r\n\r\n// LOG SUMMARY\r\nhelpers.log(`${helpers.now()} [ActivityDetector] active count:`, activeEvents.length);\r\nhelpers.log(\"[ActivityDetector] setup:\", setupOpen.length, \"production:\", productionOpen.length, \"idle:\", idleOpen.length);\r\n\r\n// LOG DETAIL path per event\r\n// for (const ev of activeEvents) {\r\n//   helpers.log(\"[ActivityDetector] active:\", ev.event_path, \"| status:\", ev.status, \"| start:\", ev.start_ts);\r\n// }\r\n\r\nsend(msg);\r\n",
-      "templateId": "template.script_1772300414929",
-      "templateBindingOverrides": {
-        "WorkOrderAttribute": {
-          "name": "WorkOrderAttribute",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order",
-          "allowOverride": true
-        },
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "static_string",
-          "staticValue": "Jasuindo.OffsetPrinter.Taiyo1",
-          "attributePath": "",
-          "allowOverride": true
-        }
-      }
+      },
+      "eventTemplateId": "",
+      "eventTemplateOverrides": {}
     },
     {
       "id": "Taiyo1.MES.TimeSpentPerActivity",
@@ -439,49 +247,45 @@
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Production Time",
           "allowOverride": true
         }
-      }
+      },
+      "eventTemplateId": "",
+      "eventTemplateOverrides": {}
+    },
+    {
+      "id": "scripts.group.action_1772991838689",
+      "label": "detect \"buka\"",
+      "type": "script",
+      "enabled": true,
+      "allowTreeDuplicate": true,
+      "description": "",
+      "script": "if (msg.payload.value === \"buka\") {\r\n  send(msg)\r\n} else {\r\n  return;\r\n}\r\n"
     }
   ],
   "flows": {
     "links": [
-      {
-        "from": "trigger.tick_1772113072548",
-        "to": "Taiyo1.Events.JobActivity",
-        "enabled": true
-      },
-      {
-        "from": "trigger.watch_1772017838146",
-        "to": "Taiyo1.Events.JobLifecycle",
-        "enabled": true
-      },
-      {
-        "from": "trigger.watch_1772152779583",
-        "to": "Taiyo1.Events.JobActivity",
-        "enabled": true
-      },
-      {
-        "from": "Taiyo1.Events.JobLifecycle",
-        "to": "Scripts.debug",
-        "enabled": true
-      },
-      {
-        "from": "Taiyo1.Events.JobActivity",
-        "to": "Scripts.debug",
-        "enabled": true
-      },
       {
         "from": "trigger.tick_1772164929424",
         "to": "Taiyo1.MES.PaperConsumptionPerActivity",
         "enabled": true
       },
       {
-        "from": "trigger.tick_1772164929424",
-        "to": "Taiyo1.MES.TimeSpentPerActivity",
+        "from": "trigger.watch_1772991808347",
+        "to": "Scripts.debug",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1772772099483",
-        "to": "Scripts.debug",
+        "from": "trigger.watch_1772991808347",
+        "to": "scripts.group.action_1772991838689",
+        "enabled": true
+      },
+      {
+        "from": "scripts.group.action_1772991838689",
+        "to": "event.open.events.test",
+        "enabled": true
+      },
+      {
+        "from": "trigger.tick_1772164929424",
+        "to": "Taiyo1.MES.TimeSpentPerActivity",
         "enabled": true
       }
     ],
@@ -519,8 +323,8 @@
         "y": 310
       },
       "Scripts.debug": {
-        "x": 1520,
-        "y": 280
+        "x": 960,
+        "y": 940
       },
       "Taiyo1.Events.JobLifecycle": {
         "x": 1160,
@@ -530,16 +334,8 @@
         "x": 1150,
         "y": 390
       },
-      "trigger.watch_1772017838146": {
-        "x": 420,
-        "y": 330
-      },
       "Taiyo1.Events.JobActivity": {
         "x": 1160,
-        "y": 400
-      },
-      "trigger.watch_1772152779583": {
-        "x": 430,
         "y": 400
       },
       "trigger.tick_1772164929424": {
@@ -547,7 +343,7 @@
         "y": 510
       },
       "Taiyo1.MES.ProductCounter": {
-        "x": 1730,
+        "x": 780,
         "y": 650
       },
       "Taiyo1.PLC.PaperConsupCounter": {
@@ -559,16 +355,28 @@
         "y": 720
       },
       "Taiyo1.MES.PaperConsumptionPerActivity": {
-        "x": 1170,
-        "y": 510
+        "x": 880,
+        "y": 490
+      },
+      "event.open.events.test": {
+        "x": 1810,
+        "y": 760
+      },
+      "event.close.events.test": {
+        "x": 1820,
+        "y": 690
+      },
+      "trigger.watch_1772991808347": {
+        "x": 640,
+        "y": 870
+      },
+      "scripts.group.action_1772991838689": {
+        "x": 1290,
+        "y": 760
       },
       "Taiyo1.MES.TimeSpentPerActivity": {
-        "x": 1200,
-        "y": 620
-      },
-      "trigger.watch_1772772099483": {
-        "x": 900,
-        "y": 230
+        "x": 880,
+        "y": 570
       }
     }
   },
@@ -583,8 +391,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": 1772773142907,
-            "ts": "2026-03-06T04:58:56.886Z"
+            "value": 1773000182005,
+            "ts": "2026-03-08T20:03:01.997Z"
           }
         }
       },
@@ -599,24 +407,24 @@
         ],
         "attributes": {
           "Machine Speed": {
-            "value": 24,
-            "ts": "2026-03-06T04:58:56.667Z"
+            "value": 6,
+            "ts": "2026-03-08T20:03:01.888Z"
           },
           "Encoder Raw Value": {
-            "value": 81,
-            "ts": "2026-03-06T04:58:56.765Z"
+            "value": 77,
+            "ts": "2026-03-08T20:03:01.892Z"
           },
           "Encoder Prev Value": {
-            "value": 4,
-            "ts": "2026-03-06T04:58:56.668Z"
+            "value": 78,
+            "ts": "2026-03-08T20:03:01.889Z"
           },
           "Work Order": {
             "value": "WO123",
-            "ts": "2026-03-06T04:52:35.827Z"
+            "ts": "2026-03-08T18:15:18.772Z"
           },
           "Job Lifecycle": {
             "value": "load",
-            "ts": "2026-03-06T04:52:45.095Z"
+            "ts": "2026-03-08T18:15:27.097Z"
           },
           "Machine Operator": {
             "value": {
@@ -630,44 +438,36 @@
             "ts": "2026-03-06T04:52:30.413Z"
           },
           "Job Activity": {
-            "value": "Idle/Ngopi",
-            "ts": "2026-03-06T03:10:58.869Z"
+            "value": "-",
+            "ts": "2026-03-08T18:33:50.397Z"
           },
           "Paper Consumed Setup": {
-            "value": 0,
-            "ts": "2026-03-06T04:52:45.110Z"
-          },
-          "Paper Total Waste": {
-            "value": 0,
-            "ts": "2026-03-06T04:52:45.580Z"
-          },
-          "Paper Total Consumed": {
-            "value": 0,
-            "ts": "2026-03-06T04:52:45.581Z"
+            "value": 174795,
+            "ts": "2026-03-08T20:03:01.889Z"
           },
           "Job Activity Category": {
-            "value": "-",
-            "ts": "2026-03-06T04:52:45.113Z"
+            "value": "Setup",
+            "ts": "2026-03-08T18:33:51.463Z"
           },
           "Paper Consumed Production": {
             "value": 0,
-            "ts": "2026-03-06T04:52:45.109Z"
+            "ts": "2026-03-08T18:15:30.134Z"
           },
           "Paper Consumed Idle": {
             "value": 0,
-            "ts": "2026-03-06T04:52:45.109Z"
+            "ts": "2026-03-06T06:03:12.104Z"
           },
           "Total Production Time": {
             "value": 0,
-            "ts": "2026-03-06T04:52:45.111Z"
+            "ts": "2026-03-08T18:15:30.136Z"
           },
           "Total Setup Time": {
-            "value": 0,
-            "ts": "2026-03-06T04:52:45.112Z"
+            "value": 5279,
+            "ts": "2026-03-08T20:03:01.890Z"
           },
           "Total Idle Time": {
             "value": 0,
-            "ts": "2026-03-06T04:52:45.111Z"
+            "ts": "2026-03-06T06:03:12.105Z"
           },
           "Material Barcode": {
             "value": "materialABCDEFG",
@@ -676,6 +476,10 @@
           "Job Activity Alarm": {
             "value": "-",
             "ts": "2026-03-06T02:03:07.120Z"
+          },
+          "test": {
+            "value": "buka",
+            "ts": "2026-03-08T19:36:11.915Z"
           }
         }
       },
@@ -833,6 +637,30 @@
             "valueType": "int16",
             "default": 0,
             "unit": "meter/minute",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "test",
+            "valueType": "string",
+            "default": 0,
+            "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
             "historianTargetId": "default",
@@ -1399,7 +1227,7 @@
           },
           {
             "enabled": true,
-            "name": "Paper Total Waste",
+            "name": "Total Paper Waste",
             "valueType": "int32",
             "default": 0,
             "unit": "meter",
@@ -1423,7 +1251,7 @@
           },
           {
             "enabled": true,
-            "name": "Paper Total Consumed",
+            "name": "Total Paper Consumed",
             "valueType": "float64",
             "default": 0,
             "unit": "meter",
@@ -1553,6 +1381,257 @@
       }
     ]
   },
+  "eventTemplates": [
+    {
+      "id": "template.event_1772991231976",
+      "enabled": true,
+      "eventPathTemplate": "{asset}/Event",
+      "closePatternTemplate": "{asset}/Event",
+      "eventPathBuilder": [
+        {
+          "type": "binding",
+          "value": "asset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Event",
+          "separator": ""
+        }
+      ],
+      "closePatternBuilder": [
+        {
+          "type": "binding",
+          "value": "asset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Event",
+          "separator": ""
+        }
+      ],
+      "bindings": [
+        {
+          "name": "asset",
+          "source": "asset",
+          "templateId": "template_1772291867711_154",
+          "defaultValue": ""
+        },
+        {
+          "name": "binding_2",
+          "source": "asset",
+          "templateId": "template_1772297957808_540",
+          "defaultValue": ""
+        }
+      ],
+      "assetPaths": [
+        {
+          "id": "asset",
+          "source": "variable",
+          "key": "asset",
+          "value": "",
+          "templateId": "template_1772291867711_154"
+        },
+        {
+          "id": "binding_2",
+          "source": "variable",
+          "key": "binding_2",
+          "value": "",
+          "templateId": "template_1772297957808_540"
+        }
+      ],
+      "snapshotTemplateId": "",
+      "severity": "other",
+      "contextBindings": {},
+      "contextFields": [
+        {
+          "key": "Machine Operator",
+          "source": "asset_path_attribute",
+          "assetPathId": "asset",
+          "attributeName": "Machine Operator"
+        }
+      ],
+      "timeSource": {
+        "open": {
+          "source": "now"
+        },
+        "close": {
+          "source": "now"
+        }
+      },
+      "capture": {
+        "onOpen": true,
+        "onClose": true
+      },
+      "captureFields": [
+        {
+          "key": "Paper Total Consumed",
+          "source": "asset_path_attribute",
+          "assetPathId": "binding_2",
+          "attributeName": "Paper Total Consumed"
+        }
+      ],
+      "allowParallel": false,
+      "uniquePatternBuilder": [],
+      "uniquePatternTemplate": "",
+      "closeChildrenOnClosePatterns": [],
+      "concurrencyMode": "unique_exact_path",
+      "closeChildrenOnClosePatternBuilders": [],
+      "requiredParentBuilder": [],
+      "requiredParentPattern": ""
+    },
+    {
+      "id": "template.taiyo.job.lifecycle",
+      "enabled": true,
+      "allowParallel": false,
+      "concurrencyMode": "unique_exact_path",
+      "eventPathTemplate": "{asset}/Job/{asset}/Lifecycle/Run",
+      "closePatternTemplate": "{asset}/Job/{activeJob}/Lifecycle/Run",
+      "eventPathBuilder": [
+        {
+          "type": "binding",
+          "value": "asset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Job",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "asset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Lifecycle",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Run",
+          "separator": ""
+        }
+      ],
+      "closePatternBuilder": [
+        {
+          "type": "binding",
+          "value": "asset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Job",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activeJob",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Lifecycle",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Run",
+          "separator": ""
+        }
+      ],
+      "uniquePatternTemplate": "",
+      "uniquePatternBuilder": [],
+      "closeOnOpenPatterns": [],
+      "closeOnOpenPatternBuilders": [],
+      "requiredParentPattern": "",
+      "requiredParentBuilder": [],
+      "closeChildrenOnClosePatterns": [],
+      "closeChildrenOnClosePatternBuilders": [],
+      "bindings": [
+        {
+          "name": "asset",
+          "source": "asset",
+          "templateId": "template_1771523720677_855",
+          "defaultValue": ""
+        },
+        {
+          "name": "activeJob",
+          "source": "attribute",
+          "templateId": "",
+          "defaultValue": ""
+        },
+        {
+          "name": "mes",
+          "source": "asset",
+          "templateId": "template_1772291867711_154",
+          "defaultValue": ""
+        },
+        {
+          "name": "mesData",
+          "source": "asset",
+          "templateId": "template_1772297957808_540",
+          "defaultValue": ""
+        }
+      ],
+      "assetPaths": [
+        {
+          "id": "asset",
+          "source": "variable",
+          "key": "asset",
+          "value": "",
+          "templateId": "template_1771523720677_855"
+        },
+        {
+          "id": "mes",
+          "source": "variable",
+          "key": "mes",
+          "value": "",
+          "templateId": "template_1772291867711_154"
+        },
+        {
+          "id": "mesData",
+          "source": "variable",
+          "key": "mesData",
+          "value": "",
+          "templateId": "template_1772297957808_540"
+        }
+      ],
+      "snapshotTemplateId": "",
+      "severity": "other",
+      "contextBindings": {},
+      "contextFields": [
+        {
+          "key": "Machine Operator",
+          "source": "asset_path_attribute",
+          "assetPathId": "mes",
+          "attributeName": "Machine Operator"
+        }
+      ],
+      "timeSource": {
+        "open": {
+          "source": "now"
+        },
+        "close": {
+          "source": "now"
+        }
+      },
+      "capture": {
+        "onOpen": true,
+        "onClose": true
+      },
+      "captureFields": [
+        {
+          "key": "Total Paper Consumed",
+          "source": "asset_path_attribute",
+          "assetPathId": "mesData",
+          "attributeName": "Total Paper Consumed"
+        }
+      ]
+    }
+  ],
   "scriptTemplates": [
     {
       "id": "template.script_1771563203022",
@@ -1620,7 +1699,7 @@
       "id": "template.script_1771898442157",
       "name": "TaiyoJobLifecycleEvent",
       "description": "",
-      "script": "// VARIABLE BINDINGS\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\nconst timestamp = Timestamp?.value || helpers.now();\nconst assetPath = AssetPath || \"-\";\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\n\nconst renderPath = (template, vars = {}) => {\n  return String(template || \"\")\n    .replaceAll(\"{assetPath}\", String(vars.assetPath ?? assetPath))\n    .replaceAll(\"{workOrder}\", String(vars.workOrder ?? workOrderAttribute))\n    .replaceAll(\"{activity}\", String(vars.activity ?? \"*\"));\n};\n\nconst lifecycleRunningEventPath = renderPath(LifecycleRunningEventPathTemplate);\nconst lifecycleActivityEventPath = renderPath(LifecycleActivityEventPathTemplate);\n\n// GET ACTIVE JOB LOAD EVENTS\nconst openedEvents = await eventSys.get(lifecycleRunningEventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\n\nhelpers.log(\"event mulai:\", jobLifecycleAttribute);\n\n// CEK APAKAH LOAD/UNLOAD\nif (![\"load\", \"unload\", \"complete\"].includes(String(jobLifecycleAttribute).trim().toLowerCase())) {\n  helpers.log(\"--- bukan load/unload\");\n  return;\n}\n\nhelpers.log(\"--- terdeteksi load/unload\");\n\n// REJECT IF WORK ORDER IS EMPTY / \"-\" AND RAISE ALARM\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\n  asset.set(alarmAttributePath, \"!!!Work order is empty!!!\");\n  asset.set(jobLifecycleAttributePath, \"-\");\n\n  msg.payload = \"alarm: work order is empty\";\n  send(msg);\n} else {\n  asset.set(alarmAttributePath, \"-\");\n\n  // CREATE EVENT BASED ON LIFECYCLE\n  if (String(jobLifecycleAttribute).trim().toLowerCase() === \"load\") {\n    if (openedEvents.length === 0) {\n\n\n      // RESET ALL MES COUNTERS\n      asset.setMany(\n        [\n          { path: PaperConsumedIdle.path, value: 0 },\n          { path: PaperConsumedProduction.path, value: 0 },\n          { path: PaperConsumedSetup.path, value: 0 },\n          { path: TotalIdleTime.path, value: 0 },\n          { path: TotalProductionTime.path, value: 0 },\n          { path: TotalSetupTime.path, value: 0 },\n          { path: JobActivityCategoryAttribute.path, value: \"-\" }\n        ]\n      );\n\n\n      const jobLifecycleContext = {\n        operator: operatorAttribute,\n        workOrder: workOrderAttribute,\n      };\n\n      await eventSys.open(\n        lifecycleRunningEventPath,\n        timestamp,\n        jobLifecycleContext,\n        `${workOrderAttribute} loaded`,\n        \"info\",\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"load\",\n          sourceAttribute: jobLifecycleAttributePath,\n        }\n      );\n\n      msg.payload = \"event opened\";\n      send(msg);\n    } \n  } else if (String(jobLifecycleAttribute).trim().toLowerCase() === \"unload\") {\n    if (openedEvents.length > 0) {\n      await eventSys.close(\n        lifecycleRunningEventPath,\n        timestamp,\n        `${workOrderAttribute} unloaded`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"unload\",\n          totalIdleTime: TotalIdleTime?.value || 0,\n          totalProductionTime: TotalProductionTime?.value || 0,\n          totalSetupTime: TotalSetupTime?.value || 0,\n          productCount: ProductCount?.value || 0,\n          productGood: ProductGood?.value || 0\n        }\n      );\n\n      await eventSys.close(\n        lifecycleActivityEventPath,\n        timestamp,\n        `${workOrderAttribute} unloaded`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"complete\"\n        }\n      );\n\n      asset.set(workOrderAttributePath, \"-\");\n      asset.set(jobLifecycleAttributePath, \"-\");\n      asset.set(jobActivityAttributePath, \"-\");\n      asset.set(JobActivityCategoryAttribute.path, \"-\");\n\n\n      msg.payload = \"event closed\";\n      send(msg);\n    }\n  } else if (String(jobLifecycleAttribute).trim().toLowerCase() === \"complete\") {\n    if (openedEvents.length > 0) {\n      await eventSys.close(\n        lifecycleRunningEventPath,\n        timestamp,\n        `${workOrderAttribute} completed`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"unload\",\n          totalIdleTime: TotalIdleTime?.value || 0,\n          totalProductionTime: TotalProductionTime?.value || 0,\n          totalSetupTime: TotalSetupTime?.value || 0,\n          productCount: ProductCount?.value || 0,\n          productGood: ProductGood?.value || 0\n        }\n      );\n\n      await eventSys.close(\n        lifecycleActivityEventPath,\n        timestamp,\n        `${workOrderAttribute} completed`,\n        {\n          operator: operatorAttribute,\n          workOrder: workOrderAttribute,\n          lifecycle: \"complete\"\n        }\n      );\n\n      asset.set(workOrderAttributePath, \"-\");\n      asset.set(jobLifecycleAttributePath, \"-\");\n      asset.set(jobActivityAttributePath, \"-\");\n\n      msg.payload = \"event closed\";\n      send(msg);\n    }\n  }\n}\n\nreturn;",
+      "script": "// VARIABLE BINDINGS\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\nconst timestamp = Timestamp?.value || helpers.now();\nconst assetPath = AssetPath || \"-\";\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\n\nconst renderPath = (template, vars = {}) => {\n  return String(template || \"\")\n    .replaceAll(\"{assetPath}\", String(vars.assetPath ?? assetPath))\n    .replaceAll(\"{workOrder}\", String(vars.workOrder ?? workOrderAttribute))\n    .replaceAll(\"{activity}\", String(vars.activity ?? \"*\"));\n};\n\nconst lifecycleRunningEventPath = renderPath(LifecycleRunningEventPathTemplate);\nconst openedEvents = await eventSys.get(lifecycleRunningEventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\nconst templateVars = {\n  assetPath,\n  workOrder: workOrderAttribute,\n  operator: operatorAttribute,\n  timestamp\n};\n\nhelpers.log(\"event mulai:\", jobLifecycleAttribute);\n\nif (![\"load\", \"unload\", \"complete\"].includes(String(jobLifecycleAttribute).trim().toLowerCase())) {\n  helpers.log(\"--- bukan load/unload\");\n  return;\n}\n\nhelpers.log(\"--- terdeteksi load/unload\");\n\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\n  asset.set(alarmAttributePath, \"!!!Work order is empty!!!\");\n  asset.set(jobLifecycleAttributePath, \"-\");\n  msg.payload = \"alarm: work order is empty\";\n  send(msg);\n} else {\n  asset.set(alarmAttributePath, \"-\");\n\n  if (String(jobLifecycleAttribute).trim().toLowerCase() === \"load\") {\n    if (openedEvents.length === 0) {\n      asset.setMany(\n        [\n          { path: PaperConsumedIdle.path, value: 0 },\n          { path: PaperConsumedProduction.path, value: 0 },\n          { path: PaperConsumedSetup.path, value: 0 },\n          { path: TotalIdleTime.path, value: 0 },\n          { path: TotalProductionTime.path, value: 0 },\n          { path: TotalSetupTime.path, value: 0 },\n          { path: JobActivityCategoryAttribute.path, value: \"-\" }\n        ]\n      );\n\n      await eventSys.openTemplate(\"job_lifecycle_running\", {\n        vars: templateVars,\n        notes: `${workOrderAttribute} loaded`\n      });\n\n      msg.payload = \"event opened\";\n      send(msg);\n    }\n  } else if (String(jobLifecycleAttribute).trim().toLowerCase() === \"unload\") {\n    if (openedEvents.length > 0) {\n      await eventSys.closeTemplate(\"job_lifecycle_running\", {\n        vars: templateVars,\n        notes: `${workOrderAttribute} unloaded`\n      });\n\n      await eventSys.closeTemplate(\"job_activity\", {\n        vars: { ...templateVars, activity: \"*\" },\n        notes: `${workOrderAttribute} unloaded`\n      });\n\n      asset.set(workOrderAttributePath, \"-\");\n      asset.set(jobLifecycleAttributePath, \"-\");\n      asset.set(jobActivityAttributePath, \"-\");\n      asset.set(JobActivityCategoryAttribute.path, \"-\");\n\n      msg.payload = \"event closed\";\n      send(msg);\n    }\n  } else if (String(jobLifecycleAttribute).trim().toLowerCase() === \"complete\") {\n    if (openedEvents.length > 0) {\n      await eventSys.closeTemplate(\"job_lifecycle_running\", {\n        vars: templateVars,\n        notes: `${workOrderAttribute} completed`\n      });\n\n      await eventSys.closeTemplate(\"job_activity\", {\n        vars: { ...templateVars, activity: \"*\" },\n        notes: `${workOrderAttribute} completed`\n      });\n\n      asset.set(workOrderAttributePath, \"-\");\n      asset.set(jobLifecycleAttributePath, \"-\");\n      asset.set(jobActivityAttributePath, \"-\");\n\n      msg.payload = \"event closed\";\n      send(msg);\n    }\n  }\n}\n\nreturn;",
       "variableBindings": [
         {
           "name": "JobLifecycleAttribute",
@@ -1756,7 +1835,7 @@
       "id": "template.script_1772002036179",
       "name": "TaiyoJobActivityEvent",
       "description": "",
-      "script": "// VARIABLE BINDINGS\nconst jobActivityAttribute = JobActivityAttribute?.value || \"-\";\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\nconst jobActivityCategoryAttributePath = JobActivityCategoryAttribute?.path || \"-\";\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\nconst timestamp = Timestamp?.value || helpers.now();\nconst assetPath = AssetPath || \"-\";\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\nconst totalPaperConsumption = TotalPaperConsumption?.value || 0;\nconst materialBarcode = MaterialBarcode?.value || \"-\";\n\nconst renderPath = (template, vars = {}) => {\n  return String(template || \"\")\n    .replaceAll(\"{assetPath}\", String(vars.assetPath ?? assetPath))\n    .replaceAll(\"{workOrder}\", String(vars.workOrder ?? workOrderAttribute))\n    .replaceAll(\"{activity}\", String(vars.activity ?? \"*\"));\n};\n\n// STOP jika reset / invalid\nif (jobActivityAttribute === \"-\" || jobActivityAttribute === \"\" || jobActivityAttribute === null) {\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\n// STOP jika work order tidak ada\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\n  asset.set(alarmAttributePath, \"!!!No Active Work Order!!!\");\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\nconst rawActivity = String(jobActivityAttribute).trim();\nconst activityLower = rawActivity.toLowerCase();\n\n// Tentukan category dari activity\nlet activityType = \"-\";\nif (activityLower === \"production\" || activityLower.startsWith(\"production/\")) {\n  activityType = \"Production\";\n} else if (activityLower === \"setup\" || activityLower.startsWith(\"setup/\")) {\n  activityType = \"Setup\";\n} else if (activityLower === \"idle\" || activityLower.startsWith(\"idle/\")) {\n  activityType = \"Idle\";\n} else {\n  asset.set(alarmAttributePath, `!!!Unknown activity type: ${rawActivity}!!!`);\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\n// set category attribute\nasset.set(jobActivityCategoryAttributePath, activityType);\n\nconst eventPath = renderPath(JobActivityEventPathTemplate, { activity: rawActivity });\n\n// Cek duplicate exact event path\nconst openedExact = await eventSys.get(eventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\nif (openedExact.length > 0) {\n  asset.set(alarmAttributePath, `!!!Activity already open: ${rawActivity}!!!`);\n  send(msg);\n  return;\n}\n\nconst setupPattern = renderPath(JobActivitySetupPatternTemplate);\nconst productionPattern = renderPath(JobActivityProductionPatternTemplate);\nconst idlePattern = renderPath(JobActivityIdlePatternTemplate);\n\nconst paperConsum = {\n  totalPaperConsumption\n};\n\n// Tutup activity lain sesuai category baru\nif (activityType === \"Production\") {\n  await eventSys.close(setupPattern, timestamp, \"auto close by Production transition\", paperConsum);\n  await eventSys.close(idlePattern, timestamp, \"auto close by Production transition\", paperConsum);\n} else if (activityType === \"Setup\") {\n  await eventSys.close(productionPattern, timestamp, \"auto close by Setup transition\", paperConsum);\n  await eventSys.close(idlePattern, timestamp, \"auto close by Setup transition\", paperConsum);\n} else if (activityType === \"Idle\") {\n  await eventSys.close(productionPattern, timestamp, \"auto close by Idle transition\", paperConsum);\n  await eventSys.close(setupPattern, timestamp, \"auto close by Idle transition\", paperConsum);\n}\n\nasset.set(alarmAttributePath, \"-\");\n\nconst activityContext = {\n  operator: operatorAttribute,\n  workOrder: workOrderAttribute,\n  activityType,\n  materialBarcode\n};\n\nawait eventSys.open(\n  eventPath,\n  timestamp,\n  activityContext,\n  `activity ${rawActivity} created`,\n  \"info\",\n  paperConsum\n);\n\nsend(msg);",
+      "script": "// VARIABLE BINDINGS\nconst jobActivityAttribute = JobActivityAttribute?.value || \"-\";\nconst jobActivityCategoryAttributePath = JobActivityCategoryAttribute?.path || \"-\";\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\nconst timestamp = Timestamp?.value || helpers.now();\nconst assetPath = AssetPath || \"-\";\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\nconst materialBarcode = MaterialBarcode?.value || \"-\";\n\nconst renderPath = (template, vars = {}) => {\n  return String(template || \"\")\n    .replaceAll(\"{assetPath}\", String(vars.assetPath ?? assetPath))\n    .replaceAll(\"{workOrder}\", String(vars.workOrder ?? workOrderAttribute))\n    .replaceAll(\"{activity}\", String(vars.activity ?? \"*\"));\n};\n\nif (jobActivityAttribute === \"-\" || jobActivityAttribute === \"\" || jobActivityAttribute === null) {\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\n  asset.set(alarmAttributePath, \"!!!No Active Work Order!!!\");\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\nconst rawActivity = String(jobActivityAttribute).trim();\nconst activityLower = rawActivity.toLowerCase();\n\nlet activityType = \"-\";\nif (activityLower === \"production\" || activityLower.startsWith(\"production/\")) {\n  activityType = \"Production\";\n} else if (activityLower === \"setup\" || activityLower.startsWith(\"setup/\")) {\n  activityType = \"Setup\";\n} else if (activityLower === \"idle\" || activityLower.startsWith(\"idle/\")) {\n  activityType = \"Idle\";\n} else {\n  asset.set(alarmAttributePath, `!!!Unknown activity type: ${rawActivity}!!!`);\n  asset.set(jobActivityCategoryAttributePath, \"-\");\n  send(msg);\n  return;\n}\n\nasset.set(jobActivityCategoryAttributePath, activityType);\n\nconst eventPath = renderPath(JobActivityEventPathTemplate, { activity: rawActivity });\nconst openedExact = await eventSys.get(eventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\nif (openedExact.length > 0) {\n  asset.set(alarmAttributePath, `!!!Activity already open: ${rawActivity}!!!`);\n  send(msg);\n  return;\n}\n\nconst templateBase = {\n  assetPath,\n  workOrder: workOrderAttribute,\n  operator: operatorAttribute,\n  timestamp,\n  materialBarcode,\n  activityType\n};\n\nif (activityType === \"Production\") {\n  await eventSys.closeTemplate(\"job_activity\", {\n    vars: { ...templateBase, activity: \"Setup/*\" },\n    notes: \"auto close by Production transition\"\n  });\n  await eventSys.closeTemplate(\"job_activity\", {\n    vars: { ...templateBase, activity: \"Idle/*\" },\n    notes: \"auto close by Production transition\"\n  });\n} else if (activityType === \"Setup\") {\n  await eventSys.closeTemplate(\"job_activity\", {\n    vars: { ...templateBase, activity: \"Production/*\" },\n    notes: \"auto close by Setup transition\"\n  });\n  await eventSys.closeTemplate(\"job_activity\", {\n    vars: { ...templateBase, activity: \"Idle/*\" },\n    notes: \"auto close by Setup transition\"\n  });\n} else if (activityType === \"Idle\") {\n  await eventSys.closeTemplate(\"job_activity\", {\n    vars: { ...templateBase, activity: \"Production/*\" },\n    notes: \"auto close by Idle transition\"\n  });\n  await eventSys.closeTemplate(\"job_activity\", {\n    vars: { ...templateBase, activity: \"Setup/*\" },\n    notes: \"auto close by Idle transition\"\n  });\n}\n\nasset.set(alarmAttributePath, \"-\");\n\nawait eventSys.openTemplate(\"job_activity\", {\n  vars: { ...templateBase, activity: rawActivity },\n  notes: `activity ${rawActivity} created`\n});\n\nsend(msg);",
       "variableBindings": [
         {
           "name": "JobActivityAttribute",
@@ -2044,6 +2123,69 @@
           "allowOverride": true
         }
       ]
+    }
+  ],
+  "eventActions": [
+    {
+      "id": "events.test",
+      "label": "testEvent",
+      "enabled": true,
+      "description": "",
+      "templateId": "template.event_1772991231976",
+      "bindings": {
+        "assetPath": {
+          "source": "asset",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+        },
+        "mesAttribtues": {
+          "source": "asset",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+        },
+        "asset": {
+          "source": "asset",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+        },
+        "binding_2": {
+          "source": "asset",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+        },
+        "binding_3": {
+          "source": "asset",
+          "attributePath": "Jasuindo"
+        }
+      },
+      "openNotes": "buka",
+      "closeNotes": "tutup",
+      "templateOverrides": {}
+    },
+    {
+      "id": "events.group.event_1772999527732",
+      "label": "taiyo1JobLifecycle",
+      "enabled": true,
+      "description": "",
+      "templateId": "template.taiyo.job.lifecycle",
+      "bindings": {
+        "activeJob": {
+          "source": "attribute",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Machine Speed"
+        },
+        "asset": {
+          "source": "asset",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+        },
+        "mes": {
+          "source": "asset",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+        },
+        "mesData": {
+          "source": "asset",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+        }
+      },
+      "openNotes": "",
+      "closeNotes": ""
     }
   ]
 }

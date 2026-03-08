@@ -174,9 +174,16 @@ function toTextPath(path: string): string {
 
 function mapRow(row: Record<string, unknown>): EventRow {
   let parsedContext: Record<string, unknown> = {};
+  let parsedMetadata: Record<string, unknown> | null = null;
   let parsedCapturedOnOpen: unknown | null = null;
   let parsedCapturedOnClose: unknown | null = null;
   try {
+    try {
+      if (row.event_metadata && typeof row.event_metadata === "object") parsedMetadata = row.event_metadata as Record<string, unknown>;
+      else parsedMetadata = row.event_metadata ? (JSON.parse(String(row.event_metadata)) as Record<string, unknown>) : null;
+    } catch {
+      parsedMetadata = null;
+    }
     if (row.context && typeof row.context === "object") parsedContext = row.context as Record<string, unknown>;
     else parsedContext = row.context ? (JSON.parse(String(row.context)) as Record<string, unknown>) : {};
   } catch {
@@ -216,6 +223,7 @@ function mapRow(row: Record<string, unknown>): EventRow {
     acknowledged_ts: row.acknowledged_ts ? new Date(String(row.acknowledged_ts)).toISOString() : null,
     notes_on_open: row.notes_on_open == null ? null : String(row.notes_on_open),
     notes_on_close: row.notes_on_close == null ? null : String(row.notes_on_close),
+    event_metadata: parsedMetadata,
     captured_data_on_open: parsedCapturedOnOpen,
     captured_data_on_close: parsedCapturedOnClose
   };
@@ -339,7 +347,8 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
     context = {},
     notesOnOpen = "",
     severity = "other",
-    capturedDataOnOpen = null
+    capturedDataOnOpen = null,
+    eventMetadata = null
   ) => {
     const normalizedPath = String(eventPath || "").trim();
     if (!normalizedPath) throw new Error("event_path is required");
@@ -350,13 +359,14 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
       severity: normalizeSeverity(severity),
       context: context && typeof context === "object" ? context : {},
       notes_on_open: notesOnOpen == null ? null : String(notesOnOpen),
+      event_metadata: eventMetadata && typeof eventMetadata === "object" ? eventMetadata : null,
       captured_data_on_open: capturedDataOnOpen === undefined ? null : capturedDataOnOpen
     };
     const sql = `
       INSERT INTO ${tableRef}
-      (id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,captured_data_on_open,captured_data_on_close,updated_at)
-      VALUES ($1,$2,$3::timestamptz,NULL,'open',$4,$5::jsonb,FALSE,NULL,$6,NULL,$7::jsonb,NULL,NOW())
-      RETURNING id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,captured_data_on_open,captured_data_on_close
+      (id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,event_metadata,captured_data_on_open,captured_data_on_close,updated_at)
+      VALUES ($1,$2,$3::timestamptz,NULL,'open',$4,$5::jsonb,FALSE,NULL,$6,NULL,$7::jsonb,$8::jsonb,NULL,NOW())
+      RETURNING id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,event_metadata,captured_data_on_open,captured_data_on_close
     `;
     const result = await db.query(sql, [
       row.id,
@@ -365,6 +375,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
       row.severity,
       JSON.stringify(row.context),
       row.notes_on_open,
+      JSON.stringify(row.event_metadata),
       JSON.stringify(row.captured_data_on_open)
     ]);
     const mapped = mapRow(result.rows[0] || row);
@@ -386,7 +397,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
         captured_data_on_close = CASE WHEN $3::jsonb IS NULL THEN captured_data_on_close ELSE $3::jsonb END,
         updated_at = NOW()
       WHERE status = 'open' AND event_path LIKE $4 ESCAPE '!'
-      RETURNING id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,captured_data_on_open,captured_data_on_close
+      RETURNING id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,event_metadata,captured_data_on_open,captured_data_on_close
     `;
     const result = await db.query(sql, [normalizedTs, normalizedNotes, JSON.stringify(normalizedCapturedOnClose), likePattern]);
     const rows = result.rows.map((row) => mapRow(row as Record<string, unknown>));
@@ -417,7 +428,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
         captured_data_on_close = CASE WHEN $3::jsonb IS NULL THEN captured_data_on_close ELSE $3::jsonb END,
         updated_at = NOW()
       WHERE id = $4 AND status = 'open'
-      RETURNING id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,captured_data_on_open,captured_data_on_close
+      RETURNING id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,event_metadata,captured_data_on_open,captured_data_on_close
     `;
     const result = await db.query(sql, [normalizedTs, normalizedNotes, JSON.stringify(normalizedCapturedOnClose), normalizedId]);
     const rows = result.rows.map((row) => mapRow(row as Record<string, unknown>));
@@ -486,7 +497,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
     const baseParams: unknown[] = [];
     const whereSql = buildBaseWhere({ pattern, from, to, status, contextFilters, severity }, baseParams);
     const rowSql = `
-      SELECT id, event_path, start_ts, end_ts, status, severity, context, is_acknowledge, acknowledged_ts, notes_on_open, notes_on_close, captured_data_on_open, captured_data_on_close
+      SELECT id, event_path, start_ts, end_ts, status, severity, context, is_acknowledge, acknowledged_ts, notes_on_open, notes_on_close, event_metadata, captured_data_on_open, captured_data_on_close
       FROM ${tableRef}
       ${whereSql}
       ORDER BY ${sortBy} ${sortDir}
@@ -501,6 +512,20 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
 
   const get: EventStore["get"] = async (pattern = "*", from = "*", to = "*", status = "*", contextFilters = {}, options = {}) =>
     (await query(pattern, from, to, status, contextFilters, options)).rows;
+
+  const getById: EventStore["getById"] = async (id) => {
+    const normalizedId = String(id || "").trim();
+    if (!normalizedId) throw new Error("id is required");
+    const sql = `
+      SELECT id, event_path, start_ts, end_ts, status, severity, context, is_acknowledge, acknowledged_ts, notes_on_open, notes_on_close, event_metadata, captured_data_on_open, captured_data_on_close
+      FROM ${tableRef}
+      WHERE id = $1
+      LIMIT 1
+    `;
+    const result = await db.query(sql, [normalizedId]);
+    if (!Array.isArray(result.rows) || result.rows.length === 0) return null;
+    return mapRow(result.rows[0] as Record<string, unknown>);
+  };
 
   const subscribe: EventStore["subscribe"] = (listener) => {
     listeners.add(listener);
@@ -523,6 +548,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
     deleteById,
     deleteByPattern,
     get,
+    getById,
     query,
     subscribe,
     shutdown: async () => {}
@@ -537,6 +563,7 @@ export function ensureEventStore(runtime: Runtime, options: EventStoreOptions = 
     typeof (existing as EventStore).open === "function" &&
     typeof (existing as EventStore).close === "function" &&
     typeof (existing as EventStore).get === "function" &&
+    typeof (existing as EventStore).getById === "function" &&
     typeof (existing as EventStore).subscribe === "function"
   ) {
     return existing as EventStore;

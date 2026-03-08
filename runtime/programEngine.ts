@@ -2,20 +2,26 @@ import fs from "node:fs";
 import path from "node:path";
 import Runtime from "./Runtime";
 import createScriptActionHandler from "./createScriptActionHandler";
+import createEventActionHandler, { getEventActionCloseNodeId, getEventActionOpenNodeId } from "./createEventActionHandler";
 import { normalizeAssetSection } from "./assetFramework";
 import { ensureAssetStorage } from "./assetStorage";
 import { ensureEventStore } from "./eventStore";
-import type { EventStore, EventStoreChangeMeta, ProgramDefinition, RuntimeMessage, RuntimeNodeContext, RuntimeNodeHandler } from "./types";
+import { normalizeEventTemplates } from "./eventTemplateRuntime";
+import type { EventActionDefinition, EventStore, EventStoreChangeMeta, ProgramDefinition, RuntimeMessage, RuntimeNodeContext, RuntimeNodeHandler } from "./types";
 
 interface ProgramAction {
   id: string;
   enabled?: boolean;
   type: string;
   templateId?: string;
+  eventTemplateId?: string;
+  eventTemplateOverrides?: Record<string, unknown>;
   script?: string;
   config?: Record<string, unknown>;
   templateBindingOverrides?: Record<string, unknown>;
 }
+
+interface ProgramEventAction extends EventActionDefinition {}
 
 interface ProgramLink {
   from: string;
@@ -65,6 +71,30 @@ function registerActions(runtime: Runtime, actions: unknown[] = []): void {
     }
     const handler = createActionHandler(action, { templateById });
     runtime.addNode(action.id, handler);
+  }
+}
+
+function registerEventActions(runtime: Runtime, eventActions: unknown[] = []): void {
+  const eventTemplateList = runtime.getGlobal("eventTemplates", []);
+  const eventTemplateById = new Map(
+    (Array.isArray(eventTemplateList) ? eventTemplateList : []).map((template) => [
+      String((template as { id?: unknown }).id || ""),
+      template as any
+    ])
+  );
+
+  for (const rawItem of eventActions) {
+    const item = rawItem as ProgramEventAction;
+    if (!item.id) throw new Error("Event action must have an id");
+    const openNodeId = getEventActionOpenNodeId(item.id);
+    const closeNodeId = getEventActionCloseNodeId(item.id);
+    if (item.enabled === false) {
+      runtime.addNode(openNodeId, async (_msg, _send) => {});
+      runtime.addNode(closeNodeId, async (_msg, _send) => {});
+      continue;
+    }
+    runtime.addNode(openNodeId, createEventActionHandler(item, "open", { eventTemplateById }));
+    runtime.addNode(closeNodeId, createEventActionHandler(item, "close", { eventTemplateById }));
   }
 }
 
@@ -311,8 +341,10 @@ export function startProgram(runtime: Runtime, program: ProgramDefinition): () =
   const assetStorage = ensureAssetStorage(runtime, assets);
   ensureEventStore(runtime);
   assetStorage.replace(assets);
+  runtime.setGlobal("eventTemplates", normalizeEventTemplates(program.eventTemplates || []));
   runtime.setGlobal("scriptTemplates", Array.isArray(program.scriptTemplates) ? program.scriptTemplates : []);
   registerActions(runtime, program.actions || []);
+  registerEventActions(runtime, program.eventActions || []);
   registerLinks(runtime, (program.flows && program.flows.links) || []);
   const stops = startTriggers(runtime, program.triggers || []);
 

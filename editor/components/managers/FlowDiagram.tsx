@@ -3,7 +3,7 @@ import type { DragEvent as ReactDragEvent } from "react";
 import { Box, Button, FormControlLabel, Switch, Typography } from "@mui/material";
 import type { FlowLink, NodePosition } from "../../types/program";
 
-type NodeKind = "trigger" | "action";
+type NodeKind = "trigger" | "action" | "event";
 
 interface NodePoint {
   id: string;
@@ -21,6 +21,7 @@ interface NodeMetrics {
 interface FlowDiagramProps {
   triggerIds: string[];
   actionIds: string[];
+  eventNodeIds?: string[];
   nodeLabels?: Record<string, string>;
   links: FlowLink[];
   nodePositions: Record<string, NodePosition>;
@@ -167,6 +168,7 @@ function generateLinkPath(
 export default function FlowDiagram({
   triggerIds,
   actionIds,
+  eventNodeIds = [],
   nodeLabels = {},
   links,
   nodePositions,
@@ -181,13 +183,14 @@ export default function FlowDiagram({
   onNodePositionChange,
   onConnectNodes
 }: FlowDiagramProps) {
-  const allIds = useMemo(() => [...triggerIds, ...actionIds], [triggerIds, actionIds]);
+  const allIds = useMemo(() => [...triggerIds, ...actionIds, ...eventNodeIds], [triggerIds, actionIds, eventNodeIds]);
   const kindMap = useMemo(() => {
     const map = new Map<string, NodeKind>();
     for (const id of triggerIds) map.set(id, "trigger");
     for (const id of actionIds) map.set(id, "action");
+    for (const id of eventNodeIds) map.set(id, "event");
     return map;
-  }, [triggerIds, actionIds]);
+  }, [triggerIds, actionIds, eventNodeIds]);
 
   const [liveNodePositions, setLiveNodePositions] = useState<Record<string, NodePosition>>({});
   useEffect(() => {
@@ -642,7 +645,16 @@ export default function FlowDiagram({
                 data-diagram-interactive="true"
                 style={{ cursor: dragNodeRef.current.active && dragNodeRef.current.nodeId === node.id ? "grabbing" : "grab" }}
               >
-                <rect x={node.x - halfWidth} y={node.y - halfHeight} width={metric.width} height={metric.height} rx={20} fill={node.kind === "action" ? "#01806b" : "#676e6c"} stroke={node.kind === "action" ? "#14f4b4" : "#0f766e"} strokeWidth={0.7} />
+                <rect
+                  x={node.x - halfWidth}
+                  y={node.y - halfHeight}
+                  width={metric.width}
+                  height={metric.height}
+                  rx={20}
+                  fill={node.kind === "action" ? "#01806b" : node.kind === "event" ? "#1d4ed8" : "#676e6c"}
+                  stroke={node.kind === "action" ? "#14f4b4" : node.kind === "event" ? "#7dd3fc" : "#0f766e"}
+                  strokeWidth={0.7}
+                />
                 {selectedNodeId === node.id && (
                   <rect
                     x={node.x - halfWidth - 4}
