@@ -17,6 +17,12 @@ interface EventRequestPayload {
   templateOverrides?: Record<string, unknown>;
 }
 
+function hasValue(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  return true;
+}
+
 function getAtPath(source: unknown, path: string): unknown {
   const parts = String(path || "")
     .split(".")
@@ -75,15 +81,60 @@ async function resolveEventBindingValue(
 }
 
 async function resolveBindings(
+  template: EventTemplateDefinition,
   bindings: Record<string, EventActionBinding> | undefined,
   context: RuntimeNodeContext,
   msg: RuntimeMessage
 ): Promise<Record<string, unknown>> {
   const resolved: Record<string, unknown> = {};
+  const requiredBindings = Array.isArray(template.bindings) ? template.bindings : [];
+  for (const item of requiredBindings) {
+    const name = String(item.name || "").trim();
+    if (!name) continue;
+    const explicitBinding = bindings?.[name];
+    const fallbackBinding: EventActionBinding | undefined = explicitBinding
+      ? undefined
+      : item.source.startsWith("static_")
+        ? { source: item.source, staticValue: item.defaultValue }
+        : undefined;
+    const effectiveBinding = explicitBinding || fallbackBinding;
+    resolved[name] = effectiveBinding
+      ? await resolveEventBindingValue(effectiveBinding, context, msg)
+      : item.defaultValue;
+  }
   for (const [key, binding] of Object.entries(bindings || {})) {
+    if (Object.prototype.hasOwnProperty.call(resolved, key)) continue;
     resolved[key] = await resolveEventBindingValue(binding, context, msg);
   }
   return resolved;
+}
+
+function validateResolvedBindings(
+  actionId: string,
+  template: EventTemplateDefinition,
+  resolved: Record<string, unknown>
+): void {
+  const missing: string[] = [];
+  for (const item of template.bindings || []) {
+    const name = String(item.name || "").trim();
+    if (!name) continue;
+    if (hasResolvedBindingValue(item.source, resolved[name], resolved)) continue;
+    missing.push(name);
+  }
+  if (missing.length === 0) return;
+  throw new Error(
+    `Event action "${actionId}" is missing required binding value(s) for template "${template.id}": ${missing.join(", ")}`
+  );
+}
+
+function hasResolvedBindingValue(
+  source: string,
+  value: unknown,
+  resolved: Record<string, unknown>
+): boolean {
+  if (hasValue(value)) return true;
+  if (source !== "asset") return false;
+  return hasValue(resolved.asset) || hasValue(resolved.assetPath);
 }
 
 function renderTextTemplate(template: string, vars: Record<string, unknown>): string {
@@ -124,11 +175,13 @@ export default function createEventActionHandler(
       throw new Error(`Event action "${action.id}" references missing event template "${templateId}"`);
     }
 
-    const resolvedBindings = await resolveBindings(action.bindings, context, msg);
+    const template = eventTemplateById.get(templateId) as EventTemplateDefinition;
+    const resolvedBindings = await resolveBindings(template, action.bindings, context, msg);
     const vars = {
       ...resolvedBindings,
       ...(request?.vars && typeof request.vars === "object" ? request.vars : {})
     };
+    validateResolvedBindings(action.id, template, vars);
     const notesTemplate = request?.notes ?? (mode === "open" ? action.openNotes : action.closeNotes);
     const notes = String(notesTemplate || "").trim() ? renderTextTemplate(String(notesTemplate || ""), vars) : undefined;
     const overrides =

@@ -43,11 +43,12 @@ interface EventDesignerManagerProps {
   onSelectEventTemplate: (id: string) => void;
   onAddEventAction: () => void;
   onAddEventActionFromTemplate: (templateId: string) => void;
+  onDuplicateEventAction: (id: string) => void;
   onUpdateEventAction: (id: string, patch: Partial<EventActionDefinition>) => void;
   onRenameEventAction: (oldId: string, newId: string) => void;
   onRemoveEventAction: (id: string) => void;
   onAddEventTemplate: () => void;
-  onAddPresetTemplate: (preset: "job_lifecycle" | "job_activity" | "machine_alarm") => void;
+  onDuplicateEventTemplate: (id: string) => void;
   onRemoveEventTemplate: (id: string) => void;
   onUpdateEventTemplate: (id: string, patch: Partial<EventTemplateDefinition>) => void;
 }
@@ -130,6 +131,20 @@ function buildEventHierarchyTree(eventActions: EventActionDefinition[], search: 
     ),
     children: walk("event")
   }];
+}
+
+function collectTreeKeys(nodes: DataNode[]): Key[] {
+  const keys: Key[] = [];
+  const walk = (items: DataNode[]) => {
+    for (const item of items) {
+      keys.push(item.key);
+      if (Array.isArray(item.children) && item.children.length > 0) {
+        walk(item.children);
+      }
+    }
+  };
+  walk(nodes);
+  return keys;
 }
 
 function getAssetPathOptions(assets: AssetFrameworkDefinition): AssetPathOption[] {
@@ -239,11 +254,12 @@ export default function EventDesignerManager({
   onSelectEventTemplate,
   onAddEventAction,
   onAddEventActionFromTemplate,
+  onDuplicateEventAction,
   onUpdateEventAction,
   onRenameEventAction,
   onRemoveEventAction,
   onAddEventTemplate,
-  onAddPresetTemplate,
+  onDuplicateEventTemplate,
   onRemoveEventTemplate,
   onUpdateEventTemplate
 }: EventDesignerManagerProps) {
@@ -251,7 +267,7 @@ export default function EventDesignerManager({
   const [search, setSearch] = useState("");
   const [selectedTreeKey, setSelectedTreeKey] = useState("");
   const hierarchyTree = useMemo(() => buildEventHierarchyTree(eventActions, search), [eventActions, search]);
-  const [expandedKeys, setExpandedKeys] = useState<Key[]>(["category:event"]);
+  const expandedKeys = useMemo(() => collectTreeKeys(hierarchyTree), [hierarchyTree]);
 
   const assetOptions = useMemo(() => getAssetPathOptions(assets), [assets]);
   const selectedEventAction = eventActions.find((item) => item.id === selectedEventActionId) || null;
@@ -294,7 +310,6 @@ export default function EventDesignerManager({
                 treeData={hierarchyTree}
                 expandedKeys={expandedKeys}
                 selectedKeys={selectedEventActionId ? [`event:${selectedEventActionId}`] : selectedTreeKey ? [selectedTreeKey] : []}
-                onExpand={(keys) => setExpandedKeys(keys)}
                 onSelect={(keys) => {
                   const key = String(keys[0] || "");
                   if (!key) return;
@@ -311,9 +326,14 @@ export default function EventDesignerManager({
               <Box sx={{ display: "grid", gap: 1 }}>
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <Typography variant="h6">Event Action Detail</Typography>
-                  <Button color="error" variant="outlined" onClick={() => onRemoveEventAction(selectedEventAction.id)}>
-                    Remove
-                  </Button>
+                  <Box sx={{ display: "flex", gap: 0.75 }}>
+                    <Button variant="outlined" onClick={() => onDuplicateEventAction(selectedEventAction.id)}>
+                      Duplicate
+                    </Button>
+                    <Button color="error" variant="outlined" onClick={() => onRemoveEventAction(selectedEventAction.id)}>
+                      Remove
+                    </Button>
+                  </Box>
                 </Box>
                 <Paper variant="outlined" sx={{ p: 1, backgroundColor: "#f0fdf4" }}>
                   <Typography variant="subtitle2">Event Flow Nodes</Typography>
@@ -553,7 +573,7 @@ export default function EventDesignerManager({
           selectedTemplateId={selectedEventTemplateId}
           onSelectTemplate={onSelectEventTemplate}
           onAddTemplate={onAddEventTemplate}
-          onAddPresetTemplate={onAddPresetTemplate}
+          onDuplicateTemplate={onDuplicateEventTemplate}
           onRemoveTemplate={onRemoveEventTemplate}
           onUpdateTemplate={onUpdateEventTemplate}
         />

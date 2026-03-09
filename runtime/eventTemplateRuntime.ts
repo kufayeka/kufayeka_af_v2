@@ -25,6 +25,20 @@ function renderTemplate(template: string, vars: Record<string, unknown>): string
   });
 }
 
+function hasRenderableValue(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  return true;
+}
+
+function firstNonEmptyString(values: unknown[]): string {
+  for (const value of values) {
+    if (!hasRenderableValue(value)) continue;
+    return String(value).trim();
+  }
+  return "";
+}
+
 function normalizePathBuilder(value: unknown): EventTemplatePathSegment[] {
   if (!Array.isArray(value)) return [];
   return value.map((item) => {
@@ -349,7 +363,7 @@ function resolveTime(
     const value = vars[String(timeSource.key || "")];
     return value == null ? undefined : String(value);
   }
-  const assetPath = String(assetPaths[String(timeSource.assetPathId || "")] || "").trim();
+  const assetPath = resolveAssetPathReference(String(timeSource.assetPathId || ""), assetPaths, vars);
   const attributeName = String(timeSource.attributeName || "").trim();
   const path = assetPath && attributeName ? `${assetPath}.${attributeName}` : "";
   if (!path) return undefined;
@@ -384,12 +398,30 @@ function resolveAssetPaths(
 ): Record<string, string> {
   const output: Record<string, string> = {};
   for (const item of template.assetPaths || []) {
-    output[item.id] = item.source === "static" ? String(item.value || "").trim() : String(vars[String(item.key || "")] || "").trim();
+    output[item.id] = item.source === "static" ? String(item.value || "").trim() : firstNonEmptyString([vars[String(item.key || "")]]);
   }
-  if (!output.assetPath && vars.assetPath != null) {
-    output.assetPath = String(vars.assetPath);
-  }
+  const sharedAssetPath = firstNonEmptyString([output.assetPath, output.asset, vars.assetPath, vars.asset]);
+  if (!output.assetPath && sharedAssetPath) output.assetPath = sharedAssetPath;
+  if (!output.asset && sharedAssetPath) output.asset = sharedAssetPath;
   return output;
+}
+
+function resolveAssetPathReference(
+  assetPathId: string,
+  assetPaths: Record<string, string>,
+  vars: Record<string, unknown>
+): string {
+  const normalizedAssetPathId = String(assetPathId || "").trim();
+  const nonEmptyAssetPaths = Object.values(assetPaths).map((item) => String(item || "").trim()).filter(Boolean);
+  return firstNonEmptyString([
+    normalizedAssetPathId ? assetPaths[normalizedAssetPathId] : "",
+    normalizedAssetPathId ? vars[normalizedAssetPathId] : "",
+    assetPaths.assetPath,
+    assetPaths.asset,
+    vars.assetPath,
+    vars.asset,
+    nonEmptyAssetPaths.length === 1 ? nonEmptyAssetPaths[0] : ""
+  ]);
 }
 
 function resolveTemplateFieldValue(
@@ -402,7 +434,7 @@ function resolveTemplateFieldValue(
   if (field.source === "variable") return vars[String(field.variableKey || "")];
   if (field.source === "static") return field.value ?? null;
   if (field.source === "captured_value") return capturedValues[String(field.capturedKey || "")];
-  const assetPath = String(assetPaths[String(field.assetPathId || "")] || "").trim();
+  const assetPath = resolveAssetPathReference(String(field.assetPathId || ""), assetPaths, vars);
   const attributeName = String(field.attributeName || "").trim();
   if (!assetPath || !attributeName) return null;
   return assetStore.getAttribute(`${assetPath}.${attributeName}`, null);
@@ -466,11 +498,17 @@ function buildTemplateMetadata(
   const renderVars = { ...assetPaths, ...vars };
   const eventPath = renderTemplate(template.eventPathTemplate, renderVars).trim();
   const closePattern = renderTemplate(template.closePatternTemplate || template.eventPathTemplate, renderVars).trim() || eventPath;
-  const assetPath = String(assetPaths.assetPath || "").trim() || String(vars.assetPath || "").trim();
+  const assetPath = firstNonEmptyString([assetPaths.assetPath, assetPaths.asset, vars.assetPath, vars.asset]);
   const uniquePattern = renderTemplate(template.uniquePatternTemplate || "", renderVars).trim();
   const requiredParentPattern = renderTemplate(template.requiredParentPattern || "", renderVars).trim();
   const closeOnOpenPatterns = (template.closeOnOpenPatterns || []).map((item) => renderTemplate(item, renderVars).trim()).filter(Boolean);
   const closeChildrenOnClosePatterns = (template.closeChildrenOnClosePatterns || []).map((item) => renderTemplate(item, renderVars).trim()).filter(Boolean);
+  const missingPathVars = Array.from(new Set((template.eventPathTemplate.match(/\{([^}]+)\}/g) || [])
+    .map((item) => item.slice(1, -1).trim())
+    .filter((key) => !hasRenderableValue(renderVars[key]))));
+  if (missingPathVars.length > 0) {
+    throw new Error(`Event template "${template.id}" is missing value(s) for event path: ${missingPathVars.join(", ")}`);
+  }
   return {
     id: template.id,
     eventPath,

@@ -6,11 +6,11 @@
   "triggers": [
     {
       "id": "trigger.watch_1772017838146",
-      "label": "taiyo1joblifecycle",
+      "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
       "type": "watcher_set",
       "enabled": true,
       "intervalMs": 1000,
-      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
+      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
       "message": {
         "payload": 0
       },
@@ -21,11 +21,11 @@
     },
     {
       "id": "trigger.watch_1772152779583",
-      "label": "activtiytaiyo1",
+      "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
       "type": "watcher_set",
       "enabled": true,
       "intervalMs": 1000,
-      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
+      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
       "message": {
         "payload": 0
       },
@@ -48,32 +48,6 @@
       "timezone": "",
       "activeFrom": "",
       "activeTo": ""
-    },
-    {
-      "id": "trigger.watch_1772772099483",
-      "label": "event trigger",
-      "type": "watcher_event_falling",
-      "enabled": true,
-      "intervalMs": 1000,
-      "watchPath": "*/Job/*/Activity/*/*",
-      "message": {
-        "payload": 0
-      },
-      "cronExpression": "",
-      "timezone": "",
-      "activeFrom": "",
-      "activeTo": ""
-    },
-    {
-      "id": "trigger.watch_1772991808347",
-      "label": "Jasuindo.OffsetPrinter.Taiyo1.test",
-      "type": "watcher_set",
-      "enabled": true,
-      "intervalMs": 1000,
-      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.test",
-      "message": {
-        "payload": 0
-      }
     }
   ],
   "actions": [
@@ -252,13 +226,28 @@
       "eventTemplateOverrides": {}
     },
     {
-      "id": "scripts.group.action_1772991838689",
-      "label": "detect \"buka\"",
+      "id": "Taiyo1.Events.JobLifecycle",
+      "label": "Taiyo1 Job Lifecycle Router",
       "type": "script",
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "if (msg.payload.value === \"buka\") {\r\n  send(msg)\r\n} else {\r\n  return;\r\n}\r\n"
+      "script": "const lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst alarmPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle Alarm\";\n\nif (![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: lifecycle === \"load\" ? \"open\" : \"close\",\n  notes: lifecycle === \"load\"\n    ? `${workOrder} lifecycle run opened`\n    : `${workOrder} lifecycle ${lifecycle}`\n};\n\nsend(msg);",
+      "eventTemplateId": "",
+      "eventTemplateOverrides": {},
+      "templateBindingOverrides": {}
+    },
+    {
+      "id": "Taiyo1.Events.JobActivity",
+      "label": "Taiyo1 Job Activity Router",
+      "type": "script",
+      "enabled": true,
+      "allowTreeDuplicate": true,
+      "description": "",
+      "script": "const rawActivity = String(msg.payload?.value ?? \"\").trim();\nconst workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst categoryPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category\";\nconst alarmPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity Alarm\";\n\nif (!rawActivity || rawActivity === \"-\") {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  await asset.set(categoryPath, \"-\");\n  return;\n}\n\nconst parts = rawActivity.split(\"/\").map((item) => item.trim()).filter(Boolean);\nconst categoryToken = String(parts[0] || \"\").toLowerCase();\nconst activityDetail = parts.slice(1).join(\"/\").trim() || \"Run\";\n\nlet categoryLabel = \"\";\nlet templateId = \"\";\nif (categoryToken === \"production\") {\n  categoryLabel = \"Production\";\n  templateId = \"template.taiyo.job.activity.production\";\n} else if (categoryToken === \"setup\") {\n  categoryLabel = \"Setup\";\n  templateId = \"template.taiyo.job.activity.setup\";\n} else if (categoryToken === \"idle\") {\n  categoryLabel = \"Idle\";\n  templateId = \"template.taiyo.job.activity.idle\";\n} else {\n  await asset.set(alarmPath, `!!!Unknown activity category: ${rawActivity}!!!`);\n  await asset.set(categoryPath, \"-\");\n  return;\n}\n\nawait asset.set(categoryPath, categoryLabel);\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: \"open\",\n  templateId,\n  vars: { activityDetail },\n  notes: `${workOrder} ${categoryLabel}/${activityDetail} opened`\n};\n\nsend(msg);",
+      "eventTemplateId": "",
+      "eventTemplateOverrides": {},
+      "templateBindingOverrides": {}
     }
   ],
   "flows": {
@@ -269,23 +258,33 @@
         "enabled": true
       },
       {
-        "from": "trigger.watch_1772991808347",
-        "to": "Scripts.debug",
-        "enabled": true
-      },
-      {
-        "from": "trigger.watch_1772991808347",
-        "to": "scripts.group.action_1772991838689",
-        "enabled": true
-      },
-      {
-        "from": "scripts.group.action_1772991838689",
-        "to": "event.open.events.test",
-        "enabled": true
-      },
-      {
         "from": "trigger.tick_1772164929424",
         "to": "Taiyo1.MES.TimeSpentPerActivity",
+        "enabled": true
+      },
+      {
+        "from": "trigger.watch_1772152779583",
+        "to": "Taiyo1.Events.JobLifecycle",
+        "enabled": true
+      },
+      {
+        "from": "Taiyo1.Events.JobLifecycle",
+        "to": "event.open.taiyo_job_lifecycle",
+        "enabled": true
+      },
+      {
+        "from": "Taiyo1.Events.JobLifecycle",
+        "to": "event.close.taiyo_job_lifecycle",
+        "enabled": true
+      },
+      {
+        "from": "trigger.watch_1772017838146",
+        "to": "Taiyo1.Events.JobActivity",
+        "enabled": true
+      },
+      {
+        "from": "Taiyo1.Events.JobActivity",
+        "to": "event.open.taiyo_job_activity",
         "enabled": true
       }
     ],
@@ -322,10 +321,6 @@
         "x": 360,
         "y": 310
       },
-      "Scripts.debug": {
-        "x": 960,
-        "y": 940
-      },
       "Taiyo1.Events.JobLifecycle": {
         "x": 1160,
         "y": 320
@@ -339,12 +334,12 @@
         "y": 400
       },
       "trigger.tick_1772164929424": {
-        "x": 440,
-        "y": 510
+        "x": 310,
+        "y": 370
       },
       "Taiyo1.MES.ProductCounter": {
-        "x": 780,
-        "y": 650
+        "x": 750,
+        "y": 260
       },
       "Taiyo1.PLC.PaperConsupCounter": {
         "x": 1180,
@@ -355,28 +350,32 @@
         "y": 720
       },
       "Taiyo1.MES.PaperConsumptionPerActivity": {
-        "x": 880,
-        "y": 490
-      },
-      "event.open.events.test": {
-        "x": 1810,
-        "y": 760
-      },
-      "event.close.events.test": {
-        "x": 1820,
-        "y": 690
-      },
-      "trigger.watch_1772991808347": {
-        "x": 640,
-        "y": 870
-      },
-      "scripts.group.action_1772991838689": {
-        "x": 1290,
-        "y": 760
+        "x": 780,
+        "y": 350
       },
       "Taiyo1.MES.TimeSpentPerActivity": {
-        "x": 880,
-        "y": 570
+        "x": 760,
+        "y": 430
+      },
+      "trigger.watch_1772152779583": {
+        "x": 450,
+        "y": 820
+      },
+      "event.open.taiyo_job_lifecycle": {
+        "x": 1650,
+        "y": 720
+      },
+      "event.close.taiyo_job_lifecycle": {
+        "x": 1670,
+        "y": 820
+      },
+      "trigger.watch_1772017838146": {
+        "x": 450,
+        "y": 990
+      },
+      "event.open.taiyo_job_activity": {
+        "x": 1660,
+        "y": 970
       }
     }
   },
@@ -391,8 +390,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": 1773000182005,
-            "ts": "2026-03-08T20:03:01.997Z"
+            "value": 1773042307255,
+            "ts": "2026-03-09T07:45:06.948Z"
           }
         }
       },
@@ -407,67 +406,67 @@
         ],
         "attributes": {
           "Machine Speed": {
-            "value": 6,
-            "ts": "2026-03-08T20:03:01.888Z"
+            "value": 102,
+            "ts": "2026-03-09T07:45:07.370Z"
           },
           "Encoder Raw Value": {
-            "value": 77,
-            "ts": "2026-03-08T20:03:01.892Z"
+            "value": 42,
+            "ts": "2026-03-09T07:45:07.375Z"
           },
           "Encoder Prev Value": {
-            "value": 78,
-            "ts": "2026-03-08T20:03:01.889Z"
+            "value": 45,
+            "ts": "2026-03-09T07:45:07.372Z"
           },
           "Work Order": {
-            "value": "WO123",
-            "ts": "2026-03-08T18:15:18.772Z"
+            "value": "WO-2026-0004",
+            "ts": "2026-03-09T07:37:26.045Z"
           },
           "Job Lifecycle": {
             "value": "load",
-            "ts": "2026-03-08T18:15:27.097Z"
+            "ts": "2026-03-09T07:37:26.046Z"
           },
           "Machine Operator": {
             "value": {
-              "value": "operator456",
-              "label": "Agoes"
+              "value": "operator123",
+              "label": "Alice2"
             },
-            "ts": "2026-03-04T02:47:41.807Z"
+            "ts": "2026-03-09T07:15:43.159Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
             "ts": "2026-03-06T04:52:30.413Z"
           },
           "Job Activity": {
-            "value": "-",
-            "ts": "2026-03-08T18:33:50.397Z"
+            "value": "Setup/WebbingTransportasi",
+            "ts": "2026-03-09T07:37:42.782Z"
           },
           "Paper Consumed Setup": {
-            "value": 174795,
-            "ts": "2026-03-08T20:03:01.889Z"
+            "value": 476432,
+            "ts": "2026-03-09T07:45:07.370Z"
           },
           "Job Activity Category": {
             "value": "Setup",
-            "ts": "2026-03-08T18:33:51.463Z"
+            "ts": "2026-03-09T07:37:42.785Z"
           },
           "Paper Consumed Production": {
-            "value": 0,
-            "ts": "2026-03-08T18:15:30.134Z"
+            "value": 22259,
+            "ts": "2026-03-09T07:21:52.404Z"
           },
           "Paper Consumed Idle": {
-            "value": 0,
-            "ts": "2026-03-06T06:03:12.104Z"
+            "value": 61975,
+            "ts": "2026-03-09T07:37:42.169Z"
           },
           "Total Production Time": {
-            "value": 0,
-            "ts": "2026-03-08T18:15:30.136Z"
+            "value": 689,
+            "ts": "2026-03-09T07:21:52.405Z"
           },
           "Total Setup Time": {
-            "value": 5279,
-            "ts": "2026-03-08T20:03:01.890Z"
+            "value": 22784,
+            "ts": "2026-03-09T07:45:07.373Z"
           },
           "Total Idle Time": {
-            "value": 0,
-            "ts": "2026-03-06T06:03:12.105Z"
+            "value": 1891,
+            "ts": "2026-03-09T07:37:42.171Z"
           },
           "Material Barcode": {
             "value": "materialABCDEFG",
@@ -479,7 +478,15 @@
           },
           "test": {
             "value": "buka",
-            "ts": "2026-03-08T19:36:11.915Z"
+            "ts": "2026-03-09T03:05:25.534Z"
+          },
+          "Total Paper Waste": {
+            "value": 538407,
+            "ts": "2026-03-09T07:45:07.371Z"
+          },
+          "Total Paper Consumed": {
+            "value": 560666,
+            "ts": "2026-03-09T07:45:07.372Z"
           }
         }
       },
@@ -933,7 +940,7 @@
           },
           {
             "enabled": true,
-            "name": "Product Count",
+            "name": "Product Count Per Fold",
             "valueType": "int32",
             "default": 0,
             "unit": "",
@@ -957,7 +964,7 @@
           },
           {
             "enabled": true,
-            "name": "Fold Length",
+            "name": "Product Fold Length",
             "valueType": "float32",
             "default": 0,
             "unit": "",
@@ -1383,115 +1390,16 @@
   },
   "eventTemplates": [
     {
-      "id": "template.event_1772991231976",
-      "enabled": true,
-      "eventPathTemplate": "{asset}/Event",
-      "closePatternTemplate": "{asset}/Event",
-      "eventPathBuilder": [
-        {
-          "type": "binding",
-          "value": "asset",
-          "separator": "/"
-        },
-        {
-          "type": "static",
-          "value": "Event",
-          "separator": ""
-        }
-      ],
-      "closePatternBuilder": [
-        {
-          "type": "binding",
-          "value": "asset",
-          "separator": "/"
-        },
-        {
-          "type": "static",
-          "value": "Event",
-          "separator": ""
-        }
-      ],
-      "bindings": [
-        {
-          "name": "asset",
-          "source": "asset",
-          "templateId": "template_1772291867711_154",
-          "defaultValue": ""
-        },
-        {
-          "name": "binding_2",
-          "source": "asset",
-          "templateId": "template_1772297957808_540",
-          "defaultValue": ""
-        }
-      ],
-      "assetPaths": [
-        {
-          "id": "asset",
-          "source": "variable",
-          "key": "asset",
-          "value": "",
-          "templateId": "template_1772291867711_154"
-        },
-        {
-          "id": "binding_2",
-          "source": "variable",
-          "key": "binding_2",
-          "value": "",
-          "templateId": "template_1772297957808_540"
-        }
-      ],
-      "snapshotTemplateId": "",
-      "severity": "other",
-      "contextBindings": {},
-      "contextFields": [
-        {
-          "key": "Machine Operator",
-          "source": "asset_path_attribute",
-          "assetPathId": "asset",
-          "attributeName": "Machine Operator"
-        }
-      ],
-      "timeSource": {
-        "open": {
-          "source": "now"
-        },
-        "close": {
-          "source": "now"
-        }
-      },
-      "capture": {
-        "onOpen": true,
-        "onClose": true
-      },
-      "captureFields": [
-        {
-          "key": "Paper Total Consumed",
-          "source": "asset_path_attribute",
-          "assetPathId": "binding_2",
-          "attributeName": "Paper Total Consumed"
-        }
-      ],
-      "allowParallel": false,
-      "uniquePatternBuilder": [],
-      "uniquePatternTemplate": "",
-      "closeChildrenOnClosePatterns": [],
-      "concurrencyMode": "unique_exact_path",
-      "closeChildrenOnClosePatternBuilders": [],
-      "requiredParentBuilder": [],
-      "requiredParentPattern": ""
-    },
-    {
       "id": "template.taiyo.job.lifecycle",
       "enabled": true,
       "allowParallel": false,
       "concurrencyMode": "unique_exact_path",
-      "eventPathTemplate": "{asset}/Job/{asset}/Lifecycle/Run",
-      "closePatternTemplate": "{asset}/Job/{activeJob}/Lifecycle/Run",
+      "eventPathTemplate": "{offsetPrinterAsset}/Job/{activeJob}/Lifecycle/Run",
+      "closePatternTemplate": "{offsetPrinterAsset}/Job/{activeJob}/Lifecycle/Run",
       "eventPathBuilder": [
         {
           "type": "binding",
-          "value": "asset",
+          "value": "offsetPrinterAsset",
           "separator": "/"
         },
         {
@@ -1501,7 +1409,7 @@
         },
         {
           "type": "binding",
-          "value": "asset",
+          "value": "activeJob",
           "separator": "/"
         },
         {
@@ -1518,7 +1426,7 @@
       "closePatternBuilder": [
         {
           "type": "binding",
-          "value": "asset",
+          "value": "offsetPrinterAsset",
           "separator": "/"
         },
         {
@@ -1544,15 +1452,80 @@
       ],
       "uniquePatternTemplate": "",
       "uniquePatternBuilder": [],
-      "closeOnOpenPatterns": [],
-      "closeOnOpenPatternBuilders": [],
+      "closeOnOpenPatterns": [
+        "{offsetPrinterAsset}/Job/*/Lifecycle/Run"
+      ],
+      "closeOnOpenPatternBuilders": [
+        [
+          {
+            "type": "binding",
+            "value": "offsetPrinterAsset",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Job",
+            "separator": "/"
+          },
+          {
+            "type": "wildcard",
+            "value": "*",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Lifecycle",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Run",
+            "separator": ""
+          }
+        ]
+      ],
       "requiredParentPattern": "",
       "requiredParentBuilder": [],
-      "closeChildrenOnClosePatterns": [],
-      "closeChildrenOnClosePatternBuilders": [],
+      "closeChildrenOnClosePatterns": [
+        "{offsetPrinterAsset}/Job/{activeJob}/Activity/*/*"
+      ],
+      "closeChildrenOnClosePatternBuilders": [
+        [
+          {
+            "type": "binding",
+            "value": "offsetPrinterAsset",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Job",
+            "separator": "/"
+          },
+          {
+            "type": "binding",
+            "value": "activeJob",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Activity",
+            "separator": "/"
+          },
+          {
+            "type": "wildcard",
+            "value": "*",
+            "separator": "/"
+          },
+          {
+            "type": "wildcard",
+            "value": "*",
+            "separator": ""
+          }
+        ]
+      ],
       "bindings": [
         {
-          "name": "asset",
+          "name": "offsetPrinterAsset",
           "source": "asset",
           "templateId": "template_1771523720677_855",
           "defaultValue": ""
@@ -1560,11 +1533,11 @@
         {
           "name": "activeJob",
           "source": "attribute",
-          "templateId": "",
+          "templateId": "template_1772291867711_154",
           "defaultValue": ""
         },
         {
-          "name": "mes",
+          "name": "mesMeta",
           "source": "asset",
           "templateId": "template_1772291867711_154",
           "defaultValue": ""
@@ -1576,18 +1549,20 @@
           "defaultValue": ""
         }
       ],
+      "snapshotTemplateId": "",
+      "severity": "high",
       "assetPaths": [
         {
-          "id": "asset",
+          "id": "offsetPrinterAsset",
           "source": "variable",
-          "key": "asset",
+          "key": "offsetPrinterAsset",
           "value": "",
           "templateId": "template_1771523720677_855"
         },
         {
-          "id": "mes",
+          "id": "mesMeta",
           "source": "variable",
-          "key": "mes",
+          "key": "mesMeta",
           "value": "",
           "templateId": "template_1772291867711_154"
         },
@@ -1599,15 +1574,25 @@
           "templateId": "template_1772297957808_540"
         }
       ],
-      "snapshotTemplateId": "",
-      "severity": "other",
       "contextBindings": {},
       "contextFields": [
         {
           "key": "Machine Operator",
           "source": "asset_path_attribute",
-          "assetPathId": "mes",
-          "attributeName": "Machine Operator"
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesMeta",
+          "attributeName": "Machine Operator",
+          "capturedKey": ""
+        },
+        {
+          "key": "Work Order",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesMeta",
+          "attributeName": "Work Order",
+          "capturedKey": ""
         }
       ],
       "timeSource": {
@@ -1626,8 +1611,917 @@
         {
           "key": "Total Paper Consumed",
           "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
           "assetPathId": "mesData",
-          "attributeName": "Total Paper Consumed"
+          "attributeName": "Total Paper Consumed",
+          "capturedKey": ""
+        }
+      ]
+    },
+    {
+      "id": "template.taiyo.job.activity.production",
+      "enabled": true,
+      "allowParallel": false,
+      "concurrencyMode": "unique_exact_path",
+      "eventPathTemplate": "{offsetPrinterAsset}/Job/{activeJob}/Activity/Production/{activityDetail}",
+      "closePatternTemplate": "{offsetPrinterAsset}/Job/{activeJob}/Activity/Production/{activityDetail}",
+      "eventPathBuilder": [
+        {
+          "type": "binding",
+          "value": "offsetPrinterAsset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Job",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activeJob",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Activity",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Production",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activityDetail",
+          "separator": ""
+        }
+      ],
+      "closePatternBuilder": [
+        {
+          "type": "binding",
+          "value": "offsetPrinterAsset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Job",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activeJob",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Activity",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Production",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activityDetail",
+          "separator": ""
+        }
+      ],
+      "uniquePatternTemplate": "",
+      "uniquePatternBuilder": [],
+      "closeOnOpenPatterns": [
+        "{offsetPrinterAsset}/Job/{activeJob}/Activity/Setup/*",
+        "{offsetPrinterAsset}/Job/{activeJob}/Activity/Idle/*"
+      ],
+      "closeOnOpenPatternBuilders": [
+        [
+          {
+            "type": "binding",
+            "value": "offsetPrinterAsset",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Job",
+            "separator": "/"
+          },
+          {
+            "type": "binding",
+            "value": "activeJob",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Activity",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Setup",
+            "separator": "/"
+          },
+          {
+            "type": "wildcard",
+            "value": "*",
+            "separator": ""
+          }
+        ],
+        [
+          {
+            "type": "binding",
+            "value": "offsetPrinterAsset",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Job",
+            "separator": "/"
+          },
+          {
+            "type": "binding",
+            "value": "activeJob",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Activity",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Idle",
+            "separator": "/"
+          },
+          {
+            "type": "wildcard",
+            "value": "*",
+            "separator": ""
+          }
+        ]
+      ],
+      "requiredParentPattern": "{offsetPrinterAsset}/Job/{activeJob}/Lifecycle/Run",
+      "requiredParentBuilder": [
+        {
+          "type": "binding",
+          "value": "offsetPrinterAsset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Job",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activeJob",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Lifecycle",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Run",
+          "separator": ""
+        }
+      ],
+      "closeChildrenOnClosePatterns": [],
+      "closeChildrenOnClosePatternBuilders": [],
+      "bindings": [
+        {
+          "name": "offsetPrinterAsset",
+          "source": "asset",
+          "templateId": "template_1771523720677_855",
+          "defaultValue": ""
+        },
+        {
+          "name": "mesMeta",
+          "source": "asset",
+          "templateId": "template_1772291867711_154",
+          "defaultValue": ""
+        },
+        {
+          "name": "mesData",
+          "source": "asset",
+          "templateId": "template_1772297957808_540",
+          "defaultValue": ""
+        },
+        {
+          "name": "activeJob",
+          "source": "attribute",
+          "templateId": "template_1772291867711_154",
+          "defaultValue": ""
+        },
+        {
+          "name": "activityDetail",
+          "source": "msg_path",
+          "templateId": "",
+          "defaultValue": ""
+        }
+      ],
+      "snapshotTemplateId": "",
+      "severity": "medium",
+      "assetPaths": [
+        {
+          "id": "offsetPrinterAsset",
+          "source": "variable",
+          "key": "offsetPrinterAsset",
+          "value": "",
+          "templateId": "template_1771523720677_855"
+        },
+        {
+          "id": "mesMeta",
+          "source": "variable",
+          "key": "mesMeta",
+          "value": "",
+          "templateId": "template_1772291867711_154"
+        },
+        {
+          "id": "mesData",
+          "source": "variable",
+          "key": "mesData",
+          "value": "",
+          "templateId": "template_1772297957808_540"
+        }
+      ],
+      "contextBindings": {},
+      "contextFields": [
+        {
+          "key": "Activity Category",
+          "source": "static",
+          "variableKey": "",
+          "value": "Production",
+          "assetPathId": "",
+          "attributeName": "",
+          "capturedKey": ""
+        },
+        {
+          "key": "Activity Detail",
+          "source": "variable",
+          "variableKey": "activityDetail",
+          "value": "",
+          "assetPathId": "",
+          "attributeName": "",
+          "capturedKey": ""
+        },
+        {
+          "key": "Machine Operator",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesMeta",
+          "attributeName": "Machine Operator",
+          "capturedKey": ""
+        },
+        {
+          "key": "Work Order",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesMeta",
+          "attributeName": "Work Order",
+          "capturedKey": ""
+        },
+        {
+          "key": "Material Barcode",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesData",
+          "attributeName": "Material Barcode",
+          "capturedKey": ""
+        }
+      ],
+      "timeSource": {
+        "open": {
+          "source": "now"
+        },
+        "close": {
+          "source": "now"
+        }
+      },
+      "capture": {
+        "onOpen": true,
+        "onClose": true
+      },
+      "captureFields": [
+        {
+          "key": "Total Paper Consumed",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesData",
+          "attributeName": "Total Paper Consumed",
+          "capturedKey": ""
+        }
+      ]
+    },
+    {
+      "id": "template.taiyo.job.activity.setup",
+      "enabled": true,
+      "allowParallel": false,
+      "concurrencyMode": "unique_exact_path",
+      "eventPathTemplate": "{offsetPrinterAsset}/Job/{activeJob}/Activity/Setup/{activityDetail}",
+      "closePatternTemplate": "{offsetPrinterAsset}/Job/{activeJob}/Activity/Setup/{activityDetail}",
+      "eventPathBuilder": [
+        {
+          "type": "binding",
+          "value": "offsetPrinterAsset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Job",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activeJob",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Activity",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Setup",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activityDetail",
+          "separator": ""
+        }
+      ],
+      "closePatternBuilder": [
+        {
+          "type": "binding",
+          "value": "offsetPrinterAsset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Job",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activeJob",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Activity",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Setup",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activityDetail",
+          "separator": ""
+        }
+      ],
+      "uniquePatternTemplate": "",
+      "uniquePatternBuilder": [],
+      "closeOnOpenPatterns": [
+        "{offsetPrinterAsset}/Job/{activeJob}/Activity/Production/*",
+        "{offsetPrinterAsset}/Job/{activeJob}/Activity/Idle/*"
+      ],
+      "closeOnOpenPatternBuilders": [
+        [
+          {
+            "type": "binding",
+            "value": "offsetPrinterAsset",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Job",
+            "separator": "/"
+          },
+          {
+            "type": "binding",
+            "value": "activeJob",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Activity",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Production",
+            "separator": "/"
+          },
+          {
+            "type": "wildcard",
+            "value": "*",
+            "separator": ""
+          }
+        ],
+        [
+          {
+            "type": "binding",
+            "value": "offsetPrinterAsset",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Job",
+            "separator": "/"
+          },
+          {
+            "type": "binding",
+            "value": "activeJob",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Activity",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Idle",
+            "separator": "/"
+          },
+          {
+            "type": "wildcard",
+            "value": "*",
+            "separator": ""
+          }
+        ]
+      ],
+      "requiredParentPattern": "{offsetPrinterAsset}/Job/{activeJob}/Lifecycle/Run",
+      "requiredParentBuilder": [
+        {
+          "type": "binding",
+          "value": "offsetPrinterAsset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Job",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activeJob",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Lifecycle",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Run",
+          "separator": ""
+        }
+      ],
+      "closeChildrenOnClosePatterns": [],
+      "closeChildrenOnClosePatternBuilders": [],
+      "bindings": [
+        {
+          "name": "offsetPrinterAsset",
+          "source": "asset",
+          "templateId": "template_1771523720677_855",
+          "defaultValue": ""
+        },
+        {
+          "name": "mesMeta",
+          "source": "asset",
+          "templateId": "template_1772291867711_154",
+          "defaultValue": ""
+        },
+        {
+          "name": "mesData",
+          "source": "asset",
+          "templateId": "template_1772297957808_540",
+          "defaultValue": ""
+        },
+        {
+          "name": "activeJob",
+          "source": "attribute",
+          "templateId": "template_1772291867711_154",
+          "defaultValue": ""
+        },
+        {
+          "name": "activityDetail",
+          "source": "msg_path",
+          "templateId": "",
+          "defaultValue": ""
+        }
+      ],
+      "snapshotTemplateId": "",
+      "severity": "medium",
+      "assetPaths": [
+        {
+          "id": "offsetPrinterAsset",
+          "source": "variable",
+          "key": "offsetPrinterAsset",
+          "value": "",
+          "templateId": "template_1771523720677_855"
+        },
+        {
+          "id": "mesMeta",
+          "source": "variable",
+          "key": "mesMeta",
+          "value": "",
+          "templateId": "template_1772291867711_154"
+        },
+        {
+          "id": "mesData",
+          "source": "variable",
+          "key": "mesData",
+          "value": "",
+          "templateId": "template_1772297957808_540"
+        }
+      ],
+      "contextBindings": {},
+      "contextFields": [
+        {
+          "key": "Activity Category",
+          "source": "static",
+          "variableKey": "",
+          "value": "Setup",
+          "assetPathId": "",
+          "attributeName": "",
+          "capturedKey": ""
+        },
+        {
+          "key": "Activity Detail",
+          "source": "variable",
+          "variableKey": "activityDetail",
+          "value": "",
+          "assetPathId": "",
+          "attributeName": "",
+          "capturedKey": ""
+        },
+        {
+          "key": "Machine Operator",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesMeta",
+          "attributeName": "Machine Operator",
+          "capturedKey": ""
+        },
+        {
+          "key": "Work Order",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesMeta",
+          "attributeName": "Work Order",
+          "capturedKey": ""
+        },
+        {
+          "key": "Material Barcode",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesData",
+          "attributeName": "Material Barcode",
+          "capturedKey": ""
+        }
+      ],
+      "timeSource": {
+        "open": {
+          "source": "now"
+        },
+        "close": {
+          "source": "now"
+        }
+      },
+      "capture": {
+        "onOpen": true,
+        "onClose": true
+      },
+      "captureFields": [
+        {
+          "key": "Total Paper Consumed",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesData",
+          "attributeName": "Total Paper Consumed",
+          "capturedKey": ""
+        }
+      ]
+    },
+    {
+      "id": "template.taiyo.job.activity.idle",
+      "enabled": true,
+      "allowParallel": false,
+      "concurrencyMode": "unique_exact_path",
+      "eventPathTemplate": "{offsetPrinterAsset}/Job/{activeJob}/Activity/Idle/{activityDetail}",
+      "closePatternTemplate": "{offsetPrinterAsset}/Job/{activeJob}/Activity/Idle/{activityDetail}",
+      "eventPathBuilder": [
+        {
+          "type": "binding",
+          "value": "offsetPrinterAsset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Job",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activeJob",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Activity",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Idle",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activityDetail",
+          "separator": ""
+        }
+      ],
+      "closePatternBuilder": [
+        {
+          "type": "binding",
+          "value": "offsetPrinterAsset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Job",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activeJob",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Activity",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Idle",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activityDetail",
+          "separator": ""
+        }
+      ],
+      "uniquePatternTemplate": "",
+      "uniquePatternBuilder": [],
+      "closeOnOpenPatterns": [
+        "{offsetPrinterAsset}/Job/{activeJob}/Activity/Production/*",
+        "{offsetPrinterAsset}/Job/{activeJob}/Activity/Setup/*"
+      ],
+      "closeOnOpenPatternBuilders": [
+        [
+          {
+            "type": "binding",
+            "value": "offsetPrinterAsset",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Job",
+            "separator": "/"
+          },
+          {
+            "type": "binding",
+            "value": "activeJob",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Activity",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Production",
+            "separator": "/"
+          },
+          {
+            "type": "wildcard",
+            "value": "*",
+            "separator": ""
+          }
+        ],
+        [
+          {
+            "type": "binding",
+            "value": "offsetPrinterAsset",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Job",
+            "separator": "/"
+          },
+          {
+            "type": "binding",
+            "value": "activeJob",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Activity",
+            "separator": "/"
+          },
+          {
+            "type": "static",
+            "value": "Setup",
+            "separator": "/"
+          },
+          {
+            "type": "wildcard",
+            "value": "*",
+            "separator": ""
+          }
+        ]
+      ],
+      "requiredParentPattern": "{offsetPrinterAsset}/Job/{activeJob}/Lifecycle/Run",
+      "requiredParentBuilder": [
+        {
+          "type": "binding",
+          "value": "offsetPrinterAsset",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Job",
+          "separator": "/"
+        },
+        {
+          "type": "binding",
+          "value": "activeJob",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Lifecycle",
+          "separator": "/"
+        },
+        {
+          "type": "static",
+          "value": "Run",
+          "separator": ""
+        }
+      ],
+      "closeChildrenOnClosePatterns": [],
+      "closeChildrenOnClosePatternBuilders": [],
+      "bindings": [
+        {
+          "name": "offsetPrinterAsset",
+          "source": "asset",
+          "templateId": "template_1771523720677_855",
+          "defaultValue": ""
+        },
+        {
+          "name": "mesMeta",
+          "source": "asset",
+          "templateId": "template_1772291867711_154",
+          "defaultValue": ""
+        },
+        {
+          "name": "mesData",
+          "source": "asset",
+          "templateId": "template_1772297957808_540",
+          "defaultValue": ""
+        },
+        {
+          "name": "activeJob",
+          "source": "attribute",
+          "templateId": "template_1772291867711_154",
+          "defaultValue": ""
+        },
+        {
+          "name": "activityDetail",
+          "source": "msg_path",
+          "templateId": "",
+          "defaultValue": ""
+        }
+      ],
+      "snapshotTemplateId": "",
+      "severity": "medium",
+      "assetPaths": [
+        {
+          "id": "offsetPrinterAsset",
+          "source": "variable",
+          "key": "offsetPrinterAsset",
+          "value": "",
+          "templateId": "template_1771523720677_855"
+        },
+        {
+          "id": "mesMeta",
+          "source": "variable",
+          "key": "mesMeta",
+          "value": "",
+          "templateId": "template_1772291867711_154"
+        },
+        {
+          "id": "mesData",
+          "source": "variable",
+          "key": "mesData",
+          "value": "",
+          "templateId": "template_1772297957808_540"
+        }
+      ],
+      "contextBindings": {},
+      "contextFields": [
+        {
+          "key": "Activity Category",
+          "source": "static",
+          "variableKey": "",
+          "value": "Idle",
+          "assetPathId": "",
+          "attributeName": "",
+          "capturedKey": ""
+        },
+        {
+          "key": "Activity Detail",
+          "source": "variable",
+          "variableKey": "activityDetail",
+          "value": "",
+          "assetPathId": "",
+          "attributeName": "",
+          "capturedKey": ""
+        },
+        {
+          "key": "Machine Operator",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesMeta",
+          "attributeName": "Machine Operator",
+          "capturedKey": ""
+        },
+        {
+          "key": "Work Order",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesMeta",
+          "attributeName": "Work Order",
+          "capturedKey": ""
+        },
+        {
+          "key": "Material Barcode",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesData",
+          "attributeName": "Material Barcode",
+          "capturedKey": ""
+        }
+      ],
+      "timeSource": {
+        "open": {
+          "source": "now"
+        },
+        "close": {
+          "source": "now"
+        }
+      },
+      "capture": {
+        "onOpen": true,
+        "onClose": true
+      },
+      "captureFields": [
+        {
+          "key": "Total Paper Consumed",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesData",
+          "attributeName": "Total Paper Consumed",
+          "capturedKey": ""
         }
       ]
     }
@@ -2127,65 +3021,68 @@
   ],
   "eventActions": [
     {
-      "id": "events.test",
-      "label": "testEvent",
-      "enabled": true,
-      "description": "",
-      "templateId": "template.event_1772991231976",
-      "bindings": {
-        "assetPath": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-        },
-        "mesAttribtues": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-        },
-        "asset": {
-          "source": "asset",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-        },
-        "binding_2": {
-          "source": "asset",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-        },
-        "binding_3": {
-          "source": "asset",
-          "attributePath": "Jasuindo"
-        }
-      },
-      "openNotes": "buka",
-      "closeNotes": "tutup",
-      "templateOverrides": {}
-    },
-    {
-      "id": "events.group.event_1772999527732",
-      "label": "taiyo1JobLifecycle",
+      "id": "taiyo_job_lifecycle",
+      "label": "taiyo_job_lifecycle",
       "enabled": true,
       "description": "",
       "templateId": "template.taiyo.job.lifecycle",
       "bindings": {
-        "activeJob": {
-          "source": "attribute",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Machine Speed"
-        },
-        "asset": {
+        "offsetPrinterAsset": {
           "source": "asset",
+          "staticValue": "",
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
         },
-        "mes": {
+        "activeJob": {
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
+        },
+        "mesMeta": {
           "source": "asset",
+          "staticValue": "",
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
         },
         "mesData": {
           "source": "asset",
+          "staticValue": "",
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
         }
       },
       "openNotes": "",
-      "closeNotes": ""
+      "closeNotes": "",
+      "templateOverrides": {}
+    },
+    {
+      "id": "taiyo_job_activity",
+      "label": "taiyo_job_activity",
+      "enabled": true,
+      "description": "",
+      "templateId": "template.taiyo.job.activity.production",
+      "bindings": {
+        "offsetPrinterAsset": {
+          "source": "asset",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+        },
+        "activeJob": {
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
+        },
+        "mesMeta": {
+          "source": "asset",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+        },
+        "mesData": {
+          "source": "asset",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+        }
+      },
+      "openNotes": "",
+      "closeNotes": "",
+      "templateOverrides": {}
     }
   ]
 }

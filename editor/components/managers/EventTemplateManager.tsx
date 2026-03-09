@@ -37,7 +37,7 @@ interface EventTemplateManagerProps {
   selectedTemplateId: string;
   onSelectTemplate: (id: string) => void;
   onAddTemplate: () => void;
-  onAddPresetTemplate: (preset: "job_lifecycle" | "job_activity" | "machine_alarm") => void;
+  onDuplicateTemplate: (id: string) => void;
   onRemoveTemplate: (id: string) => void;
   onUpdateTemplate: (id: string, patch: Partial<EventTemplateDefinition>) => void;
 }
@@ -202,13 +202,17 @@ function updateNestedPathSegment(
   );
 }
 
+function clonePathSegments(segments: EventTemplatePathSegmentDefinition[] | undefined): EventTemplatePathSegmentDefinition[] {
+  return (segments || []).map((segment) => ({ ...segment }));
+}
+
 export default function EventTemplateManager({
   assets,
   eventTemplates,
   selectedTemplateId,
   onSelectTemplate,
   onAddTemplate,
-  onAddPresetTemplate,
+  onDuplicateTemplate,
   onRemoveTemplate,
   onUpdateTemplate
 }: EventTemplateManagerProps) {
@@ -256,20 +260,6 @@ export default function EventTemplateManager({
           <Button variant="outlined" onClick={onAddTemplate}>
             Add Blank Event Template
           </Button>
-          <Typography variant="caption" color="text.secondary">
-            Quick start presets
-          </Typography>
-          <Box sx={{ display: "grid", gap: 0.5 }}>
-            <Button size="small" variant="outlined" onClick={() => onAddPresetTemplate("job_lifecycle")}>
-              Add Preset: Job Lifecycle
-            </Button>
-            <Button size="small" variant="outlined" onClick={() => onAddPresetTemplate("job_activity")}>
-              Add Preset: Job Activity
-            </Button>
-            <Button size="small" variant="outlined" onClick={() => onAddPresetTemplate("machine_alarm")}>
-              Add Preset: Machine Alarm
-            </Button>
-          </Box>
         </Box>
         <TextField size="small" label="Search Event Template" value={search} onChange={(e) => setSearch(e.target.value)} />
         <Box sx={{ display: "grid", gap: 0.75, maxHeight: "calc(100vh - 260px)", ...scrollBothOverflowSx }}>
@@ -295,9 +285,14 @@ export default function EventTemplateManager({
           <Box sx={{ display: "grid", gap: 1.25 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Typography variant="h6">Event Template Detail</Typography>
-              <Button color="error" variant="outlined" onClick={() => onRemoveTemplate(selected.id)}>
-                Remove
-              </Button>
+              <Box sx={{ display: "flex", gap: 0.75 }}>
+                <Button variant="outlined" onClick={() => onDuplicateTemplate(selected.id)}>
+                  Duplicate
+                </Button>
+                <Button color="error" variant="outlined" onClick={() => onRemoveTemplate(selected.id)}>
+                  Remove
+                </Button>
+              </Box>
             </Box>
 
             <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5 }}>
@@ -448,26 +443,44 @@ export default function EventTemplateManager({
                         Build pattern with `/` to model hierarchy. Bindings are explicit. No automatic parsing from curly braces.
                       </Typography>
                     </Box>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => {
-                        const nextSegments = [...segments, buildEmptyPathSegment()];
-                        const rendered = renderEventTemplatePathBuilder(nextSegments);
-                        onUpdateTemplate(selected.id, {
-                          [builderDef.key]: nextSegments,
-                          ...(builderDef.key === "eventPathBuilder"
-                            ? { eventPathTemplate: rendered }
-                            : builderDef.key === "closePatternBuilder"
-                              ? { closePatternTemplate: rendered }
-                              : builderDef.key === "uniquePatternBuilder"
-                                ? { uniquePatternTemplate: rendered }
-                                : { requiredParentPattern: rendered })
-                        } as Partial<EventTemplateDefinition>);
-                      }}
-                    >
-                      Add Segment
-                    </Button>
+                    <Box sx={{ display: "flex", gap: 0.75 }}>
+                      {builderDef.key === "closePatternBuilder" && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => {
+                            const nextSegments = clonePathSegments(selected.eventPathBuilder);
+                            const rendered = renderEventTemplatePathBuilder(nextSegments);
+                            onUpdateTemplate(selected.id, {
+                              closePatternBuilder: nextSegments,
+                              closePatternTemplate: rendered
+                            });
+                          }}
+                        >
+                          Same with Open Event Path Builder
+                        </Button>
+                      )}
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => {
+                          const nextSegments = [...segments, buildEmptyPathSegment()];
+                          const rendered = renderEventTemplatePathBuilder(nextSegments);
+                          onUpdateTemplate(selected.id, {
+                            [builderDef.key]: nextSegments,
+                            ...(builderDef.key === "eventPathBuilder"
+                              ? { eventPathTemplate: rendered }
+                              : builderDef.key === "closePatternBuilder"
+                                ? { closePatternTemplate: rendered }
+                                : builderDef.key === "uniquePatternBuilder"
+                                  ? { uniquePatternTemplate: rendered }
+                                  : { requiredParentPattern: rendered })
+                          } as Partial<EventTemplateDefinition>);
+                        }}
+                      >
+                        Add Segment
+                      </Button>
+                    </Box>
                   </Box>
                   <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, ...scrollBothOverflowSx }}>
                     <Table size="small" stickyHeader>
