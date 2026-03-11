@@ -52,6 +52,116 @@ function toJsonValueOrNull(value: unknown): unknown | null {
   return value;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    if (keysA.length !== keysB.length) return false;
+    for (const key of keysA) {
+      if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+      if (!deepEqual(a[key], b[key])) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+function containsObject(source: unknown, expected: unknown): boolean {
+  if (!isPlainObject(source) || !isPlainObject(expected)) return false;
+  for (const [key, value] of Object.entries(expected)) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) return false;
+    const srcValue = source[key];
+    if (isPlainObject(value)) {
+      if (!containsObject(srcValue, value)) return false;
+      continue;
+    }
+    if (Array.isArray(value)) {
+      if (!Array.isArray(srcValue)) return false;
+      if (!deepEqual(srcValue, value)) return false;
+      continue;
+    }
+    if (!deepEqual(srcValue, value)) return false;
+  }
+  return true;
+}
+
+function matchAttributeValue(operator: string, actualValue: unknown, expectedValue: unknown): boolean {
+  if (operator === "eq") return deepEqual(actualValue, expectedValue);
+  if (operator === "neq") return !deepEqual(actualValue, expectedValue);
+  if (operator === "contains") {
+    if (typeof actualValue === "string") {
+      return actualValue.includes(String(expectedValue ?? ""));
+    }
+    if (Array.isArray(actualValue)) {
+      return actualValue.some((item) => deepEqual(item, expectedValue));
+    }
+    return false;
+  }
+  if (operator === "contains_object") {
+    return containsObject(actualValue, expectedValue);
+  }
+  return false;
+}
+
+async function getEventRangeFromStore(
+  eventStore: ReturnType<typeof ensureEventStore>,
+  pattern = "*",
+  from = "*",
+  to = "*",
+  status = "*",
+  contextFilters: Record<string, unknown> = {},
+  options: Record<string, unknown> = {}
+): Promise<{ start_ts: string | null; end_ts: string | null; count: number }> {
+  const rows = await eventStore.get(pattern, from, to, status, contextFilters, {
+    limit: 5000,
+    ...(options || {})
+  });
+  if (rows.length === 0) {
+    return { start_ts: null, end_ts: null, count: 0 };
+  }
+
+  let earliestMs: number | null = null;
+  let earliestTs: string | null = null;
+  let latestMs: number | null = null;
+  let latestTs: string | null = null;
+  const nowIso = new Date().toISOString();
+  const nowMs = Date.parse(nowIso);
+
+  for (const row of rows) {
+    const startRaw = String(row.start_ts || "").trim();
+    const startMs = startRaw ? Date.parse(startRaw) : Number.NaN;
+    if (Number.isFinite(startMs) && (earliestMs == null || startMs < earliestMs)) {
+      earliestMs = startMs;
+      earliestTs = new Date(startMs).toISOString();
+    }
+
+    const endRaw = String(row.end_ts || "").trim();
+    const endMs = endRaw ? Date.parse(endRaw) : nowMs;
+    if (Number.isFinite(endMs) && (latestMs == null || endMs > latestMs)) {
+      latestMs = endMs;
+      latestTs = endRaw ? new Date(endMs).toISOString() : nowIso;
+    }
+  }
+
+  return {
+    start_ts: earliestTs,
+    end_ts: latestTs,
+    count: rows.length
+  };
+}
+
 export default function createApiServer(runtime: Runtime, options: { port?: number; host?: string } = {}) {
   const port = options.port ?? 4000;
   const host = options.host ?? "0.0.0.0";
@@ -612,6 +722,53 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     res.status(200).json({ path: pathQuery, count: matches.length, matches });
   });
 
+  app.post("/api/assets/find-asset-paths", (req, res) => {
+    try {
+      const body = (req.body || {}) as Record<string, unknown>;
+      const scopePath = String(body.scopePath || body.path || "").trim();
+      const logic = String(body.logic || "AND").trim().toUpperCase() === "OR" ? "OR" : "AND";
+      const filters = Array.isArray(body.filters) ? body.filters : [];
+      if (!scopePath) {
+        res.status(400).json({ error: "scopePath is required" });
+        return;
+      }
+      if (filters.length === 0) {
+        res.status(400).json({ error: "filters is required and must not be empty" });
+        return;
+      }
+
+      const assets = assetStore.query(scopePath).filter((item) => item.kind === "asset");
+      const matches = assets.filter((item) => {
+        const assetValue = item.value as unknown as Record<string, unknown>;
+        const attributes = isPlainObject(assetValue?.attributes) ? (assetValue.attributes as Record<string, unknown>) : {};
+        const filterResults = filters.map((rawFilter) => {
+          const filter = isPlainObject(rawFilter) ? rawFilter : {};
+          const attributeName = String(filter.attributeName || "").trim();
+          const operator = String(filter.operator || "eq").trim().toLowerCase();
+          if (!attributeName) return false;
+          if (!["eq", "neq", "contains", "contains_object"].includes(operator)) return false;
+          const attrEntry = attributes[attributeName];
+          const actualValue = isPlainObject(attrEntry) ? (attrEntry as Record<string, unknown>).value : undefined;
+          return matchAttributeValue(operator, actualValue, filter.value);
+        });
+        return logic === "OR" ? filterResults.some(Boolean) : filterResults.every(Boolean);
+      }).map((item) => ({
+        path: item.path,
+        assetId: item.assetId,
+        name: isPlainObject(item.value) ? String((item.value as Record<string, unknown>).name || "") : ""
+      }));
+
+      res.status(200).json({
+        scopePath,
+        logic,
+        count: matches.length,
+        matches
+      });
+    } catch (error: unknown) {
+      res.status(400).json({ error: getErrorMessage(error) });
+    }
+  });
+
   app.get(["/api/assets/find", "/api/assets/find-by-value"], (req, res) => {
     const pathQuery = queryString(req, "path") || "*.*.*";
     const rawValue = queryString(req, "value");
@@ -661,6 +818,28 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
         limit: result.limit,
         offset: result.offset,
         rows: result.rows
+      });
+    } catch (error: unknown) {
+      res.status(400).json({ error: getErrorMessage(error) });
+    }
+  });
+
+  app.get("/api/events/range", async (req, res) => {
+    try {
+      const pattern = queryString(req, "pattern") || "*";
+      const from = queryString(req, "from") || "*";
+      const to = queryString(req, "to") || "*";
+      const status = queryString(req, "status") || "*";
+      const contextRaw = queryString(req, "context");
+      const contextFilters = contextRaw && contextRaw.trim() ? JSON.parse(contextRaw) : {};
+      const limit = Number(queryString(req, "limit") || 5000);
+      const range = await getEventRangeFromStore(eventStore, pattern, from, to, status, contextFilters, { limit });
+      res.status(200).json({
+        pattern,
+        from,
+        to,
+        status,
+        ...range
       });
     } catch (error: unknown) {
       res.status(400).json({ error: getErrorMessage(error) });

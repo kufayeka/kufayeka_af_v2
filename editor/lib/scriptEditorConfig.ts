@@ -192,6 +192,30 @@ declare interface ScriptContext {
       contextFilters?: Record<string, any>,
       options?: { limit?: number }
     ) => Promise<any[]>;
+    getEarliestTs: (
+      pattern: string,
+      from: string,
+      to: string,
+      status: string,
+      contextFilters?: Record<string, any>,
+      options?: { limit?: number }
+    ) => Promise<string | null>;
+    getLatestTs: (
+      pattern: string,
+      from: string,
+      to: string,
+      status: string,
+      contextFilters?: Record<string, any>,
+      options?: { limit?: number }
+    ) => Promise<string | null>;
+    getRange: (
+      pattern: string,
+      from: string,
+      to: string,
+      status: string,
+      contextFilters?: Record<string, any>,
+      options?: { limit?: number }
+    ) => Promise<{ start_ts: string | null; end_ts: string | null; count: number }>;
   };
   db: {
     query: (sql: string, params?: any[]) => Promise<{ rows: Array<Record<string, any>>; rowCount: number }>;
@@ -303,6 +327,24 @@ declare const db: ScriptContext["db"];
         insertText: "eventSys.get(${1:pattern}, \"*\", \"*\", \"*\", ${2:{}}, ${3:{ limit: 100 }});",
         detail: "Query events",
         documentation: "Query events by path/time/status/context."
+      },
+      {
+        label: "eventSys.getEarliestTs",
+        insertText: "eventSys.getEarliestTs(${1:pattern}, \"*\", \"*\", \"*\", ${2:{}}, ${3:{ limit: 5000 }});",
+        detail: "Get earliest event start timestamp",
+        documentation: "Return earliest start_ts among matched events."
+      },
+      {
+        label: "eventSys.getLatestTs",
+        insertText: "eventSys.getLatestTs(${1:pattern}, \"*\", \"*\", \"*\", ${2:{}}, ${3:{ limit: 5000 }});",
+        detail: "Get latest event end timestamp",
+        documentation: "Return latest end_ts among matched events. If latest end_ts is empty, fallback to now."
+      },
+      {
+        label: "eventSys.getRange",
+        insertText: "eventSys.getRange(${1:pattern}, \"*\", \"*\", \"*\", ${2:{}}, ${3:{ limit: 5000 }});",
+        detail: "Get event time range",
+        documentation: "Return earliest start_ts and latest end_ts among matched events. If latest end_ts is empty, fallback to now."
       },
       {
         label: "db.query",

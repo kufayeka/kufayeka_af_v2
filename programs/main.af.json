@@ -106,7 +106,7 @@
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "const raw = Number(EncoderRawValue?.value ?? 0);\r\nconst prevRaw = Number(EncoderPrevRaw?.value ?? 0);\r\nconst prevRawPath = EncoderPrevRaw?.path ?? \"\";\r\nconst machineSpeedPath = MachineSpeed?.path ?? \"\";\r\n\r\n// counter paths\r\nconst setupPath = PaperConsumedSetup?.path ?? \"\";\r\nconst idlePath = PaperConsumedIdle?.path ?? \"\";\r\nconst prodPath = PaperConsumedProduction?.path ?? \"\";\r\nconst wastePath = PaperWaste?.path ?? \"\";\r\nconst totalConsumedPath = PaperTotalConsumed?.path ?? \"\";\r\nconst jobActivityCategory = JobActivityCategoryAttribute?.value ?? \"\";\r\n\r\nif (!prevRawPath) { send(msg); return; }\r\n\r\n// hitung delta (normal naik -> selisih, reset turun -> raw)\r\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\r\n\r\nif (!Number.isFinite(delta) || delta < 0) {\r\n  asset.set(prevRawPath, raw);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// ===== SPEED =====\r\n// 1 pulse = 0.1 m, update tiap 1 detik => m/min = delta * 0.1 * 60 = delta * 6\r\nconst speedMpm = delta * 6;\r\n\r\n// kalau mau 0 speed saat delta=0 juga ke-set\r\nif (machineSpeedPath) asset.set(machineSpeedPath, speedMpm);\r\n\r\n// kalau delta = 0, skip konsumsi kertas tapi prevRaw tetap update\r\nif (delta === 0) {\r\n  asset.set(prevRawPath, raw);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// baca nilai sebelumnya\r\nconst setupPrev = Number(PaperConsumedSetup?.value ?? 0);\r\nconst idlePrev = Number(PaperConsumedIdle?.value ?? 0);\r\nconst prodPrev = Number(PaperConsumedProduction?.value ?? 0);\r\n\r\nlet setupNew = setupPrev;\r\nlet idleNew = idlePrev;\r\nlet prodNew = prodPrev;\r\n\r\n// routing delta ke jobActivityCategory\r\nif (jobActivityCategory === \"Setup\") setupNew += delta;\r\nelse if (jobActivityCategory === \"Idle\") idleNew += delta;\r\nelse if (jobActivityCategory === \"Production\") prodNew += delta;\r\nelse helpers.log(\"no activity\");\r\n\r\n// set counters kalau path tersedia\r\nif (setupPath) asset.set(setupPath, setupNew);\r\nif (idlePath) asset.set(idlePath, idleNew);\r\nif (prodPath) asset.set(prodPath, prodNew);\r\n\r\n// waste & total\r\nconst waste = setupNew + idleNew;\r\nconst totalConsumed = waste + prodNew;\r\n\r\nif (wastePath) asset.set(wastePath, waste);\r\nif (totalConsumedPath) asset.set(totalConsumedPath, totalConsumed);\r\n\r\n// simpan raw terakhir\r\nasset.set(prevRawPath, raw);\r\n\r\nsend(msg);",
+      "script": "const raw = Number(EncoderRawValue?.value ?? 0);\nconst prevRaw = Number(EncoderPrevRaw?.value ?? 0);\nconst prevRawPath = EncoderPrevRaw?.path ?? \"\";\nconst machineSpeedPath = MachineSpeed?.path ?? \"\";\nconst setupPath = PaperConsumedSetup?.path ?? \"\";\nconst idlePath = PaperConsumedIdle?.path ?? \"\";\nconst prodPath = PaperConsumedProduction?.path ?? \"\";\nconst wastePath = PaperWaste?.path ?? \"\";\nconst totalConsumedPath = PaperTotalConsumed?.path ?? \"\";\nconst workOrderPath = \"Jasuindo.OffsetPrinter.Taiyo1.Work Order\";\nconst categoryPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category\";\nconst alarmPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity Alarm\";\nconst assetPath = \"Jasuindo.OffsetPrinter.Taiyo1\";\nconst workOrder = String(asset.get(workOrderPath, \"\") ?? \"\").trim();\n\nif (!prevRawPath) {\n  send(msg);\n  return;\n}\n\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(delta) || delta < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nconst speedMpm = delta * 6;\nif (machineSpeedPath) {\n  await asset.set(machineSpeedPath, speedMpm);\n}\n\nlet activeCategory = \"-\";\nlet activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nif (delta === 0 || activeCategories.length !== 1) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nconst setupPrev = Number(PaperConsumedSetup?.value ?? 0);\nconst idlePrev = Number(PaperConsumedIdle?.value ?? 0);\nconst prodPrev = Number(PaperConsumedProduction?.value ?? 0);\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += delta;\nelse if (activeCategory === \"Idle\") idleNew += delta;\nelse if (activeCategory === \"Production\") prodNew += delta;\n\nif (setupPath) await asset.set(setupPath, setupNew);\nif (idlePath) await asset.set(idlePath, idleNew);\nif (prodPath) await asset.set(prodPath, prodNew);\n\nconst waste = setupNew + idleNew;\nconst totalConsumed = waste + prodNew;\n\nif (wastePath) await asset.set(wastePath, waste);\nif (totalConsumedPath) await asset.set(totalConsumedPath, totalConsumed);\n\nawait asset.set(prevRawPath, raw);\n\nsend(msg);",
       "templateId": "template.script_1772296918869",
       "templateBindingOverrides": {
         "EncoderRawValue": {
@@ -190,7 +190,7 @@
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "// ===== INPUT =====\r\nconst rawMode = String(JobActivityCategoryAttribute?.value ?? \"\")\r\n  .trim()\r\n  .toLowerCase();\r\n\r\n// ===== OUTPUT PATHS =====\r\nconst setupPath = SetupDurationSec?.path ?? \"\";\r\nconst idlePath = IdleDurationSec?.path ?? \"\";\r\nconst prodPath = ProductionDurationSec?.path ?? \"\";\r\n\r\nif (!setupPath || !idlePath || !prodPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// ===== AMBIL NILAI SEBELUMNYA =====\r\nlet setupTime = Number(SetupDurationSec?.value ?? 0);\r\nlet idleTime = Number(IdleDurationSec?.value ?? 0);\r\nlet prodTime = Number(ProductionDurationSec?.value ?? 0);\r\n\r\n// ===== IDENTIFIKASI MODE (support Setup/X dll) =====\r\nlet mode = \"\";\r\n\r\nif (rawMode.startsWith(\"setup\")) mode = \"setup\";\r\nelse if (rawMode.startsWith(\"idle\")) mode = \"idle\";\r\nelse if (rawMode.startsWith(\"production\")) mode = \"production\";\r\n\r\n// ===== TAMBAH 1 DETIK SESUAI MODE =====\r\nif (mode === \"setup\") setupTime += 1;\r\nelse if (mode === \"idle\") idleTime += 1;\r\nelse if (mode === \"production\") prodTime += 1;\r\n\r\n// ===== SIMPAN =====\r\nasset.set(setupPath, setupTime);\r\nasset.set(idlePath, idleTime);\r\nasset.set(prodPath, prodTime);\r\n\r\nsend(msg);",
+      "script": "const setupPath = SetupDurationSec?.path ?? \"\";\nconst idlePath = IdleDurationSec?.path ?? \"\";\nconst prodPath = ProductionDurationSec?.path ?? \"\";\nconst runningHourPath = RunningHour?.path ?? \"\";\nconst workOrderPath = \"Jasuindo.OffsetPrinter.Taiyo1.Work Order\";\nconst categoryPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category\";\nconst alarmPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity Alarm\";\nconst assetPath = \"Jasuindo.OffsetPrinter.Taiyo1\";\nconst workOrder = String(asset.get(workOrderPath, \"\") ?? \"\").trim();\n\nif (!setupPath || !idlePath || !prodPath || !runningHourPath) {\n  send(msg);\n  return;\n}\n\nlet setupTime = Number(SetupDurationSec?.value ?? 0);\nlet idleTime = Number(IdleDurationSec?.value ?? 0);\nlet prodTime = Number(ProductionDurationSec?.value ?? 0);\nlet runningHour = Number(RunningHour?.value ?? 0);\n\nlet activeCategory = \"-\";\nlet activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nif (activeCategory === \"Setup\") setupTime += 1;\nelse if (activeCategory === \"Idle\") idleTime += 1;\nelse if (activeCategory === \"Production\") prodTime += 1;\n\nif (activeCategories.length === 1) {\n  runningHour += 1;\n}\n\nawait asset.set(setupPath, setupTime);\nawait asset.set(idlePath, idleTime);\nawait asset.set(prodPath, prodTime);\nawait asset.set(runningHourPath, runningHour);\n\nsend(msg);",
       "templateId": "template.script_1772340546636",
       "templateBindingOverrides": {
         "JobActivityCategoryAttribute": {
@@ -220,6 +220,13 @@
           "staticValue": "",
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Total Production Time",
           "allowOverride": true
+        },
+        "RunningHour": {
+          "name": "RunningHour",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Running Hour",
+          "allowOverride": true
         }
       },
       "eventTemplateId": "",
@@ -232,7 +239,7 @@
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "const lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst alarmPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle Alarm\";\n\nif (![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: lifecycle === \"load\" ? \"open\" : \"close\",\n  notes: lifecycle === \"load\"\n    ? `${workOrder} lifecycle run opened`\n    : `${workOrder} lifecycle ${lifecycle}`\n};\n\nsend(msg);",
+      "script": "const lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst alarmPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle Alarm\";\nconst categoryPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category\";\n\nif (![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nif (lifecycle === \"load\") {\n  await asset.setMany([\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Setup\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Idle\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Paper Waste\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Paper Consumed\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Setup Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Idle Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Production Time\", value: 0 },\n    { path: categoryPath, value: \"-\" },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity Alarm\", value: \"-\" }\n  ]);\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: lifecycle === \"load\" ? \"open\" : \"close\",\n  notes: lifecycle === \"load\"\n    ? `${workOrder} lifecycle run opened`\n    : `${workOrder} lifecycle ${lifecycle}`\n};\n\nsend(msg);",
       "eventTemplateId": "",
       "eventTemplateOverrides": {},
       "templateBindingOverrides": {}
@@ -322,16 +329,16 @@
         "y": 310
       },
       "Taiyo1.Events.JobLifecycle": {
-        "x": 1160,
-        "y": 320
+        "x": 1080,
+        "y": 780
       },
       "Taiyo2.Events.JobLifecycle": {
         "x": 1150,
         "y": 390
       },
       "Taiyo1.Events.JobActivity": {
-        "x": 1160,
-        "y": 400
+        "x": 1060,
+        "y": 980
       },
       "trigger.tick_1772164929424": {
         "x": 310,
@@ -354,7 +361,7 @@
         "y": 350
       },
       "Taiyo1.MES.TimeSpentPerActivity": {
-        "x": 760,
+        "x": 780,
         "y": 430
       },
       "trigger.watch_1772152779583": {
@@ -390,8 +397,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": 1773042307255,
-            "ts": "2026-03-09T07:45:06.948Z"
+            "value": 1773211976011,
+            "ts": "2026-03-11T06:52:55.996Z"
           }
         }
       },
@@ -402,91 +409,133 @@
         "templateIds": [
           "template_1771523720677_855",
           "template_1772291867711_154",
-          "template_1772297957808_540"
+          "template_1772297957808_540",
+          "template_1773204375581_992"
         ],
         "attributes": {
           "Machine Speed": {
-            "value": 102,
-            "ts": "2026-03-09T07:45:07.370Z"
+            "value": 0,
+            "ts": "2026-03-11T06:44:18.341Z"
           },
           "Encoder Raw Value": {
-            "value": 42,
-            "ts": "2026-03-09T07:45:07.375Z"
+            "value": 628,
+            "ts": "2026-03-11T06:44:16.360Z"
           },
           "Encoder Prev Value": {
-            "value": 45,
-            "ts": "2026-03-09T07:45:07.372Z"
+            "value": 628,
+            "ts": "2026-03-11T06:44:17.792Z"
           },
           "Work Order": {
-            "value": "WO-2026-0004",
-            "ts": "2026-03-09T07:37:26.045Z"
+            "value": "WO-2026-0018",
+            "ts": "2026-03-11T06:33:54.698Z"
           },
           "Job Lifecycle": {
             "value": "load",
-            "ts": "2026-03-09T07:37:26.046Z"
+            "ts": "2026-03-11T06:34:05.574Z"
           },
           "Machine Operator": {
             "value": {
-              "value": "operator123",
-              "label": "Alice2"
+              "label": "Alice Operator",
+              "value": "90efaa37-9275-41d5-bb90-06352d055f1b"
             },
-            "ts": "2026-03-09T07:15:43.159Z"
+            "ts": "2026-03-11T06:52:20.844Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-03-06T04:52:30.413Z"
+            "ts": "2026-03-11T02:08:24.202Z"
           },
           "Job Activity": {
-            "value": "Setup/WebbingTransportasi",
-            "ts": "2026-03-09T07:37:42.782Z"
+            "value": "Setup/Kertas",
+            "ts": "2026-03-11T06:34:21.076Z"
           },
           "Paper Consumed Setup": {
-            "value": 476432,
-            "ts": "2026-03-09T07:45:07.370Z"
+            "value": 628,
+            "ts": "2026-03-11T06:44:17.790Z"
           },
           "Job Activity Category": {
             "value": "Setup",
-            "ts": "2026-03-09T07:37:42.785Z"
+            "ts": "2026-03-11T06:34:21.077Z"
           },
           "Paper Consumed Production": {
-            "value": 22259,
-            "ts": "2026-03-09T07:21:52.404Z"
+            "value": 0,
+            "ts": "2026-03-11T02:35:18.097Z"
           },
           "Paper Consumed Idle": {
-            "value": 61975,
-            "ts": "2026-03-09T07:37:42.169Z"
+            "value": 0,
+            "ts": "2026-03-11T03:56:12.124Z"
           },
           "Total Production Time": {
-            "value": 689,
-            "ts": "2026-03-09T07:21:52.405Z"
+            "value": 0,
+            "ts": "2026-03-11T02:35:18.098Z"
           },
           "Total Setup Time": {
-            "value": 22784,
-            "ts": "2026-03-09T07:45:07.373Z"
+            "value": 1107,
+            "ts": "2026-03-11T06:52:56.076Z"
           },
           "Total Idle Time": {
-            "value": 1891,
-            "ts": "2026-03-09T07:37:42.171Z"
+            "value": 0,
+            "ts": "2026-03-11T03:56:12.125Z"
           },
           "Material Barcode": {
-            "value": "materialABCDEFG",
-            "ts": "2026-03-02T07:05:59.680Z"
+            "value": "Material001",
+            "ts": "2026-03-11T02:12:31.443Z"
           },
           "Job Activity Alarm": {
             "value": "-",
             "ts": "2026-03-06T02:03:07.120Z"
           },
-          "test": {
-            "value": "buka",
-            "ts": "2026-03-09T03:05:25.534Z"
-          },
           "Total Paper Waste": {
-            "value": 538407,
-            "ts": "2026-03-09T07:45:07.371Z"
+            "value": 628,
+            "ts": "2026-03-11T06:44:17.791Z"
           },
           "Total Paper Consumed": {
-            "value": 560666,
-            "ts": "2026-03-09T07:45:07.372Z"
+            "value": 628,
+            "ts": "2026-03-11T06:44:17.792Z"
+          },
+          "Product Fold Length": {
+            "value": 30,
+            "ts": "2026-03-11T02:12:31.444Z"
+          },
+          "Product Count Per Fold": {
+            "value": 4,
+            "ts": "2026-03-11T02:12:31.444Z"
+          },
+          "Running Hour": {
+            "value": 5586,
+            "ts": "2026-03-11T06:52:56.077Z"
+          },
+          "Product Good Count": {
+            "value": 0,
+            "ts": "2026-03-11T02:12:31.445Z"
+          },
+          "Product Reject Count": {
+            "value": 0,
+            "ts": "2026-03-11T02:12:31.445Z"
+          },
+          "Ply": {
+            "value": "0/8",
+            "ts": "2026-03-11T02:12:31.445Z"
+          },
+          "Assigned Operator Shift 1": {
+            "value": {
+              "label": "OP3",
+              "value": "op1"
+            },
+            "ts": "2026-03-11T06:50:19.114Z"
+          },
+          "Assigned Operator Shift 3": {
+            "value": {
+              "label": "OP3",
+              "value": "op5"
+            },
+            "ts": "2026-03-11T04:59:10.021Z"
+          },
+          "Assigned Operator Shift 2": {
+            "value": {
+              "label": "Alice Operator",
+              "value": "90efaa37-9275-41d5-bb90-06352d055f1b"
+            },
+            "ts": "2026-03-11T06:50:19.853Z"
           }
         }
       },
@@ -495,9 +544,18 @@
         "name": "Taiyo2",
         "parentId": "asset_1772088636848_239",
         "templateIds": [
-          "template_1771523720677_855"
+          "template_1771523720677_855",
+          "template_1773204375581_992"
         ],
-        "attributes": {}
+        "attributes": {
+          "Assigned Operator Shift 1": {
+            "value": {
+              "label": "OP1",
+              "value": "op5"
+            },
+            "ts": "2026-03-11T04:58:35.848Z"
+          }
+        }
       },
       {
         "id": "asset_1772088636848_239",
@@ -644,30 +702,6 @@
             "valueType": "int16",
             "default": 0,
             "unit": "meter/minute",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "test",
-            "valueType": "string",
-            "default": 0,
-            "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
             "historianTargetId": "default",
@@ -1153,6 +1187,30 @@
             "numberSuffix": "",
             "numberAllowDecimal": true,
             "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Product Total Count",
+            "valueType": "int32",
+            "default": 0,
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
           }
         ]
       },
@@ -1357,6 +1415,108 @@
             "name": "Material Barcode",
             "valueType": "string",
             "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Ply",
+            "valueType": "string",
+            "default": "-",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          }
+        ]
+      },
+      {
+        "id": "template_1773204375581_992",
+        "name": "OPERATOR_ASSIGNMENT",
+        "attributes": [
+          {
+            "enabled": true,
+            "name": "Assigned Operator Shift 1",
+            "valueType": "object",
+            "default": {},
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Assigned Operator Shift 2",
+            "valueType": "object",
+            "default": "{}",
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Assigned Operator Shift 3",
+            "valueType": "object",
+            "default": "{}",
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
@@ -1616,6 +1776,29 @@
           "assetPathId": "mesData",
           "attributeName": "Total Paper Consumed",
           "capturedKey": ""
+        },
+        {
+          "key": "Product Good Count",
+          "source": "asset_path_attribute",
+          "assetPathId": "mesMeta",
+          "attributeName": "Product Good Count"
+        },
+        {
+          "key": "Product Reject COunt",
+          "source": "asset_path_attribute",
+          "assetPathId": "mesMeta",
+          "attributeName": "Product Reject Count"
+        },
+        {
+          "key": "Running Hour",
+          "source": "asset_path_attribute",
+          "assetPathId": "offsetPrinterAsset",
+          "attributeName": "Running Hour"
+        },
+        {
+          "key": "field_5",
+          "source": "variable",
+          "variableKey": ""
         }
       ]
     },
@@ -1894,6 +2077,15 @@
           "value": "",
           "assetPathId": "mesData",
           "attributeName": "Material Barcode",
+          "capturedKey": ""
+        },
+        {
+          "key": "Ply",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesData",
+          "attributeName": "Ply",
           "capturedKey": ""
         }
       ],
@@ -2197,6 +2389,15 @@
           "assetPathId": "mesData",
           "attributeName": "Material Barcode",
           "capturedKey": ""
+        },
+        {
+          "key": "Ply",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesData",
+          "attributeName": "Ply",
+          "capturedKey": ""
         }
       ],
       "timeSource": {
@@ -2498,6 +2699,15 @@
           "value": "",
           "assetPathId": "mesData",
           "attributeName": "Material Barcode",
+          "capturedKey": ""
+        },
+        {
+          "key": "Ply",
+          "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "mesData",
+          "attributeName": "Ply",
           "capturedKey": ""
         }
       ],
@@ -2890,7 +3100,7 @@
       "id": "template.script_1772296918869",
       "name": "TaiyoPaperConsumptionPerActivity",
       "description": "",
-      "script": "const raw = Number(EncoderRawValue?.value ?? 0);\r\nconst prevRaw = Number(EncoderPrevRaw?.value ?? 0);\r\nconst prevRawPath = EncoderPrevRaw?.path ?? \"\";\r\nconst machineSpeedPath = MachineSpeed?.path ?? \"\";\r\n\r\n// counter paths\r\nconst setupPath = PaperConsumedSetup?.path ?? \"\";\r\nconst idlePath = PaperConsumedIdle?.path ?? \"\";\r\nconst prodPath = PaperConsumedProduction?.path ?? \"\";\r\nconst wastePath = PaperWaste?.path ?? \"\";\r\nconst totalConsumedPath = PaperTotalConsumed?.path ?? \"\";\r\nconst jobActivityCategory = JobActivityCategoryAttribute?.value ?? \"\";\r\n\r\nif (!prevRawPath) { send(msg); return; }\r\n\r\n// hitung delta (normal naik -> selisih, reset turun -> raw)\r\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\r\n\r\nif (!Number.isFinite(delta) || delta < 0) {\r\n  asset.set(prevRawPath, raw);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// ===== SPEED =====\r\n// 1 pulse = 0.1 m, update tiap 1 detik => m/min = delta * 0.1 * 60 = delta * 6\r\nconst speedMpm = delta * 6;\r\n\r\n// kalau mau 0 speed saat delta=0 juga ke-set\r\nif (machineSpeedPath) asset.set(machineSpeedPath, speedMpm);\r\n\r\n// kalau delta = 0, skip konsumsi kertas tapi prevRaw tetap update\r\nif (delta === 0) {\r\n  asset.set(prevRawPath, raw);\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// baca nilai sebelumnya\r\nconst setupPrev = Number(PaperConsumedSetup?.value ?? 0);\r\nconst idlePrev = Number(PaperConsumedIdle?.value ?? 0);\r\nconst prodPrev = Number(PaperConsumedProduction?.value ?? 0);\r\n\r\nlet setupNew = setupPrev;\r\nlet idleNew = idlePrev;\r\nlet prodNew = prodPrev;\r\n\r\n// routing delta ke jobActivityCategory\r\nif (jobActivityCategory === \"Setup\") setupNew += delta;\r\nelse if (jobActivityCategory === \"Idle\") idleNew += delta;\r\nelse if (jobActivityCategory === \"Production\") prodNew += delta;\r\nelse helpers.log(\"no activity\");\r\n\r\n// set counters kalau path tersedia\r\nif (setupPath) asset.set(setupPath, setupNew);\r\nif (idlePath) asset.set(idlePath, idleNew);\r\nif (prodPath) asset.set(prodPath, prodNew);\r\n\r\n// waste & total\r\nconst waste = setupNew + idleNew;\r\nconst totalConsumed = waste + prodNew;\r\n\r\nif (wastePath) asset.set(wastePath, waste);\r\nif (totalConsumedPath) asset.set(totalConsumedPath, totalConsumed);\r\n\r\n// simpan raw terakhir\r\nasset.set(prevRawPath, raw);\r\n\r\nsend(msg);",
+      "script": "const raw = Number(EncoderRawValue?.value ?? 0);\nconst prevRaw = Number(EncoderPrevRaw?.value ?? 0);\nconst prevRawPath = EncoderPrevRaw?.path ?? \"\";\nconst machineSpeedPath = MachineSpeed?.path ?? \"\";\nconst setupPath = PaperConsumedSetup?.path ?? \"\";\nconst idlePath = PaperConsumedIdle?.path ?? \"\";\nconst prodPath = PaperConsumedProduction?.path ?? \"\";\nconst wastePath = PaperWaste?.path ?? \"\";\nconst totalConsumedPath = PaperTotalConsumed?.path ?? \"\";\nconst workOrderPath = \"Jasuindo.OffsetPrinter.Taiyo1.Work Order\";\nconst categoryPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category\";\nconst alarmPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity Alarm\";\nconst assetPath = \"Jasuindo.OffsetPrinter.Taiyo1\";\nconst workOrder = String(asset.get(workOrderPath, \"\") ?? \"\").trim();\n\nif (!prevRawPath) {\n  send(msg);\n  return;\n}\n\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(delta) || delta < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nconst speedMpm = delta * 6;\nif (machineSpeedPath) {\n  await asset.set(machineSpeedPath, speedMpm);\n}\n\nlet activeCategory = \"-\";\nlet activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nif (delta === 0 || activeCategories.length !== 1) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nconst setupPrev = Number(PaperConsumedSetup?.value ?? 0);\nconst idlePrev = Number(PaperConsumedIdle?.value ?? 0);\nconst prodPrev = Number(PaperConsumedProduction?.value ?? 0);\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += delta;\nelse if (activeCategory === \"Idle\") idleNew += delta;\nelse if (activeCategory === \"Production\") prodNew += delta;\n\nif (setupPath) await asset.set(setupPath, setupNew);\nif (idlePath) await asset.set(idlePath, idleNew);\nif (prodPath) await asset.set(prodPath, prodNew);\n\nconst waste = setupNew + idleNew;\nconst totalConsumed = waste + prodNew;\n\nif (wastePath) await asset.set(wastePath, waste);\nif (totalConsumedPath) await asset.set(totalConsumedPath, totalConsumed);\n\nawait asset.set(prevRawPath, raw);\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -2985,7 +3195,7 @@
       "id": "template.script_1772340546636",
       "name": "TaiyoTimeSpentPerActivity",
       "description": "",
-      "script": "// ===== INPUT =====\r\nconst rawMode = String(JobActivityCategoryAttribute?.value ?? \"\")\r\n  .trim()\r\n  .toLowerCase();\r\n\r\n// ===== OUTPUT PATHS =====\r\nconst setupPath = SetupDurationSec?.path ?? \"\";\r\nconst idlePath = IdleDurationSec?.path ?? \"\";\r\nconst prodPath = ProductionDurationSec?.path ?? \"\";\r\n\r\nif (!setupPath || !idlePath || !prodPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\n// ===== AMBIL NILAI SEBELUMNYA =====\r\nlet setupTime = Number(SetupDurationSec?.value ?? 0);\r\nlet idleTime = Number(IdleDurationSec?.value ?? 0);\r\nlet prodTime = Number(ProductionDurationSec?.value ?? 0);\r\n\r\n// ===== IDENTIFIKASI MODE (support Setup/X dll) =====\r\nlet mode = \"\";\r\n\r\nif (rawMode.startsWith(\"setup\")) mode = \"setup\";\r\nelse if (rawMode.startsWith(\"idle\")) mode = \"idle\";\r\nelse if (rawMode.startsWith(\"production\")) mode = \"production\";\r\n\r\n// ===== TAMBAH 1 DETIK SESUAI MODE =====\r\nif (mode === \"setup\") setupTime += 1;\r\nelse if (mode === \"idle\") idleTime += 1;\r\nelse if (mode === \"production\") prodTime += 1;\r\n\r\n// ===== SIMPAN =====\r\nasset.set(setupPath, setupTime);\r\nasset.set(idlePath, idleTime);\r\nasset.set(prodPath, prodTime);\r\n\r\nsend(msg);",
+      "script": "const setupPath = SetupDurationSec?.path ?? \"\";\nconst idlePath = IdleDurationSec?.path ?? \"\";\nconst prodPath = ProductionDurationSec?.path ?? \"\";\nconst runningHourPath = RunningHour?.path ?? \"\";\nconst workOrderPath = \"Jasuindo.OffsetPrinter.Taiyo1.Work Order\";\nconst categoryPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity Category\";\nconst alarmPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity Alarm\";\nconst assetPath = \"Jasuindo.OffsetPrinter.Taiyo1\";\nconst workOrder = String(asset.get(workOrderPath, \"\") ?? \"\").trim();\n\nif (!setupPath || !idlePath || !prodPath || !runningHourPath) {\n  send(msg);\n  return;\n}\n\nlet setupTime = Number(SetupDurationSec?.value ?? 0);\nlet idleTime = Number(IdleDurationSec?.value ?? 0);\nlet prodTime = Number(ProductionDurationSec?.value ?? 0);\nlet runningHour = Number(RunningHour?.value ?? 0);\n\nlet activeCategory = \"-\";\nlet activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nif (activeCategory === \"Setup\") setupTime += 1;\nelse if (activeCategory === \"Idle\") idleTime += 1;\nelse if (activeCategory === \"Production\") prodTime += 1;\n\nif (activeCategories.length === 1) {\n  runningHour += 1;\n}\n\nawait asset.set(setupPath, setupTime);\nawait asset.set(idlePath, idleTime);\nawait asset.set(prodPath, prodTime);\nawait asset.set(runningHourPath, runningHour);\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -3011,6 +3221,13 @@
         },
         {
           "name": "ProductionDurationSec",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "RunningHour",
           "source": "attribute",
           "staticValue": "",
           "attributePath": "",

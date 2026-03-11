@@ -195,7 +195,7 @@ export default function createScriptActionHandler(
   const template = action.templateId ? templateById.get(action.templateId) : null;
   const rawScript = (template && template.script) || action.script || "send(msg);";
   const script = rawScript
-    .replace(/(?<!\bawait\s)eventSys\.(openTemplateFromAction|closeTemplateFromAction|openTemplate|closeTemplate|open|close|get)\s*\(/g, "await eventSys.$1(")
+    .replace(/(?<!\bawait\s)eventSys\.(openTemplateFromAction|closeTemplateFromAction|openTemplate|closeTemplate|open|close|get|getEarliestTs|getLatestTs|getRange)\s*\(/g, "await eventSys.$1(")
     .replace(/(?<!\bawait\s)asset\.(set|setMany)\s*\(/g, "await asset.$1(")
     .replace(/(?<!\bawait\s)db\.(query|executeSafe|testConnection)\s*\(/g, "await db.$1(")
     .replace(/(?<!\bawait\s)helpers\.http\s*\(/g, "await helpers.http(");

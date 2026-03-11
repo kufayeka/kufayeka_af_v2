@@ -47,10 +47,33 @@ Note:
 - `open(path, ts, context, notes, severity?, captured_data_on_open?)`
 - `close(pattern, ts, notes, captured_data_on_close?)`
 - `get(pattern, from, to, status, contextFilters, options?)`
+- `getEarliestTs(pattern, from, to, status, contextFilters, options?)`
+- `getLatestTs(pattern, from, to, status, contextFilters, options?)`
+- `getRange(pattern, from, to, status, contextFilters, options?)`
 - `openTemplate(templateId, options?)`
 - `closeTemplate(templateId, options?)`
 - `openTemplateFromAction(options?)`
 - `closeTemplateFromAction(options?)`
+
+Example:
+
+```js
+const range = await eventSys.getRange(
+  "Jasuindo.OffsetPrinter.Taiyo1/Job/WO-2026-0011/*",
+  "*",
+  "*",
+  "*",
+  {},
+  { limit: 5000 }
+);
+
+helpers.log("range", range.start_ts, range.end_ts, range.count);
+```
+
+Notes:
+- `start_ts` = earliest `start_ts` from matched rows.
+- `end_ts` = latest `end_ts` from matched rows.
+- If latest matched `end_ts` is empty, runtime falls back to `helpers.now()`.
 
 ### `context.db`
 

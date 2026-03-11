@@ -95,6 +95,39 @@ export const OPENAPI_RUNTIME_SPEC = {
         responses: { 200: { description: "Query result", content: { "application/json": { schema: { $ref: "#/components/schemas/AssetQueryResponse" } } } }, 400: { description: "Bad request", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } } }
       }
     },
+    "/api/assets/find-asset-paths": {
+      post: {
+        tags: ["Assets"],
+        summary: "Find asset paths by raw attribute value",
+        description: "Search assets inside `scopePath` and compare raw `asset.attributes[attributeName].value` using one or more filters.",
+        operationId: "findAssetPathsByAttributeValue",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/FindAssetPathsRequest" },
+              example: {
+                scopePath: "Jasuindo.OffsetPrinter.*",
+                logic: "AND",
+                filters: [
+                  {
+                    attributeName: "Machine Operator",
+                    operator: "contains_object",
+                    value: {
+                      value: "90efaa37-9275-41d5-bb90-06352d055f1b"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        responses: {
+          200: { description: "Matched asset paths", content: { "application/json": { schema: { $ref: "#/components/schemas/FindAssetPathsResponse" } } } },
+          400: { description: "Bad request", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
     "/api/assets/find-by-value": {
       get: {
         tags: ["Assets"],
@@ -175,6 +208,20 @@ export const OPENAPI_RUNTIME_SPEC = {
         operationId: "deleteEventsByFilter",
         parameters: [{ $ref: "#/components/parameters/EventPatternQuery" }, { $ref: "#/components/parameters/EventStatusQuery" }, { $ref: "#/components/parameters/EventFromQuery" }, { $ref: "#/components/parameters/EventToQuery" }, { $ref: "#/components/parameters/EventSeverityQuery" }],
         responses: { 200: { description: "Delete result", content: { "application/json": { schema: { $ref: "#/components/schemas/DeleteEventsResponse" } } } } }
+      }
+    },
+    "/api/events/range": {
+      get: {
+        tags: ["Events"],
+        summary: "Get event time range",
+        description:
+          "Returns earliest `start_ts` and latest `end_ts` for matched events. If the latest matched event has empty `end_ts`, response falls back to current server time.",
+        operationId: "getEventRange",
+        parameters: [{ $ref: "#/components/parameters/EventPatternQuery" }, { $ref: "#/components/parameters/EventFromQuery" }, { $ref: "#/components/parameters/EventToQuery" }, { $ref: "#/components/parameters/EventStatusQuery" }, { $ref: "#/components/parameters/EventContextQuery" }, { $ref: "#/components/parameters/EventLimitQuery" }],
+        responses: {
+          200: { description: "Event range result", content: { "application/json": { schema: { $ref: "#/components/schemas/EventRangeResponse" } } } },
+          400: { description: "Invalid filter or JSON in context", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+        }
       }
     },
     "/api/events/open": {
@@ -577,6 +624,35 @@ export const OPENAPI_RUNTIME_SPEC = {
       AssetHierarchyResponse: { type: "object", required: ["populated", "count", "data"], properties: { populated: { type: "boolean" }, count: { type: "integer" }, data: { type: "array", items: { type: "object", additionalProperties: true } } } },
       AssetQueryResponse: { type: "object", required: ["path", "count", "matches"], properties: { path: { type: "string" }, count: { type: "integer" }, matches: { type: "array", items: { oneOf: [{ $ref: "#/components/schemas/AssetQueryMatch" }, { $ref: "#/components/schemas/AttributeQueryMatch" }] } } } },
       AssetFinderResponse: { type: "object", required: ["path", "strict", "count", "assetCount", "matches", "assets"], properties: { path: { type: "string" }, expectedValue: { $ref: "#/components/schemas/JsonValue" }, strict: { type: "boolean" }, count: { type: "integer" }, assetCount: { type: "integer" }, matches: { type: "array", items: { $ref: "#/components/schemas/AttributeQueryMatch" } }, assets: { type: "array", items: { type: "object", required: ["assetId", "path"], properties: { assetId: { type: "string" }, path: { type: "string" } } } } } },
+      AssetPathMatch: { type: "object", required: ["path", "assetId", "name"], properties: { path: { type: "string" }, assetId: { type: "string" }, name: { type: "string" } } },
+      FindAssetPathsFilter: {
+        type: "object",
+        required: ["attributeName", "operator", "value"],
+        properties: {
+          attributeName: { type: "string" },
+          operator: { type: "string", enum: ["eq", "neq", "contains", "contains_object"] },
+          value: { $ref: "#/components/schemas/JsonValue" }
+        }
+      },
+      FindAssetPathsRequest: {
+        type: "object",
+        required: ["scopePath", "filters"],
+        properties: {
+          scopePath: { type: "string" },
+          logic: { type: "string", enum: ["AND", "OR"], default: "AND" },
+          filters: { type: "array", items: { $ref: "#/components/schemas/FindAssetPathsFilter" }, minItems: 1 }
+        }
+      },
+      FindAssetPathsResponse: {
+        type: "object",
+        required: ["scopePath", "logic", "count", "matches"],
+        properties: {
+          scopePath: { type: "string" },
+          logic: { type: "string", enum: ["AND", "OR"] },
+          count: { type: "integer" },
+          matches: { type: "array", items: { $ref: "#/components/schemas/AssetPathMatch" } }
+        }
+      },
       SetAttributeValueRequest: { type: "object", required: ["value"], properties: { value: { $ref: "#/components/schemas/JsonValue" } } },
       AttributeMatchesResponse: { type: "object", required: ["path", "count", "matches"], properties: { path: { type: "string" }, count: { type: "integer" }, matches: { type: "array", items: { $ref: "#/components/schemas/AttributeQueryMatch" } } } },
       BatchSetRequest: { type: "object", required: ["items"], properties: { items: { type: "array", items: { type: "object", required: ["path", "value"], properties: { path: { type: "string" }, value: { $ref: "#/components/schemas/JsonValue" } } } } } },
@@ -740,6 +816,19 @@ export const OPENAPI_RUNTIME_SPEC = {
           limit: { type: "integer" },
           offset: { type: "integer" },
           rows: { type: "array", items: { $ref: "#/components/schemas/EventRow" } }
+        }
+      },
+      EventRangeResponse: {
+        type: "object",
+        required: ["pattern", "from", "to", "status", "start_ts", "end_ts", "count"],
+        properties: {
+          pattern: { type: "string" },
+          from: { type: "string" },
+          to: { type: "string" },
+          status: { type: "string" },
+          start_ts: { type: "string", nullable: true },
+          end_ts: { type: "string", nullable: true },
+          count: { type: "integer" }
         }
       },
       HistorianPathMatch: { type: "object", required: ["path", "assetId", "attributeName", "tagId", "historianTargetId"], properties: { path: { type: "string" }, assetId: { type: "string" }, attributeName: { type: "string" }, tagId: { type: "integer" }, historianTargetId: { type: "string" }, type: { type: "string" }, unit: { type: "string" }, latestValue: { $ref: "#/components/schemas/JsonValue" }, latestTs: { type: "string", nullable: true }, historianEnabled: { type: "boolean" }, historianTimeSourcePath: { type: "string" } } },

@@ -47,6 +47,55 @@ This guide describes how frontend clients should integrate with the runtime API.
 
 - `GET /api/assets/query?path=<dot-path>`
 
+### Find asset paths by raw attribute value
+
+- `POST /api/assets/find-asset-paths`
+
+Body:
+
+```json
+{
+  "scopePath": "Jasuindo.OffsetPrinter.*",
+  "logic": "AND",
+  "filters": [
+    {
+      "attributeName": "Machine Operator",
+      "operator": "contains_object",
+      "value": {
+        "value": "90efaa37-9275-41d5-bb90-06352d055f1b"
+      }
+    }
+  ]
+}
+```
+
+Operators:
+- `eq`: raw attribute value must equal request value exactly
+- `neq`: raw attribute value must not equal request value exactly
+- `contains`: string contains substring, or array contains element
+- `contains_object`: request value must be a subset of the raw object value
+
+Notes:
+- Comparison target is always raw `asset.attributes[attributeName].value`
+- Result is an array of asset matches, because one filter can match multiple assets
+
+Example response:
+
+```json
+{
+  "scopePath": "Jasuindo.OffsetPrinter.*",
+  "logic": "AND",
+  "count": 1,
+  "matches": [
+    {
+      "path": "Jasuindo.OffsetPrinter.Taiyo1",
+      "assetId": "asset_1771561995737_511",
+      "name": "Taiyo1"
+    }
+  ]
+}
+```
+
 ### Find by value
 
 - `GET /api/assets/find-by-value?path=<path>&value=<json-or-string>&strict=<bool>`
@@ -117,6 +166,30 @@ Event storage (`af_event`):
 - `context` uses `JSONB`
 - `captured_data_on_open` uses `JSONB`
 - `captured_data_on_close` uses `JSONB`
+
+### Get event range
+
+- `GET /api/events/range`
+
+Query parameters:
+- `pattern` (default `*`): wildcard filter for `event_path`
+- `from`, `to`: ISO or epoch timestamp bounds
+- `status`: `open|closed|*`
+- `context`: URL-encoded JSON string filter
+- `limit`: max rows scanned (default `5000`)
+
+Response:
+- `start_ts`: earliest matched `start_ts`
+- `end_ts`: latest matched `end_ts`
+- `count`: matched row count
+
+If the latest matched row has empty `end_ts`, runtime returns current server time for `end_ts`.
+
+Example:
+
+```http
+GET /api/events/range?pattern=Jasuindo.OffsetPrinter.Taiyo1/Job/WO-2026-0011/*&status=*&limit=5000
+```
 
 ### Open event
 

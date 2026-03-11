@@ -385,6 +385,30 @@ export interface RuntimeEventApi {
     contextFilters?: Record<string, unknown>,
     options?: Record<string, unknown>
   ): Promise<EventRow[]>;
+  getEarliestTs(
+    pattern?: string,
+    from?: string,
+    to?: string,
+    status?: string,
+    contextFilters?: Record<string, unknown>,
+    options?: Record<string, unknown>
+  ): Promise<string | null>;
+  getLatestTs(
+    pattern?: string,
+    from?: string,
+    to?: string,
+    status?: string,
+    contextFilters?: Record<string, unknown>,
+    options?: Record<string, unknown>
+  ): Promise<string | null>;
+  getRange(
+    pattern?: string,
+    from?: string,
+    to?: string,
+    status?: string,
+    contextFilters?: Record<string, unknown>,
+    options?: Record<string, unknown>
+  ): Promise<{ start_ts: string | null; end_ts: string | null; count: number }>;
   openTemplate(templateId: string, options?: EventTemplateOpenOptions): Promise<EventRow>;
   closeTemplate(
     templateId: string,

@@ -116,6 +116,53 @@ class Runtime {
       const list = normalizeEventTemplates(this.getGlobal("eventTemplates", []));
       return new Map(list.map((item) => [item.id, item]));
     };
+    const resolveEventRange = async (
+      pattern?: string,
+      from?: string,
+      to?: string,
+      status?: string,
+      contextFilters?: Record<string, unknown>,
+      options?: Record<string, unknown>
+    ): Promise<{ start_ts: string | null; end_ts: string | null; count: number }> => {
+      const store = getEventStore();
+      if (!store) throw new Error("eventStore is not available");
+      const rows = await store.get(pattern, from, to, status, contextFilters, {
+        limit: 5000,
+        ...(options || {})
+      });
+      if (rows.length === 0) {
+        return { start_ts: null, end_ts: null, count: 0 };
+      }
+
+      let earliestMs: number | null = null;
+      let earliestTs: string | null = null;
+      let latestMs: number | null = null;
+      let latestTs: string | null = null;
+      const nowIso = new Date().toISOString();
+      const nowMs = Date.parse(nowIso);
+
+      for (const row of rows) {
+        const startRaw = String(row.start_ts || "").trim();
+        const startMs = startRaw ? Date.parse(startRaw) : Number.NaN;
+        if (Number.isFinite(startMs) && (earliestMs == null || startMs < earliestMs)) {
+          earliestMs = startMs;
+          earliestTs = new Date(startMs).toISOString();
+        }
+
+        const endRaw = String(row.end_ts || "").trim();
+        const endMs = endRaw ? Date.parse(endRaw) : nowMs;
+        if (Number.isFinite(endMs) && (latestMs == null || endMs > latestMs)) {
+          latestMs = endMs;
+          latestTs = endRaw ? new Date(endMs).toISOString() : nowIso;
+        }
+      }
+
+      return {
+        start_ts: earliestTs,
+        end_ts: latestTs,
+        count: rows.length
+      };
+    };
 
     return {
       nodeId,
@@ -218,6 +265,17 @@ class Runtime {
           const store = getEventStore();
           if (!store) throw new Error("eventStore is not available");
           return await store.get(pattern, from, to, status, contextFilters, options);
+        },
+        getEarliestTs: async (pattern, from, to, status, contextFilters, options) => {
+          const range = await resolveEventRange(pattern, from, to, status, contextFilters, options);
+          return range.start_ts;
+        },
+        getLatestTs: async (pattern, from, to, status, contextFilters, options) => {
+          const range = await resolveEventRange(pattern, from, to, status, contextFilters, options);
+          return range.end_ts;
+        },
+        getRange: async (pattern, from, to, status, contextFilters, options) => {
+          return await resolveEventRange(pattern, from, to, status, contextFilters, options);
         },
         openTemplate: async (templateId, options) => {
           const store = getEventStore();
