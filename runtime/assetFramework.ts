@@ -367,8 +367,7 @@ export function createAssetFrameworkStore(initialSection: unknown = {}): AssetSt
         const effectiveMap = buildEffectiveAttributeMap(targetAsset, templateById);
         // Strict mode: never create attribute outside effective (template/override) definition.
         if (!effectiveMap.has(attrName)) continue;
-        const currentValue = effectiveMap.get(attrName)?.value;
-        if (!valuesEqual(currentValue, value)) updatesByAssetId.set(item.assetId, [attrName]);
+        updatesByAssetId.set(item.assetId, [attrName]);
       }
       if (updatesByAssetId.size === 0) return [];
 
@@ -397,12 +396,9 @@ export function createAssetFrameworkStore(initialSection: unknown = {}): AssetSt
 
     const updatesByAssetId = new Map<string, string[]>();
     for (const item of pathMatches) {
-      if (valuesEqual(item.value, value)) continue;
       if (!updatesByAssetId.has(item.assetId)) updatesByAssetId.set(item.assetId, []);
       updatesByAssetId.get(item.assetId)?.push(item.attributeName);
     }
-    // Path exists but value is unchanged: return current matches for caller visibility.
-    if (updatesByAssetId.size === 0) return pathMatches.map((item) => ({ ...item }));
 
     state = {
       ...state,

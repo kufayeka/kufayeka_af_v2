@@ -71,28 +71,35 @@
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "const paperLength = PaperLength?.value || 0;\r\nconst productLength = ProductLength?.value || 0;\r\nconst productCount = ProductCount?.value || 0;\r\n\r\nlet count = 0;\r\n\r\nif (productLength > 0) {\r\n  count = paperLength / productLength;\r\n}\r\n\r\ncount = Number(count.toFixed(2));\r\n\r\nasset.set(ProductCount.path, count);\r\n\r\nsend(msg);",
+      "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / productFoldLength) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(2));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nsend(msg);",
       "templateId": "template.script_1772274570343",
       "templateBindingOverrides": {
-        "PaperLength": {
-          "name": "PaperLength",
+        "PaperConsumedProduction": {
+          "name": "PaperConsumedProduction",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production",
           "allowOverride": true
         },
-        "ProductLength": {
-          "name": "ProductLength",
+        "ProductFoldLength": {
+          "name": "ProductFoldLength",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Length",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Fold Length",
           "allowOverride": true
         },
-        "ProductCount": {
-          "name": "ProductCount",
+        "ProductPerFold": {
+          "name": "ProductPerFold",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count Per Fold",
+          "allowOverride": true
+        },
+        "ProductTotalCount": {
+          "name": "ProductTotalCount",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Total Count",
           "allowOverride": true
         }
       },
@@ -270,6 +277,11 @@
         "enabled": true
       },
       {
+        "from": "trigger.tick_1772164929424",
+        "to": "Taiyo1.MES.ProductCounter",
+        "enabled": true
+      },
+      {
         "from": "trigger.watch_1772152779583",
         "to": "Taiyo1.Events.JobLifecycle",
         "enabled": true
@@ -397,8 +409,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": 1773211976011,
-            "ts": "2026-03-11T06:52:55.996Z"
+            "value": 1773309074669,
+            "ts": "2026-03-12T09:51:15.489Z"
           }
         }
       },
@@ -415,127 +427,161 @@
         "attributes": {
           "Machine Speed": {
             "value": 0,
-            "ts": "2026-03-11T06:44:18.341Z"
+            "ts": "2026-03-12T09:51:15.223Z"
           },
           "Encoder Raw Value": {
-            "value": 628,
-            "ts": "2026-03-11T06:44:16.360Z"
+            "value": 603,
+            "ts": "2026-03-12T09:51:15.629Z"
           },
           "Encoder Prev Value": {
-            "value": 628,
-            "ts": "2026-03-11T06:44:17.792Z"
+            "value": 603,
+            "ts": "2026-03-12T09:51:15.295Z"
           },
           "Work Order": {
-            "value": "WO-2026-0018",
-            "ts": "2026-03-11T06:33:54.698Z"
+            "value": "WO-2026-0030",
+            "ts": "2026-03-12T09:12:22.353Z"
           },
           "Job Lifecycle": {
             "value": "load",
-            "ts": "2026-03-11T06:34:05.574Z"
+            "ts": "2026-03-12T09:12:22.353Z"
           },
           "Machine Operator": {
             "value": {
               "label": "Alice Operator",
               "value": "90efaa37-9275-41d5-bb90-06352d055f1b"
             },
-            "ts": "2026-03-11T06:52:20.844Z"
+            "ts": "2026-03-12T09:37:40.442Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-03-11T02:08:24.202Z"
+            "ts": "2026-03-12T09:12:22.359Z"
           },
           "Job Activity": {
-            "value": "Setup/Kertas",
-            "ts": "2026-03-11T06:34:21.076Z"
+            "value": "Production/Run",
+            "ts": "2026-03-12T06:50:56.826Z"
           },
           "Paper Consumed Setup": {
-            "value": 628,
-            "ts": "2026-03-11T06:44:17.790Z"
+            "value": 0,
+            "ts": "2026-03-12T09:12:22.354Z"
           },
           "Job Activity Category": {
-            "value": "Setup",
-            "ts": "2026-03-11T06:34:21.077Z"
+            "value": "-",
+            "ts": "2026-03-12T09:51:15.294Z"
           },
           "Paper Consumed Production": {
             "value": 0,
-            "ts": "2026-03-11T02:35:18.097Z"
+            "ts": "2026-03-12T09:12:22.355Z"
           },
           "Paper Consumed Idle": {
             "value": 0,
-            "ts": "2026-03-11T03:56:12.124Z"
+            "ts": "2026-03-12T09:12:22.355Z"
           },
           "Total Production Time": {
             "value": 0,
-            "ts": "2026-03-11T02:35:18.098Z"
+            "ts": "2026-03-12T09:51:15.240Z"
           },
           "Total Setup Time": {
-            "value": 1107,
-            "ts": "2026-03-11T06:52:56.076Z"
+            "value": 0,
+            "ts": "2026-03-12T09:51:15.239Z"
           },
           "Total Idle Time": {
             "value": 0,
-            "ts": "2026-03-11T03:56:12.125Z"
+            "ts": "2026-03-12T09:51:15.240Z"
           },
           "Material Barcode": {
-            "value": "Material001",
-            "ts": "2026-03-11T02:12:31.443Z"
+            "value": "KertasA123",
+            "ts": "2026-03-12T09:38:05.287Z"
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-03-06T02:03:07.120Z"
+            "ts": "2026-03-12T09:51:15.294Z"
           },
           "Total Paper Waste": {
-            "value": 628,
-            "ts": "2026-03-11T06:44:17.791Z"
+            "value": 0,
+            "ts": "2026-03-12T09:12:22.356Z"
           },
           "Total Paper Consumed": {
-            "value": 628,
-            "ts": "2026-03-11T06:44:17.792Z"
+            "value": 0,
+            "ts": "2026-03-12T09:12:22.356Z"
           },
           "Product Fold Length": {
-            "value": 30,
-            "ts": "2026-03-11T02:12:31.444Z"
+            "value": 0.003,
+            "ts": "2026-03-12T09:38:05.288Z"
           },
           "Product Count Per Fold": {
             "value": 4,
-            "ts": "2026-03-11T02:12:31.444Z"
+            "ts": "2026-03-12T09:38:05.287Z"
           },
           "Running Hour": {
-            "value": 5586,
-            "ts": "2026-03-11T06:52:56.077Z"
+            "value": 14954,
+            "ts": "2026-03-12T09:51:15.241Z"
           },
           "Product Good Count": {
-            "value": 0,
-            "ts": "2026-03-11T02:12:31.445Z"
+            "value": 1000,
+            "ts": "2026-03-12T09:38:05.289Z"
           },
           "Product Reject Count": {
-            "value": 0,
-            "ts": "2026-03-11T02:12:31.445Z"
+            "value": 200,
+            "ts": "2026-03-12T09:38:05.289Z"
           },
           "Ply": {
             "value": "0/8",
-            "ts": "2026-03-11T02:12:31.445Z"
+            "ts": "2026-03-12T09:38:05.287Z"
           },
           "Assigned Operator Shift 1": {
             "value": {
-              "label": "OP3",
-              "value": "op1"
+              "label": "Subagio Michaels",
+              "value": "b9d34f66-9f50-47f6-8a17-07ddab9fad6d"
             },
-            "ts": "2026-03-11T06:50:19.114Z"
+            "ts": "2026-03-12T09:27:53.062Z"
           },
           "Assigned Operator Shift 3": {
             "value": {
-              "label": "OP3",
-              "value": "op5"
+              "label": "",
+              "value": ""
             },
-            "ts": "2026-03-11T04:59:10.021Z"
+            "ts": "2026-03-12T09:27:53.063Z"
           },
           "Assigned Operator Shift 2": {
             "value": {
               "label": "Alice Operator",
               "value": "90efaa37-9275-41d5-bb90-06352d055f1b"
             },
-            "ts": "2026-03-11T06:50:19.853Z"
+            "ts": "2026-03-12T09:27:53.063Z"
+          },
+          "Product Total Count": {
+            "value": 0,
+            "ts": "2026-03-12T09:51:15.224Z"
+          },
+          "Job Loader": {
+            "value": {
+              "id": "b8a3d38d-8a87-48f9-ad92-958782b06c9e",
+              "work_center": {
+                "id": 24,
+                "lookup_type": "WORK_CENTER",
+                "code": "Jasuindo.OffsetPrinter.Taiyo1",
+                "label": "Offset Printer Taiyo 1",
+                "description": null,
+                "sort_order": 1,
+                "is_active": true
+              },
+              "work_order": "WO-2026-0030",
+              "sales_order": "SO-2026-0030",
+              "quantity_order": 1006,
+              "quantity_unit": {
+                "id": 22,
+                "lookup_type": "QUANTITY_UNIT",
+                "code": "BK",
+                "label": "BK",
+                "description": null,
+                "sort_order": 1,
+                "is_active": true
+              },
+              "planned_start_time": "2026-03-11T08:00:00.000Z",
+              "job_lifecycle_state": "Running",
+              "notes": "Segera"
+            },
+            "ts": "2026-03-12T09:12:22.354Z"
           }
         }
       },
@@ -549,11 +595,8 @@
         ],
         "attributes": {
           "Assigned Operator Shift 1": {
-            "value": {
-              "label": "OP1",
-              "value": "op5"
-            },
-            "ts": "2026-03-11T04:58:35.848Z"
+            "value": {},
+            "ts": "2026-03-12T09:28:45.448Z"
           }
         }
       },
@@ -562,6 +605,31 @@
         "name": "OffsetPrinter",
         "parentId": "asset_1771561990565_180",
         "templateIds": [],
+        "attributes": {}
+      },
+      {
+        "id": "asset_1773308835213_250",
+        "name": "CuttingMachine",
+        "parentId": "asset_1771561990565_180",
+        "templateIds": [],
+        "attributes": {}
+      },
+      {
+        "id": "asset_1773308943597_850",
+        "name": "CuttingMachine1",
+        "parentId": "asset_1773308835213_250",
+        "templateIds": [
+          "template_1773308869604_659"
+        ],
+        "attributes": {}
+      },
+      {
+        "id": "asset_1773308963317_776",
+        "name": "CuttingMachine2",
+        "parentId": "asset_1773308835213_250",
+        "templateIds": [
+          "template_1773308869604_659"
+        ],
         "attributes": {}
       }
     ],
@@ -702,6 +770,30 @@
             "valueType": "int16",
             "default": 0,
             "unit": "meter/minute",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          },
+          {
+            "enabled": true,
+            "name": "Job Loader",
+            "valueType": "object",
+            "default": {},
+            "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
             "historianTargetId": "default",
@@ -1096,30 +1188,6 @@
             "enabled": true,
             "name": "Job Activity Category",
             "valueType": "string",
-            "default": 0,
-            "unit": "",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
-          },
-          {
-            "enabled": true,
-            "name": "Product Per Fold",
-            "valueType": "int32",
             "default": 0,
             "unit": "",
             "historianEnabled": false,
@@ -1537,6 +1605,36 @@
             "numberPrecision": 2
           }
         ]
+      },
+      {
+        "id": "template_1773308869604_659",
+        "name": "Power Consumption",
+        "attributes": [
+          {
+            "enabled": true,
+            "name": "Kwh",
+            "valueType": "float32",
+            "default": 0,
+            "unit": "kwh",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default",
+            "dashboardVisible": false,
+            "dashboardEditable": true,
+            "nullable": false,
+            "inputType": "text",
+            "options": [],
+            "optionsScript": "",
+            "numberMin": null,
+            "numberMax": null,
+            "numberAllowNegative": true,
+            "numberUseThousandSeparator": false,
+            "numberPrefix": "",
+            "numberSuffix": "",
+            "numberAllowDecimal": true,
+            "numberPrecision": 2
+          }
+        ]
       }
     ],
     "historians": [
@@ -1780,25 +1878,38 @@
         {
           "key": "Product Good Count",
           "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
           "assetPathId": "mesMeta",
-          "attributeName": "Product Good Count"
+          "attributeName": "Product Good Count",
+          "capturedKey": ""
         },
         {
           "key": "Product Reject COunt",
           "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
           "assetPathId": "mesMeta",
-          "attributeName": "Product Reject Count"
+          "attributeName": "Product Reject Count",
+          "capturedKey": ""
         },
         {
           "key": "Running Hour",
           "source": "asset_path_attribute",
+          "variableKey": "",
+          "value": "",
           "assetPathId": "offsetPrinterAsset",
-          "attributeName": "Running Hour"
+          "attributeName": "Running Hour",
+          "capturedKey": ""
         },
         {
           "key": "field_5",
           "source": "variable",
-          "variableKey": ""
+          "variableKey": "",
+          "value": "",
+          "assetPathId": "",
+          "attributeName": "",
+          "capturedKey": ""
         }
       ]
     },
@@ -3070,25 +3181,32 @@
       "id": "template.script_1772274570343",
       "name": "TaiyoProductCounter",
       "description": "",
-      "script": "const paperLength = PaperLength?.value || 0;\r\nconst productLength = ProductLength?.value || 0;\r\nconst productCount = ProductCount?.value || 0;\r\n\r\nlet count = 0;\r\n\r\nif (productLength > 0) {\r\n  count = paperLength / productLength;\r\n}\r\n\r\ncount = Number(count.toFixed(2));\r\n\r\nasset.set(ProductCount.path, count);\r\n\r\nsend(msg);",
+      "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / productFoldLength) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(2));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
-          "name": "PaperLength",
+          "name": "PaperConsumedProduction",
           "source": "attribute",
           "staticValue": "",
           "attributePath": "",
           "allowOverride": true
         },
         {
-          "name": "ProductLength",
+          "name": "ProductFoldLength",
           "source": "attribute",
           "staticValue": "",
           "attributePath": "",
           "allowOverride": true
         },
         {
-          "name": "ProductCount",
+          "name": "ProductPerFold",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "ProductTotalCount",
           "source": "attribute",
           "staticValue": "",
           "attributePath": "",

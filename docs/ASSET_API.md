@@ -105,6 +105,19 @@ Example response:
 
 - `GET /api/assets/value/{encodedPath}`
 
+### Batch read attribute values
+
+- `POST /api/assets/values:batch`
+
+```json
+{
+  "paths": [
+    "Taiyo1.Line1.M1.Speed",
+    "Taiyo1.Line1.M2.Speed"
+  ]
+}
+```
+
 ### Write attribute value(s)
 
 - `PUT /api/assets/value/{encodedPath}`

@@ -156,6 +156,44 @@ export const OPENAPI_RUNTIME_SPEC = {
       }
     },
     "/api/assets/values:batch": {
+      post: {
+        tags: ["Assets"],
+        summary: "Batch get attribute values",
+        description: "Read multiple attribute paths in one request. Duplicate paths are resolved once per request and reused in the response.",
+        operationId: "getAssetValuesBatch",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BatchGetRequest" },
+              example: {
+                paths: [
+                  "Taiyo1.Line1.M1.Speed",
+                  "Taiyo1.Line1.M2.Speed"
+                ]
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: "Batch read result",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/BatchGetResponse" }
+              }
+            }
+          },
+          400: {
+            description: "Bad request",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      },
       put: {
         tags: ["Assets"],
         summary: "Batch set attribute values",
@@ -655,6 +693,8 @@ export const OPENAPI_RUNTIME_SPEC = {
       },
       SetAttributeValueRequest: { type: "object", required: ["value"], properties: { value: { $ref: "#/components/schemas/JsonValue" } } },
       AttributeMatchesResponse: { type: "object", required: ["path", "count", "matches"], properties: { path: { type: "string" }, count: { type: "integer" }, matches: { type: "array", items: { $ref: "#/components/schemas/AttributeQueryMatch" } } } },
+      BatchGetRequest: { type: "object", required: ["paths"], properties: { paths: { type: "array", items: { type: "string" } } } },
+      BatchGetResponse: { type: "object", required: ["count", "results"], properties: { count: { type: "integer" }, results: { type: "array", items: { $ref: "#/components/schemas/AttributeMatchesResponse" } } } },
       BatchSetRequest: { type: "object", required: ["items"], properties: { items: { type: "array", items: { type: "object", required: ["path", "value"], properties: { path: { type: "string" }, value: { $ref: "#/components/schemas/JsonValue" } } } } } },
       BatchSetResponse: { type: "object", required: ["count", "results"], properties: { count: { type: "integer" }, results: { type: "array", items: { type: "object", required: ["path", "count", "matches"], properties: { path: { type: "string" }, count: { type: "integer" }, matches: { type: "array", items: { $ref: "#/components/schemas/AttributeQueryMatch" } } } } } } },
       EventRow: {

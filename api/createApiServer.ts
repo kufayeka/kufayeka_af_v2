@@ -1152,6 +1152,56 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   });
 
   app.all(/^\/api\/assets\/values:batch$/, (req, res) => {
+    if (req.method === "POST") {
+      try {
+        const body = (req.body || {}) as { paths?: string[] };
+        const rawPaths = Array.isArray(body.paths) ? body.paths : [];
+        const paths = rawPaths.map((item) => String(item || ""));
+        const invalidPaths = paths.filter((item) => !item);
+        if (invalidPaths.length > 0) {
+          res.status(400).json({
+            error: "Batch read requires non-empty string paths.",
+            invalidPaths
+          });
+          return;
+        }
+
+        const resultCache = new Map<
+          string,
+          {
+            path: string;
+            count: number;
+            matches: Array<AttributeQueryMatch & { tagId: number }>;
+          }
+        >();
+        const results = paths.map((path) => {
+          const cached = resultCache.get(path);
+          if (cached) return cached;
+          const matches = assetStore
+            .query(path)
+            .filter((item): item is AttributeQueryMatch => item.kind === "attribute")
+            .map((item) => ({
+              ...item,
+              tagId: computeTagID(item.assetId, item.attributeName)
+            }));
+          const result = {
+            path,
+            count: matches.length,
+            matches
+          };
+          resultCache.set(path, result);
+          return result;
+        });
+        res.status(200).json({
+          count: results.length,
+          results
+        });
+      } catch (error: unknown) {
+        res.status(400).json({ error: getErrorMessage(error) });
+      }
+      return;
+    }
+
     if (req.method !== "PUT") {
       res.status(405).json({ error: `Method ${req.method} is not supported` });
       return;
