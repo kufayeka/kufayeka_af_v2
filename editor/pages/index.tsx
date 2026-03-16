@@ -1160,7 +1160,7 @@ export default function HomePage() {
             }}
             onNodePositionDragStart={() => dispatch({ type: "PUSH_SNAPSHOT" })}
             onNodePositionChange={updateNodePosition}
-            onConnectNodes={(fromId, toId) => addLink({ from: fromId, to: toId, enabled: true })}
+            onConnectNodes={(fromId, toId, fromPort) => addLink({ from: fromId, to: toId, fromPort, enabled: true })}
           />
         )}
         {tab === 5 && <DbConnectionManager />}

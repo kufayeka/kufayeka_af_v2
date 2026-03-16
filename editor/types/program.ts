@@ -228,6 +228,7 @@ export interface ScriptTemplateDefinition {
 export interface FlowLink {
   from: string;
   to: string;
+  fromPort?: string;
   enabled?: boolean;
 }
 
