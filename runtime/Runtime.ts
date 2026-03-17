@@ -65,9 +65,10 @@ class Runtime {
     this.nodes.set(id, handler);
   }
 
-  wire(from: string, to: string): void {
-    if (!this.wires.has(from)) this.wires.set(from, []);
-    this.wires.get(from)?.push(to);
+  wire(from: string, to: string, fromPort = "default"): void {
+    const wireKey = `${from}::${String(fromPort || "default")}`;
+    if (!this.wires.has(wireKey)) this.wires.set(wireKey, []);
+    this.wires.get(wireKey)?.push(to);
   }
 
   getGlobal<T = unknown>(key: string, defaultValue?: T): T {
@@ -358,8 +359,8 @@ class Runtime {
 
       setImmediate(async () => {
         try {
-          const send = (outMsg: RuntimeMessage): void => {
-            this.send(nodeId, outMsg);
+          const send = (outMsg: RuntimeMessage, port = "default"): void => {
+            this.send(nodeId, outMsg, port);
           };
           const context = this.createNodeContext(nodeId);
           if (this.nodeExecutionTimeoutMs > 0) {
@@ -395,10 +396,11 @@ class Runtime {
     return normalized as RuntimeMessage;
   }
 
-  send(fromId: string, msg: unknown): void {
+  send(fromId: string, msg: unknown, fromPort = "default"): void {
     if (this.shuttingDown) return;
     const normalized = this.normalizeMessage(msg);
-    const nexts = this.wires.get(fromId) ?? [];
+    const wireKey = `${fromId}::${String(fromPort || "default")}`;
+    const nexts = this.wires.get(wireKey) ?? [];
     for (const nextId of nexts) {
       const msgClone = structuredClone(normalized);
       this.enqueueNodeMessage(nextId, msgClone);

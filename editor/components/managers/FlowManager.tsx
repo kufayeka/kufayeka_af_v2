@@ -48,6 +48,16 @@ function getNodeKindMeta(kind: FlowNodeKind) {
   };
 }
 
+function getNodeOutputs(nodeId: string, kind: FlowNodeKind): Array<{ id: string; label: string }> {
+  if (kind === "event" && (nodeId.startsWith("event.open.") || nodeId.startsWith("event.close."))) {
+    return [
+      { id: "onSuccess", label: "SUCCESS" },
+      { id: "onFail", label: "FAIL" }
+    ];
+  }
+  return [{ id: "default", label: "OUT" }];
+}
+
 export default function FlowManager({
   triggerIds,
   actionIds,
@@ -86,7 +96,7 @@ export default function FlowManager({
           id: node.id,
           kind: node.kind,
           label: (nodeLabels[node.id] || node.id).trim() || node.id,
-          outputs: [{ id: "default", label: "OUT" }],
+          outputs: getNodeOutputs(node.id, node.kind),
           ...meta
         };
       }),

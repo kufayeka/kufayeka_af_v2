@@ -165,7 +165,6 @@ export default function createEventActionHandler(
         ? (msg.eventRequest as EventRequestPayload)
         : undefined;
     if (request?.mode && request.mode !== mode) {
-      send(msg);
       return;
     }
 
@@ -191,43 +190,83 @@ export default function createEventActionHandler(
           ? action.templateOverrides
         : undefined;
 
-    if (mode === "open") {
-      const row = await context.eventSys.openTemplate(templateId, {
+    try {
+      if (mode === "open") {
+        const row = await context.eventSys.openTemplate(templateId, {
+          vars,
+          notes,
+          templateOverrides: overrides
+        });
+        const next = {
+          ...msg,
+          eventAction: {
+            id: action.id,
+            node: getEventActionOpenNodeId(action.id),
+            mode,
+            templateId,
+            vars,
+            success: true,
+            row
+          }
+        };
+        send(next as RuntimeMessage, "onSuccess");
+        return;
+      }
+
+      const result = await context.eventSys.closeTemplate(templateId, {
         vars,
         notes,
         templateOverrides: overrides
       });
+      const success = Number(result?.closedCount || 0) > 0;
       const next = {
         ...msg,
         eventAction: {
           id: action.id,
-          node: getEventActionOpenNodeId(action.id),
+          node: getEventActionCloseNodeId(action.id),
           mode,
           templateId,
           vars,
-          row
+          success,
+          result
         }
       };
-      send(next);
-      return;
-    }
-
-    const result = await context.eventSys.closeTemplate(templateId, {
-      vars,
-      notes,
-      templateOverrides: overrides
-    });
-    const next = {
-      ...msg,
-      eventAction: {
-        id: action.id,
-        node: getEventActionCloseNodeId(action.id),
-        mode,
-        templateId,
-        vars,
-        result
+      if (success) {
+        send(next as RuntimeMessage, "onSuccess");
+        return;
       }
-    };
-    send(next);
+      send(
+        {
+          ...next,
+          eventAction: {
+            ...next.eventAction,
+            error: {
+              message: `Event action "${action.id}" close matched no open event`
+            }
+          }
+        } as RuntimeMessage,
+        "onFail"
+      );
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      send(
+        {
+          ...msg,
+          eventAction: {
+            id: action.id,
+            node: mode === "open" ? getEventActionOpenNodeId(action.id) : getEventActionCloseNodeId(action.id),
+            mode,
+            templateId,
+            vars,
+            success: false,
+            error: {
+              message
+            }
+          }
+        } as RuntimeMessage,
+        "onFail"
+      );
+    }
   };
 }

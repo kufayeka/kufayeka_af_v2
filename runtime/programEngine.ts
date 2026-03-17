@@ -26,6 +26,7 @@ interface ProgramEventAction extends EventActionDefinition {}
 interface ProgramLink {
   from: string;
   to: string;
+  fromPort?: string;
   enabled?: boolean;
 }
 
@@ -103,7 +104,7 @@ function registerLinks(runtime: Runtime, links: unknown[] = []): void {
     const link = rawLink as ProgramLink;
     if (!link.from || !link.to) throw new Error("Link must include both from and to");
     if (link.enabled === false) continue;
-    runtime.wire(link.from, link.to);
+    runtime.wire(link.from, link.to, link.fromPort || "default");
   }
 }
 

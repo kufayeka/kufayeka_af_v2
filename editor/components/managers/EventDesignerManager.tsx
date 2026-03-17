@@ -338,7 +338,7 @@ export default function EventDesignerManager({
                 <Paper variant="outlined" sx={{ p: 1, backgroundColor: "#f0fdf4" }}>
                   <Typography variant="subtitle2">Event Flow Nodes</Typography>
                   <Typography variant="caption" color="text.secondary">
-                    This event action creates two flow nodes automatically. Wire any trigger or script node into these nodes.
+                    This event action creates two flow nodes automatically. Each node exposes `onSuccess` and `onFail` outputs in the flow editor.
                   </Typography>
                   <Typography variant="body2" sx={{ fontFamily: "monospace", mt: 0.75 }}>
                     open node: `event.open.{selectedEventAction.id}`

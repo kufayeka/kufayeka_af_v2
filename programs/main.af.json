@@ -86,7 +86,7 @@
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / productFoldLength) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(2));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nsend(msg);",
+      "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / productFoldLength) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(2));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nmsg.payload = { productTotalCount, paperConsumedProduction, productFoldLength, productPerFold };\r\n\r\nsend(msg);",
       "templateId": "template.script_1772274570343",
       "templateBindingOverrides": {
         "PaperConsumedProduction": {
@@ -100,7 +100,7 @@
           "name": "ProductFoldLength",
           "source": "attribute",
           "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Fold Length",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper/Fold Size",
           "allowOverride": true
         },
         "ProductPerFold": {
@@ -309,7 +309,7 @@
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "const lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst alarmPath = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle Alarm\", \"\") ?? \"\").trim();\n\n\nif (![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nif (lifecycle === \"load\") {\n  await asset.setMany([\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Setup\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Idle\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Paper Waste\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Paper Consumed\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Setup Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Idle Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Production Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Availability\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Performance\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Quality\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.OEE\", value: 0 },\n  ]);\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: lifecycle === \"load\" ? \"open\" : \"close\",\n  notes: lifecycle === \"load\" ? `${workOrder} lifecycle run opened` : `${workOrder} lifecycle ${lifecycle}`\n};\n\nsend(msg);",
+      "script": "const lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst alarmPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle Alarm\";\nconst jobProgressRaw = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Job Progress\", \"\") ?? \"\").trim();\nconst jobProgress = Number(jobProgressRaw.replace(\"%\", \"\").trim());\n\nif (![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nif (lifecycle === \"load\") {\n  await asset.setMany([\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Setup\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Idle\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Paper Waste\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Paper Consumed\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Setup Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Idle Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Production Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Availability\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Performance\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Quality\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.OEE\", value: 0 },\n  ]);\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"open\",\n    notes: `${workOrder} lifecycle run opened`\n  };\n\n  send(msg, \"open\");\n  return;\n}\n\n// if (isNaN(jobProgress) || jobProgress !== 100) {\n//   await asset.set(alarmPath, \"Your job progress must be exactly 100% before closing the event.\");\n//   await asset.set(\"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle\", \"load\");\n//   return;\n// }\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: \"close\",\n  notes: `${workOrder} lifecycle ${lifecycle}`\n};\n\nsend(msg, \"close\");\n",
       "eventTemplateId": "",
       "eventTemplateOverrides": {},
       "templateBindingOverrides": {}
@@ -333,7 +333,42 @@
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "\r\n\r\n\r\nsend(msg);"
+      "script": "const workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst lifecycle = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle\", \"\") ?? \"\").trim().toLowerCase();\nconst targetRaw = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Count Target\", \"\") ?? \"\").trim();\nconst totalCount = Number(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Total Count\", 0) ?? 0);\nconst productCountPerBook = Number(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Count Per Book\", 0) ?? 0);\nconst progressPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Progress\";\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst normalizedTarget = targetRaw.replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\nconst targetMatch = normalizedTarget.match(/^(-?\\d+(?:\\.\\d+)?)\\s*([A-Za-z]+)?$/);\n\nif (!targetMatch) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetValue = Number(targetMatch[1]);\nconst targetUnit = String(targetMatch[2] || \"EA\").toUpperCase();\n\nlet targetEa = 0;\nif (targetUnit === \"EA\") {\n  targetEa = targetValue;\n} else if (targetUnit === \"BK\") {\n  targetEa = targetValue * productCountPerBook;\n}\n\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeTotalCount = Number.isFinite(totalCount) ? totalCount : 0;\nconst progress = Math.max(0, Math.round((safeTotalCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nsend(msg);",
+      "eventTemplateId": "",
+      "eventTemplateOverrides": {},
+      "templateBindingOverrides": {
+        "Work Order": {
+          "name": "Work Order",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order",
+          "allowOverride": true
+        },
+        "Job Lifecycle": {
+          "name": "Job Lifecycle",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
+          "allowOverride": true
+        },
+        "Job Lifecycle Alarm": {
+          "name": "Job Lifecycle Alarm",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle Alarm",
+          "allowOverride": true
+        }
+      },
+      "templateId": "template.script_1773723245898"
+    },
+    {
+      "id": "Taiyo1.MES.JobCompleted",
+      "label": "",
+      "type": "script",
+      "enabled": true,
+      "allowTreeDuplicate": true,
+      "description": "",
+      "script": "await asset.setMany([\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Job Progress\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", value: '-' },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity\", value: '-' },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle\", value: '-' },\r\n]);\r\n\r\nsend(msg);"
     }
   ],
   "flows": {
@@ -354,6 +389,11 @@
         "enabled": true
       },
       {
+        "from": "trigger.tick_1772164929424",
+        "to": "Taiyo1.MES.ProductionProgress",
+        "enabled": true
+      },
+      {
         "from": "trigger.watch_1772152779583",
         "to": "Taiyo1.Events.JobLifecycle",
         "enabled": true
@@ -361,11 +401,13 @@
       {
         "from": "Taiyo1.Events.JobLifecycle",
         "to": "event.open.taiyo_job_lifecycle",
+        "fromPort": "open",
         "enabled": true
       },
       {
         "from": "Taiyo1.Events.JobLifecycle",
         "to": "event.close.taiyo_job_lifecycle",
+        "fromPort": "close",
         "enabled": true
       },
       {
@@ -381,11 +423,19 @@
       {
         "from": "event.open.taiyo_job_lifecycle",
         "to": "Scripts.debug",
+        "fromPort": "onSuccess",
         "enabled": true
       },
       {
         "from": "event.close.taiyo_job_lifecycle",
         "to": "Scripts.debug",
+        "fromPort": "onFail",
+        "enabled": true
+      },
+      {
+        "from": "event.close.taiyo_job_lifecycle",
+        "to": "Taiyo1.MES.JobCompleted",
+        "fromPort": "onSuccess",
         "enabled": true
       }
     ],
@@ -467,8 +517,8 @@
         "y": 660
       },
       "event.close.taiyo_job_lifecycle": {
-        "x": 1800,
-        "y": 850
+        "x": 1720,
+        "y": 780
       },
       "trigger.watch_1772017838146": {
         "x": 450,
@@ -479,8 +529,16 @@
         "y": 970
       },
       "Scripts.debug": {
-        "x": 1970,
-        "y": 320
+        "x": 2400,
+        "y": 640
+      },
+      "Taiyo1.MES.ProductionProgress": {
+        "x": 460,
+        "y": 670
+      },
+      "Taiyo1.MES.JobCompleted": {
+        "x": 2350,
+        "y": 840
       }
     }
   },
@@ -495,8 +553,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": 1773657028629,
-            "ts": "2026-03-16T10:30:29.318Z"
+            "value": 1773734464014,
+            "ts": "2026-03-17T08:01:04.031Z"
           }
         }
       },
@@ -513,94 +571,94 @@
         "attributes": {
           "Machine Speed": {
             "value": 0,
-            "ts": "2026-03-17T03:30:41.109Z"
+            "ts": "2026-03-17T08:01:04.331Z"
           },
           "Encoder Raw Value": {
-            "value": 745,
-            "ts": "2026-03-16T10:24:26.957Z"
+            "value": 670,
+            "ts": "2026-03-17T08:01:04.561Z"
           },
           "Encoder Prev Value": {
-            "value": 745,
-            "ts": "2026-03-17T03:30:41.112Z"
+            "value": 670,
+            "ts": "2026-03-17T08:01:04.351Z"
           },
           "Work Order": {
-            "value": "WO-2026-0071",
-            "ts": "2026-03-17T03:15:18.149Z"
+            "value": "WO-2026-0076",
+            "ts": "2026-03-17T06:39:07.734Z"
           },
           "Job Lifecycle": {
-            "value": "load",
-            "ts": "2026-03-17T03:15:18.151Z"
+            "value": "complete",
+            "ts": "2026-03-17T07:59:39.666Z"
           },
           "Machine Operator": {
             "value": {
-              "label": "Alice Operator",
-              "value": "90efaa37-9275-41d5-bb90-06352d055f1b"
+              "value": "Alice123",
+              "label": "Alice"
             },
-            "ts": "2026-03-17T03:21:05.420Z"
+            "ts": "2026-03-17T07:16:18.006Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-03-16T03:48:20.964Z"
+            "ts": "2026-03-17T07:59:39.670Z"
           },
           "Job Activity": {
             "value": "Production/Run",
-            "ts": "2026-03-16T09:18:55.138Z"
+            "ts": "2026-03-17T07:59:28.787Z"
           },
           "Paper Consumed Setup": {
             "value": 0,
-            "ts": "2026-03-17T03:15:18.156Z"
+            "ts": "2026-03-17T07:59:20.173Z"
           },
           "Job Activity Category": {
             "value": "-",
-            "ts": "2026-03-17T03:30:41.112Z"
+            "ts": "2026-03-17T08:01:04.352Z"
           },
           "Paper Consumed Production": {
             "value": 0,
-            "ts": "2026-03-17T03:15:18.159Z"
+            "ts": "2026-03-17T07:59:20.173Z"
           },
           "Paper Consumed Idle": {
             "value": 0,
-            "ts": "2026-03-17T03:15:18.158Z"
+            "ts": "2026-03-17T07:59:20.173Z"
           },
           "Total Production Time": {
-            "value": 0,
-            "ts": "2026-03-17T03:30:41.114Z"
+            "value": 11,
+            "ts": "2026-03-17T08:01:04.359Z"
           },
           "Total Setup Time": {
             "value": 0,
-            "ts": "2026-03-17T03:30:41.113Z"
+            "ts": "2026-03-17T08:01:04.356Z"
           },
           "Total Idle Time": {
             "value": 0,
-            "ts": "2026-03-17T03:30:41.113Z"
+            "ts": "2026-03-17T08:01:04.357Z"
           },
           "Material Barcode": {
             "value": "KertasG001",
-            "ts": "2026-03-16T09:18:52.605Z"
+            "ts": "2026-03-17T07:08:26.297Z"
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-03-17T03:30:41.113Z"
+            "ts": "2026-03-17T08:01:04.354Z"
           },
           "Total Paper Waste": {
             "value": 0,
-            "ts": "2026-03-17T03:15:18.161Z"
+            "ts": "2026-03-17T07:59:20.173Z"
           },
           "Total Paper Consumed": {
             "value": 0,
-            "ts": "2026-03-17T03:15:18.163Z"
+            "ts": "2026-03-17T07:59:20.174Z"
           },
           "Product Count Per Fold": {
-            "value": 4,
-            "ts": "2026-03-16T09:17:33.228Z"
+            "value": 2,
+            "ts": "2026-03-17T07:09:11.745Z"
           },
           "Running Hour": {
-            "value": 18122,
-            "ts": "2026-03-17T03:30:41.114Z"
+            "value": 20094,
+            "ts": "2026-03-17T08:01:04.361Z"
           },
           "Product Good Count": {
             "value": 1,
-            "ts": "2026-03-16T09:17:33.228Z"
+            "ts": "2026-03-17T07:08:26.301Z"
           },
           "Product Reject Count": {
             "value": 1,
@@ -608,23 +666,23 @@
           },
           "Availability": {
             "value": 0,
-            "ts": "2026-03-17T03:15:18.169Z"
+            "ts": "2026-03-17T07:59:20.175Z"
           },
           "Performance": {
             "value": 0,
-            "ts": "2026-03-17T03:15:18.170Z"
+            "ts": "2026-03-17T07:59:20.175Z"
           },
           "Quality": {
             "value": 0,
-            "ts": "2026-03-17T03:15:18.172Z"
+            "ts": "2026-03-17T07:59:20.176Z"
           },
           "OEE": {
             "value": 0,
-            "ts": "2026-03-17T03:15:18.173Z"
+            "ts": "2026-03-17T07:59:20.176Z"
           },
           "Ply": {
             "value": "1/8",
-            "ts": "2026-03-16T09:18:52.606Z"
+            "ts": "2026-03-17T07:08:26.298Z"
           },
           "Assigned Operator Shift 1": {
             "value": {
@@ -649,11 +707,11 @@
           },
           "Product Total Count": {
             "value": 0,
-            "ts": "2026-03-17T03:30:41.110Z"
+            "ts": "2026-03-17T08:01:04.334Z"
           },
           "Job Loader": {
             "value": {
-              "id": "c47b7d49-6c03-4e2e-9a32-fb3ef948850c",
+              "id": "e91e78ad-8ec2-498a-865a-1edef7558461",
               "work_center": {
                 "id": 24,
                 "lookup_type": "WORK_CENTER",
@@ -663,9 +721,9 @@
                 "sort_order": 1,
                 "is_active": true
               },
-              "work_order": "WO-2026-0071",
-              "sales_order": "SO-2026-0026",
-              "quantity_order": 1001,
+              "work_order": "WO-2026-0076",
+              "sales_order": "SO-2026-0031",
+              "quantity_order": 1006,
               "quantity_unit": {
                 "id": 22,
                 "lookup_type": "QUANTITY_UNIT",
@@ -675,15 +733,31 @@
                 "sort_order": 1,
                 "is_active": true
               },
-              "planned_start_time": "2026-05-02T08:00:00.000Z",
+              "planned_start_time": "2026-05-07T08:00:00.000Z",
               "job_lifecycle_state": "Running",
               "notes": "Segera"
             },
-            "ts": "2026-03-17T03:15:18.153Z"
+            "ts": "2026-03-17T06:39:07.737Z"
           },
           "Ideal Speed": {
             "value": 9,
             "ts": "2026-03-13T09:23:18.803Z"
+          },
+          "Paper/Fold Size": {
+            "value": 0.2,
+            "ts": "2026-03-17T07:08:26.301Z"
+          },
+          "Job Progress": {
+            "value": 0,
+            "ts": "2026-03-17T08:01:04.337Z"
+          },
+          "Product Count Target": {
+            "value": "2000 EA",
+            "ts": "2026-03-17T07:25:19.967Z"
+          },
+          "Product Count Per Book": {
+            "value": 4,
+            "ts": "2026-03-17T07:00:26.282Z"
           }
         }
       },
@@ -738,21 +812,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           }
         ]
       },
@@ -768,21 +828,7 @@
             "unit": "meter/minute",
             "historianEnabled": true,
             "historianTimeSourcePath": "Jasuindo.Timestamp",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -792,21 +838,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "Jasuindo.Timestamp",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -816,21 +848,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -840,21 +858,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -864,21 +868,7 @@
             "unit": "meter/minute",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -888,21 +878,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           }
         ]
       },
@@ -918,21 +894,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -942,21 +904,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -966,21 +914,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -990,21 +924,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           }
         ]
       },
@@ -1020,21 +940,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1044,21 +950,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1068,21 +960,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1092,21 +970,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1116,21 +980,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1140,21 +990,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1164,93 +1000,37 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
             "name": "Paper/Fold Size",
             "valueType": "float32",
             "default": 0,
-            "unit": "",
+            "unit": "meter",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
             "name": "Product Count Target",
-            "valueType": "int32",
+            "valueType": "string",
             "default": 0,
-            "unit": "",
+            "unit": "EA or BK",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
             "name": "Job Progress",
             "valueType": "int16",
             "default": 0,
-            "unit": "",
+            "unit": "%",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1260,21 +1040,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1284,21 +1050,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1308,21 +1060,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1332,21 +1070,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1356,21 +1080,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1380,21 +1090,7 @@
             "unit": "%",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1404,21 +1100,7 @@
             "unit": "%",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1428,21 +1110,7 @@
             "unit": "%",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1452,21 +1120,17 @@
             "unit": "%",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
+          },
+          {
+            "enabled": true,
+            "name": "Product Count Per Book",
+            "valueType": "int32",
+            "default": 0,
+            "unit": "",
+            "historianEnabled": false,
+            "historianTimeSourcePath": "",
+            "historianTargetId": "default"
           }
         ]
       },
@@ -1482,21 +1146,7 @@
             "unit": "meter",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1506,21 +1156,7 @@
             "unit": "meter",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1530,21 +1166,7 @@
             "unit": "meter",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1554,21 +1176,7 @@
             "unit": "meter",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1578,21 +1186,7 @@
             "unit": "meter",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1602,21 +1196,7 @@
             "unit": "seconds",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1626,21 +1206,7 @@
             "unit": "seconds",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1650,21 +1216,7 @@
             "unit": "seconds",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1674,21 +1226,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1698,21 +1236,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           }
         ]
       },
@@ -1728,21 +1252,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1752,21 +1262,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           },
           {
             "enabled": true,
@@ -1776,21 +1272,7 @@
             "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           }
         ]
       },
@@ -1806,21 +1288,7 @@
             "unit": "kwh",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
-            "historianTargetId": "default",
-            "dashboardVisible": false,
-            "dashboardEditable": true,
-            "nullable": false,
-            "inputType": "text",
-            "options": [],
-            "optionsScript": "",
-            "numberMin": null,
-            "numberMax": null,
-            "numberAllowNegative": true,
-            "numberUseThousandSeparator": false,
-            "numberPrefix": "",
-            "numberSuffix": "",
-            "numberAllowDecimal": true,
-            "numberPrecision": 2
+            "historianTargetId": "default"
           }
         ]
       }
@@ -3093,7 +2561,7 @@
       "id": "template.script_1771898442157",
       "name": "TaiyoJobLifecycleEvent",
       "description": "",
-      "script": "// VARIABLE BINDINGS\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\nconst timestamp = Timestamp?.value || helpers.now();\nconst assetPath = AssetPath || \"-\";\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\n\nconst renderPath = (template, vars = {}) => {\n  return String(template || \"\")\n    .replaceAll(\"{assetPath}\", String(vars.assetPath ?? assetPath))\n    .replaceAll(\"{workOrder}\", String(vars.workOrder ?? workOrderAttribute))\n    .replaceAll(\"{activity}\", String(vars.activity ?? \"*\"));\n};\n\nconst lifecycleRunningEventPath = renderPath(LifecycleRunningEventPathTemplate);\nconst openedEvents = await eventSys.get(lifecycleRunningEventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\nconst templateVars = {\n  assetPath,\n  workOrder: workOrderAttribute,\n  operator: operatorAttribute,\n  timestamp\n};\n\nhelpers.log(\"event mulai:\", jobLifecycleAttribute);\n\nif (![\"load\", \"unload\", \"complete\"].includes(String(jobLifecycleAttribute).trim().toLowerCase())) {\n  helpers.log(\"--- bukan load/unload\");\n  return;\n}\n\nhelpers.log(\"--- terdeteksi load/unload\");\n\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\n  asset.set(alarmAttributePath, \"!!!Work order is empty!!!\");\n  asset.set(jobLifecycleAttributePath, \"-\");\n  msg.payload = \"alarm: work order is empty\";\n  send(msg);\n} else {\n  asset.set(alarmAttributePath, \"-\");\n\n  if (String(jobLifecycleAttribute).trim().toLowerCase() === \"load\") {\n    if (openedEvents.length === 0) {\n      asset.setMany(\n        [\n          { path: PaperConsumedIdle.path, value: 0 },\n          { path: PaperConsumedProduction.path, value: 0 },\n          { path: PaperConsumedSetup.path, value: 0 },\n          { path: TotalIdleTime.path, value: 0 },\n          { path: TotalProductionTime.path, value: 0 },\n          { path: TotalSetupTime.path, value: 0 },\n          { path: JobActivityCategoryAttribute.path, value: \"-\" }\n        ]\n      );\n\n      await eventSys.openTemplate(\"job_lifecycle_running\", {\n        vars: templateVars,\n        notes: `${workOrderAttribute} loaded`\n      });\n\n      msg.payload = \"event opened\";\n      send(msg);\n    }\n  } else if (String(jobLifecycleAttribute).trim().toLowerCase() === \"unload\") {\n    if (openedEvents.length > 0) {\n      await eventSys.closeTemplate(\"job_lifecycle_running\", {\n        vars: templateVars,\n        notes: `${workOrderAttribute} unloaded`\n      });\n\n      await eventSys.closeTemplate(\"job_activity\", {\n        vars: { ...templateVars, activity: \"*\" },\n        notes: `${workOrderAttribute} unloaded`\n      });\n\n      asset.set(workOrderAttributePath, \"-\");\n      asset.set(jobLifecycleAttributePath, \"-\");\n      asset.set(jobActivityAttributePath, \"-\");\n      asset.set(JobActivityCategoryAttribute.path, \"-\");\n\n      msg.payload = \"event closed\";\n      send(msg);\n    }\n  } else if (String(jobLifecycleAttribute).trim().toLowerCase() === \"complete\") {\n    if (openedEvents.length > 0) {\n      await eventSys.closeTemplate(\"job_lifecycle_running\", {\n        vars: templateVars,\n        notes: `${workOrderAttribute} completed`\n      });\n\n      await eventSys.closeTemplate(\"job_activity\", {\n        vars: { ...templateVars, activity: \"*\" },\n        notes: `${workOrderAttribute} completed`\n      });\n\n      asset.set(workOrderAttributePath, \"-\");\n      asset.set(jobLifecycleAttributePath, \"-\");\n      asset.set(jobActivityAttributePath, \"-\");\n\n      msg.payload = \"event closed\";\n      send(msg);\n    }\n  }\n}\n\nreturn;",
+      "script": "// VARIABLE BINDINGS\nconst jobLifecycleAttribute = JobLifecycleAttribute?.value || \"-\";\nconst workOrderAttribute = WorkOrderAttribute?.value || \"-\";\nconst operatorAttribute = OperatorAttribute?.value || \"-\";\nconst timestamp = Timestamp?.value || helpers.now();\nconst assetPath = AssetPath || \"-\";\nconst alarmAttributePath = AlarmAttribute?.path || \"-\";\nconst jobLifecycleAttributePath = JobLifecycleAttribute?.path || \"-\";\nconst jobActivityAttributePath = JobActivityAttribute?.path || \"-\";\nconst workOrderAttributePath = WorkOrderAttribute?.path || \"-\";\nconst jobProgressRaw = String(JobProgressAttribute?.value ?? \"\").trim();\nconst jobProgress = Number(jobProgressRaw.replace(\"%\", \"\").trim());\n\nconst renderPath = (template, vars = {}) => {\n  return String(template || \"\")\n    .replaceAll(\"{assetPath}\", String(vars.assetPath ?? assetPath))\n    .replaceAll(\"{workOrder}\", String(vars.workOrder ?? workOrderAttribute))\n    .replaceAll(\"{activity}\", String(vars.activity ?? \"*\"));\n};\n\nconst lifecycleValue = String(jobLifecycleAttribute).trim().toLowerCase();\nconst lifecycleRunningEventPath = renderPath(LifecycleRunningEventPathTemplate);\nconst openedEvents = await eventSys.get(lifecycleRunningEventPath, \"*\", \"*\", \"open\", {}, { limit: 1 });\nconst templateVars = {\n  assetPath,\n  workOrder: workOrderAttribute,\n  operator: operatorAttribute,\n  timestamp\n};\n\nhelpers.log(\"event mulai:\", jobLifecycleAttribute);\n\nif (![\"load\", \"unload\", \"complete\"].includes(lifecycleValue)) {\n  helpers.log(\"--- bukan load/unload\");\n  return;\n}\n\nhelpers.log(\"--- terdeteksi load/unload\");\n\nif (workOrderAttribute === \"-\" || workOrderAttribute === \"\" || workOrderAttribute === null) {\n  asset.set(alarmAttributePath, \"!!!Work order is empty!!!\");\n  asset.set(jobLifecycleAttributePath, \"-\");\n  msg.payload = \"alarm: work order is empty\";\n  send(msg);\n  return;\n}\n\nif (lifecycleValue !== \"load\" && (isNaN(jobProgress) || jobProgress !== 100)) {\n  asset.set(alarmAttributePath, \"Your job progress must be exactly 100% before closing the event.\");\n  asset.set(jobLifecycleAttributePath, \"load\");\n  msg.payload = \"alarm: job progress must be exactly 100 before close\";\n  send(msg);\n  return;\n}\n\nasset.set(alarmAttributePath, \"-\");\n\nif (lifecycleValue === \"load\") {\n  if (openedEvents.length === 0) {\n    asset.setMany(\n      [\n        { path: PaperConsumedIdle.path, value: 0 },\n        { path: PaperConsumedProduction.path, value: 0 },\n        { path: PaperConsumedSetup.path, value: 0 },\n        { path: TotalIdleTime.path, value: 0 },\n        { path: TotalProductionTime.path, value: 0 },\n        { path: TotalSetupTime.path, value: 0 },\n        { path: JobActivityCategoryAttribute.path, value: \"-\" }\n      ]\n    );\n\n    await eventSys.openTemplate(\"job_lifecycle_running\", {\n      vars: templateVars,\n      notes: `${workOrderAttribute} loaded`\n    });\n\n    msg.payload = \"event opened\";\n    send(msg);\n  }\n} else if (lifecycleValue === \"unload\") {\n  if (openedEvents.length > 0) {\n    await eventSys.closeTemplate(\"job_lifecycle_running\", {\n      vars: templateVars,\n      notes: `${workOrderAttribute} unloaded`\n    });\n\n    await eventSys.closeTemplate(\"job_activity\", {\n      vars: { ...templateVars, activity: \"*\" },\n      notes: `${workOrderAttribute} unloaded`\n    });\n\n    asset.set(workOrderAttributePath, \"-\");\n    asset.set(jobLifecycleAttributePath, \"-\");\n    asset.set(jobActivityAttributePath, \"-\");\n    asset.set(JobActivityCategoryAttribute.path, \"-\");\n\n    msg.payload = \"event closed\";\n    send(msg);\n  }\n} else if (lifecycleValue === \"complete\") {\n  if (openedEvents.length > 0) {\n    await eventSys.closeTemplate(\"job_lifecycle_running\", {\n      vars: templateVars,\n      notes: `${workOrderAttribute} completed`\n    });\n\n    await eventSys.closeTemplate(\"job_activity\", {\n      vars: { ...templateVars, activity: \"*\" },\n      notes: `${workOrderAttribute} completed`\n    });\n\n    asset.set(workOrderAttributePath, \"-\");\n    asset.set(jobLifecycleAttributePath, \"-\");\n    asset.set(jobActivityAttributePath, \"-\");\n\n    msg.payload = \"event closed\";\n    send(msg);\n  }\n}\n\nreturn;",
       "variableBindings": [
         {
           "name": "JobLifecycleAttribute",
@@ -3139,6 +2607,13 @@
         },
         {
           "name": "JobActivityAttribute",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "JobProgressAttribute",
           "source": "attribute",
           "staticValue": "",
           "attributePath": "",
@@ -3360,7 +2835,7 @@
       "id": "template.script_1772274570343",
       "name": "TaiyoProductCounter",
       "description": "",
-      "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / productFoldLength) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(2));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nsend(msg);",
+      "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / productFoldLength) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(2));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nmsg.payload = { productTotalCount, paperConsumedProduction, productFoldLength, productPerFold };\r\n\r\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -3525,6 +3000,36 @@
         },
         {
           "name": "RunningHour",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        }
+      ]
+    },
+    {
+      "id": "template.script_1773723245898",
+      "name": "TaiyoProductionProgress",
+      "description": "",
+      "script": "const workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst lifecycle = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle\", \"\") ?? \"\").trim().toLowerCase();\nconst targetRaw = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Count Target\", \"\") ?? \"\").trim();\nconst totalCount = Number(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Total Count\", 0) ?? 0);\nconst productCountPerBook = Number(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Count Per Book\", 0) ?? 0);\nconst progressPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Progress\";\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst normalizedTarget = targetRaw.replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\nconst targetMatch = normalizedTarget.match(/^(-?\\d+(?:\\.\\d+)?)\\s*([A-Za-z]+)?$/);\n\nif (!targetMatch) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetValue = Number(targetMatch[1]);\nconst targetUnit = String(targetMatch[2] || \"EA\").toUpperCase();\n\nlet targetEa = 0;\nif (targetUnit === \"EA\") {\n  targetEa = targetValue;\n} else if (targetUnit === \"BK\") {\n  targetEa = targetValue * productCountPerBook;\n}\n\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeTotalCount = Number.isFinite(totalCount) ? totalCount : 0;\nconst progress = Math.max(0, Math.round((safeTotalCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nsend(msg);",
+      "allowTemplateReuse": true,
+      "variableBindings": [
+        {
+          "name": "Work Order",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "Job Lifecycle",
+          "source": "attribute",
+          "staticValue": "",
+          "attributePath": "",
+          "allowOverride": true
+        },
+        {
+          "name": "Job Lifecycle Alarm",
           "source": "attribute",
           "staticValue": "",
           "attributePath": "",
