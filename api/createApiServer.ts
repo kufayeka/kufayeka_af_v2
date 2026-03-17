@@ -426,29 +426,58 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   }
 
   const app = express();
+  // app.use((req, res, next) => {
+  //   const requestOrigin = req.header("origin");
+  //   if (requestOrigin === preferredCorsOrigin) {
+  //     res.setHeader("Access-Control-Allow-Origin", preferredCorsOrigin);
+  //   } else if (requestOrigin && requestOrigin.trim()) {
+  //     // Open for all browser origins by reflecting current Origin.
+  //     res.setHeader("Access-Control-Allow-Origin", requestOrigin);
+  //   } else {
+  //     res.setHeader("Access-Control-Allow-Origin", "*");
+  //   }
+  //   res.setHeader("Vary", "Origin");
+  //   res.setHeader("Access-Control-Allow-Credentials", "true");
+  //   res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS,PATCH");
+  //   res.setHeader("Access-Control-Allow-Headers", req.header("access-control-request-headers") || "*");
+  //   res.setHeader("Access-Control-Expose-Headers", "*");
+  //   res.setHeader("Access-Control-Allow-Private-Network", "true");
+  //   res.setHeader("Access-Control-Max-Age", "86400");
+  //   if (req.method === "OPTIONS") {
+  //     res.status(204).end();
+  //     return;
+  //   }
+  //   next();
+  // });
+
   app.use((req, res, next) => {
+    // Allow all origins by setting to the request origin or *
     const requestOrigin = req.header("origin");
-    if (requestOrigin === preferredCorsOrigin) {
-      res.setHeader("Access-Control-Allow-Origin", preferredCorsOrigin);
-    } else if (requestOrigin && requestOrigin.trim()) {
-      // Open for all browser origins by reflecting current Origin.
-      res.setHeader("Access-Control-Allow-Origin", requestOrigin);
-    } else {
-      res.setHeader("Access-Control-Allow-Origin", "*");
+    
+    // Always allow all origins by reflecting the origin or using *
+    res.setHeader("Access-Control-Allow-Origin", requestOrigin || "*");
+    
+    if (requestOrigin) {
+      res.setHeader("Vary", "Origin");
     }
-    res.setHeader("Vary", "Origin");
+    
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS,PATCH");
-    res.setHeader("Access-Control-Allow-Headers", req.header("access-control-request-headers") || "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
     res.setHeader("Access-Control-Expose-Headers", "*");
     res.setHeader("Access-Control-Allow-Private-Network", "true");
     res.setHeader("Access-Control-Max-Age", "86400");
+    
     if (req.method === "OPTIONS") {
       res.status(204).end();
       return;
     }
+
     next();
+
   });
+
+
   app.use(express.json({ limit: "10mb" }));
 
   app.get(["/docs-json", "/docs/openapi.json", "/api/openapi.json"], (req, res) => {

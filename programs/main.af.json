@@ -309,7 +309,7 @@
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "const lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\n\nif (![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nif (lifecycle === \"load\") {\n  await asset.setMany([\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Setup\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Idle\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Paper Waste\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Paper Consumed\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Setup Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Idle Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Production Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Availability\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Performance\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Quality\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.OEE\", value: 0 },\n  ]);\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: lifecycle === \"load\" ? \"open\" : \"close\",\n  notes: lifecycle === \"load\" ? `${workOrder} lifecycle run opened` : `${workOrder} lifecycle ${lifecycle}`\n};\n\nsend(msg);",
+      "script": "const lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst alarmPath = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle Alarm\", \"\") ?? \"\").trim();\n\n\nif (![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nif (lifecycle === \"load\") {\n  await asset.setMany([\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Setup\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Idle\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Paper Waste\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Paper Consumed\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Setup Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Idle Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Production Time\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Availability\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Performance\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.Quality\", value: 0 },\n    { path: \"Jasuindo.OffsetPrinter.Taiyo1.OEE\", value: 0 },\n  ]);\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: lifecycle === \"load\" ? \"open\" : \"close\",\n  notes: lifecycle === \"load\" ? `${workOrder} lifecycle run opened` : `${workOrder} lifecycle ${lifecycle}`\n};\n\nsend(msg);",
       "eventTemplateId": "",
       "eventTemplateOverrides": {},
       "templateBindingOverrides": {}
@@ -325,6 +325,15 @@
       "eventTemplateId": "",
       "eventTemplateOverrides": {},
       "templateBindingOverrides": {}
+    },
+    {
+      "id": "Taiyo1.MES.ProductionProgress",
+      "label": "",
+      "type": "script",
+      "enabled": true,
+      "allowTreeDuplicate": true,
+      "description": "",
+      "script": "\r\n\r\n\r\nsend(msg);"
     }
   ],
   "flows": {
@@ -486,8 +495,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": 1773634111185,
-            "ts": "2026-03-16T04:08:30.958Z"
+            "value": 1773657028629,
+            "ts": "2026-03-16T10:30:29.318Z"
           }
         }
       },
@@ -504,30 +513,30 @@
         "attributes": {
           "Machine Speed": {
             "value": 0,
-            "ts": "2026-03-16T04:08:30.474Z"
+            "ts": "2026-03-17T03:30:41.109Z"
           },
           "Encoder Raw Value": {
-            "value": 661,
-            "ts": "2026-03-16T04:08:30.500Z"
+            "value": 745,
+            "ts": "2026-03-16T10:24:26.957Z"
           },
           "Encoder Prev Value": {
-            "value": 661,
-            "ts": "2026-03-16T04:08:30.499Z"
+            "value": 745,
+            "ts": "2026-03-17T03:30:41.112Z"
           },
           "Work Order": {
-            "value": "WO-2026-0088",
-            "ts": "2026-03-16T03:44:45.832Z"
+            "value": "WO-2026-0071",
+            "ts": "2026-03-17T03:15:18.149Z"
           },
           "Job Lifecycle": {
-            "value": "complete",
-            "ts": "2026-03-16T03:48:20.962Z"
+            "value": "load",
+            "ts": "2026-03-17T03:15:18.151Z"
           },
           "Machine Operator": {
             "value": {
               "label": "Alice Operator",
               "value": "90efaa37-9275-41d5-bb90-06352d055f1b"
             },
-            "ts": "2026-03-13T10:33:41.900Z"
+            "ts": "2026-03-17T03:21:05.420Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
@@ -535,91 +544,87 @@
           },
           "Job Activity": {
             "value": "Production/Run",
-            "ts": "2026-03-16T03:45:45.754Z"
+            "ts": "2026-03-16T09:18:55.138Z"
           },
           "Paper Consumed Setup": {
             "value": 0,
-            "ts": "2026-03-16T03:47:20.083Z"
+            "ts": "2026-03-17T03:15:18.156Z"
           },
           "Job Activity Category": {
             "value": "-",
-            "ts": "2026-03-16T04:08:30.499Z"
+            "ts": "2026-03-17T03:30:41.112Z"
           },
           "Paper Consumed Production": {
-            "value": 1294,
-            "ts": "2026-03-16T03:47:20.083Z"
+            "value": 0,
+            "ts": "2026-03-17T03:15:18.159Z"
           },
           "Paper Consumed Idle": {
             "value": 0,
-            "ts": "2026-03-16T03:47:20.083Z"
+            "ts": "2026-03-17T03:15:18.158Z"
           },
           "Total Production Time": {
-            "value": 154,
-            "ts": "2026-03-16T04:08:30.497Z"
+            "value": 0,
+            "ts": "2026-03-17T03:30:41.114Z"
           },
           "Total Setup Time": {
             "value": 0,
-            "ts": "2026-03-16T04:08:30.496Z"
+            "ts": "2026-03-17T03:30:41.113Z"
           },
           "Total Idle Time": {
             "value": 0,
-            "ts": "2026-03-16T04:08:30.496Z"
+            "ts": "2026-03-17T03:30:41.113Z"
           },
           "Material Barcode": {
-            "value": "KertasF001",
-            "ts": "2026-03-16T03:45:43.356Z"
+            "value": "KertasG001",
+            "ts": "2026-03-16T09:18:52.605Z"
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-03-16T04:08:30.499Z"
+            "ts": "2026-03-17T03:30:41.113Z"
           },
           "Total Paper Waste": {
             "value": 0,
-            "ts": "2026-03-16T03:47:20.084Z"
+            "ts": "2026-03-17T03:15:18.161Z"
           },
           "Total Paper Consumed": {
-            "value": 1294,
-            "ts": "2026-03-16T03:47:20.084Z"
-          },
-          "Product Fold Length": {
-            "value": 0.3,
-            "ts": "2026-03-13T10:16:11.581Z"
+            "value": 0,
+            "ts": "2026-03-17T03:15:18.163Z"
           },
           "Product Count Per Fold": {
             "value": 4,
-            "ts": "2026-03-13T10:16:11.581Z"
+            "ts": "2026-03-16T09:17:33.228Z"
           },
           "Running Hour": {
-            "value": 17625,
-            "ts": "2026-03-16T04:08:30.498Z"
+            "value": 18122,
+            "ts": "2026-03-17T03:30:41.114Z"
           },
           "Product Good Count": {
-            "value": 17153,
-            "ts": "2026-03-16T03:47:51.713Z"
+            "value": 1,
+            "ts": "2026-03-16T09:17:33.228Z"
           },
           "Product Reject Count": {
-            "value": 100,
-            "ts": "2026-03-16T03:47:36.085Z"
+            "value": 1,
+            "ts": "2026-03-16T09:17:33.229Z"
           },
           "Availability": {
             "value": 0,
-            "ts": "2026-03-16T03:44:53.642Z"
+            "ts": "2026-03-17T03:15:18.169Z"
           },
           "Performance": {
             "value": 0,
-            "ts": "2026-03-16T03:44:53.643Z"
+            "ts": "2026-03-17T03:15:18.170Z"
           },
           "Quality": {
             "value": 0,
-            "ts": "2026-03-16T03:44:53.644Z"
+            "ts": "2026-03-17T03:15:18.172Z"
           },
           "OEE": {
             "value": 0,
-            "ts": "2026-03-16T03:44:53.645Z"
+            "ts": "2026-03-17T03:15:18.173Z"
           },
           "Ply": {
             "value": "1/8",
-            "ts": "2026-03-13T10:22:49.302Z"
+            "ts": "2026-03-16T09:18:52.606Z"
           },
           "Assigned Operator Shift 1": {
             "value": {
@@ -643,12 +648,38 @@
             "ts": "2026-03-13T10:28:52.895Z"
           },
           "Product Total Count": {
-            "value": 17253.33,
-            "ts": "2026-03-16T04:08:30.475Z"
+            "value": 0,
+            "ts": "2026-03-17T03:30:41.110Z"
           },
           "Job Loader": {
-            "value": {},
-            "ts": "2026-03-13T10:23:41.931Z"
+            "value": {
+              "id": "c47b7d49-6c03-4e2e-9a32-fb3ef948850c",
+              "work_center": {
+                "id": 24,
+                "lookup_type": "WORK_CENTER",
+                "code": "Jasuindo.OffsetPrinter.Taiyo1",
+                "label": "Offset Printer Taiyo 1",
+                "description": null,
+                "sort_order": 1,
+                "is_active": true
+              },
+              "work_order": "WO-2026-0071",
+              "sales_order": "SO-2026-0026",
+              "quantity_order": 1001,
+              "quantity_unit": {
+                "id": 22,
+                "lookup_type": "QUANTITY_UNIT",
+                "code": "BK",
+                "label": "BK",
+                "description": null,
+                "sort_order": 1,
+                "is_active": true
+              },
+              "planned_start_time": "2026-05-02T08:00:00.000Z",
+              "job_lifecycle_state": "Running",
+              "notes": "Segera"
+            },
+            "ts": "2026-03-17T03:15:18.153Z"
           },
           "Ideal Speed": {
             "value": 9,
@@ -1151,7 +1182,7 @@
           },
           {
             "enabled": true,
-            "name": "Product Fold Length",
+            "name": "Paper/Fold Size",
             "valueType": "float32",
             "default": 0,
             "unit": "",
