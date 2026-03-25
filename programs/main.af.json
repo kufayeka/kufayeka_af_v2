@@ -333,7 +333,7 @@
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "const workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst lifecycle = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle\", \"\") ?? \"\").trim().toLowerCase();\nconst targetRaw = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Count Target\", \"\") ?? \"\").trim();\nconst totalCount = Number(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Total Count\", 0) ?? 0);\nconst productCountPerBook = Number(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Count Per Book\", 0) ?? 0);\nconst progressPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Progress\";\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst normalizedTarget = targetRaw.replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\nconst targetMatch = normalizedTarget.match(/^(-?\\d+(?:\\.\\d+)?)\\s*([A-Za-z]+)?$/);\n\nif (!targetMatch) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetValue = Number(targetMatch[1]);\nconst targetUnit = String(targetMatch[2] || \"EA\").toUpperCase();\n\nlet targetEa = 0;\nif (targetUnit === \"EA\") {\n  targetEa = targetValue;\n} else if (targetUnit === \"BK\") {\n  targetEa = targetValue * productCountPerBook;\n}\n\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeTotalCount = Number.isFinite(totalCount) ? totalCount : 0;\nconst progress = Math.max(0, Math.round((safeTotalCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nsend(msg);",
+      "script": "const workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst lifecycle = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle\", \"\") ?? \"\").trim().toLowerCase();\nconst targetRaw = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Count Target\", \"\") ?? \"\").trim();\nconst totalCount = Number(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Total Count\", 0) ?? 0);\nconst rejectCount = Number(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Reject Count\", 0) ?? 0);\nconst progressPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Progress\";\nconst goodCountPath = \"Jasuindo.OffsetPrinter.Taiyo1.Product Good Count\";\n\nconst safeTotalCount = Number.isFinite(totalCount) ? totalCount : 0;\nconst safeRejectCount = Number.isFinite(rejectCount) ? rejectCount : 0;\nconst goodCount = Math.max(0, Math.round(safeTotalCount - safeRejectCount));\n\nawait asset.set(goodCountPath, goodCount);\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst normalizedTarget = targetRaw.replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\nconst targetMatch = normalizedTarget.match(/^(-?\\d+(?:\\.\\d+)?)\\s*(?:[A-Za-z]+)?$/);\n\nif (!targetMatch) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetValue = Number(targetMatch[1]);\nconst targetEa = targetValue;\n\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst progress = Math.max(0, Math.round((safeTotalCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nsend(msg);",
       "eventTemplateId": "",
       "eventTemplateOverrides": {},
       "templateBindingOverrides": {
@@ -368,7 +368,10 @@
       "enabled": true,
       "allowTreeDuplicate": true,
       "description": "",
-      "script": "await asset.setMany([\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Job Progress\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", value: '-' },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity\", value: '-' },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle\", value: '-' },\r\n]);\r\n\r\nsend(msg);"
+      "script": "await asset.setMany([\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Job Progress\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", value: '-' },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Job Activity\", value: '-' },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle\", value: '-' },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Setup\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Idle\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Paper Waste\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Paper Consumed\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Setup Time\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Idle Time\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Total Production Time\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Availability\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Performance\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Quality\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.OEE\", value: 0 },\r\n  { path: \"Jasuindo.OffsetPrinter.Taiyo1.Product Count Target\", value: 0 },\r\n]);\r\n\r\nsend(msg);",
+      "eventTemplateId": "",
+      "eventTemplateOverrides": {},
+      "templateBindingOverrides": {}
     }
   ],
   "flows": {
@@ -529,7 +532,7 @@
         "y": 970
       },
       "Scripts.debug": {
-        "x": 2400,
+        "x": 2290,
         "y": 640
       },
       "Taiyo1.MES.ProductionProgress": {
@@ -537,8 +540,8 @@
         "y": 670
       },
       "Taiyo1.MES.JobCompleted": {
-        "x": 2350,
-        "y": 840
+        "x": 2460,
+        "y": 760
       }
     }
   },
@@ -553,8 +556,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": 1773734464014,
-            "ts": "2026-03-17T08:01:04.031Z"
+            "value": 1773738657022,
+            "ts": "2026-03-17T09:10:57.042Z"
           }
         }
       },
@@ -571,118 +574,118 @@
         "attributes": {
           "Machine Speed": {
             "value": 0,
-            "ts": "2026-03-17T08:01:04.331Z"
+            "ts": "2026-03-17T09:10:57.315Z"
           },
           "Encoder Raw Value": {
-            "value": 670,
-            "ts": "2026-03-17T08:01:04.561Z"
+            "value": 197,
+            "ts": "2026-03-17T09:10:56.728Z"
           },
           "Encoder Prev Value": {
-            "value": 670,
-            "ts": "2026-03-17T08:01:04.351Z"
+            "value": 197,
+            "ts": "2026-03-17T09:10:57.333Z"
           },
           "Work Order": {
-            "value": "WO-2026-0076",
-            "ts": "2026-03-17T06:39:07.734Z"
+            "value": "WO-2026-0080",
+            "ts": "2026-03-17T09:10:47.716Z"
           },
           "Job Lifecycle": {
-            "value": "complete",
-            "ts": "2026-03-17T07:59:39.666Z"
+            "value": "load",
+            "ts": "2026-03-17T09:10:47.717Z"
           },
           "Machine Operator": {
             "value": {
-              "value": "Alice123",
-              "label": "Alice"
+              "label": "Alice Operator",
+              "value": "90efaa37-9275-41d5-bb90-06352d055f1b"
             },
-            "ts": "2026-03-17T07:16:18.006Z"
+            "ts": "2026-03-17T08:48:15.871Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-03-17T07:59:39.670Z"
+            "ts": "2026-03-17T09:10:47.743Z"
           },
           "Job Activity": {
             "value": "Production/Run",
-            "ts": "2026-03-17T07:59:28.787Z"
+            "ts": "2026-03-17T09:07:06.098Z"
           },
           "Paper Consumed Setup": {
             "value": 0,
-            "ts": "2026-03-17T07:59:20.173Z"
+            "ts": "2026-03-17T09:10:47.724Z"
           },
           "Job Activity Category": {
             "value": "-",
-            "ts": "2026-03-17T08:01:04.352Z"
+            "ts": "2026-03-17T09:10:57.335Z"
           },
           "Paper Consumed Production": {
             "value": 0,
-            "ts": "2026-03-17T07:59:20.173Z"
+            "ts": "2026-03-17T09:10:47.727Z"
           },
           "Paper Consumed Idle": {
             "value": 0,
-            "ts": "2026-03-17T07:59:20.173Z"
+            "ts": "2026-03-17T09:10:47.726Z"
           },
           "Total Production Time": {
-            "value": 11,
-            "ts": "2026-03-17T08:01:04.359Z"
+            "value": 0,
+            "ts": "2026-03-17T09:10:57.342Z"
           },
           "Total Setup Time": {
             "value": 0,
-            "ts": "2026-03-17T08:01:04.356Z"
+            "ts": "2026-03-17T09:10:57.338Z"
           },
           "Total Idle Time": {
             "value": 0,
-            "ts": "2026-03-17T08:01:04.357Z"
+            "ts": "2026-03-17T09:10:57.340Z"
           },
           "Material Barcode": {
             "value": "KertasG001",
-            "ts": "2026-03-17T07:08:26.297Z"
+            "ts": "2026-03-17T08:47:30.283Z"
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-03-17T08:01:04.354Z"
+            "ts": "2026-03-17T09:10:57.336Z"
           },
           "Total Paper Waste": {
             "value": 0,
-            "ts": "2026-03-17T07:59:20.173Z"
+            "ts": "2026-03-17T09:10:47.729Z"
           },
           "Total Paper Consumed": {
             "value": 0,
-            "ts": "2026-03-17T07:59:20.174Z"
+            "ts": "2026-03-17T09:10:47.730Z"
           },
           "Product Count Per Fold": {
             "value": 2,
-            "ts": "2026-03-17T07:09:11.745Z"
+            "ts": "2026-03-17T08:47:30.284Z"
           },
           "Running Hour": {
-            "value": 20094,
-            "ts": "2026-03-17T08:01:04.361Z"
+            "value": 18722,
+            "ts": "2026-03-17T09:10:57.344Z"
           },
           "Product Good Count": {
             "value": 1,
-            "ts": "2026-03-17T07:08:26.301Z"
+            "ts": "2026-03-17T08:47:30.285Z"
           },
           "Product Reject Count": {
             "value": 1,
-            "ts": "2026-03-16T09:17:33.229Z"
+            "ts": "2026-03-17T08:21:23.593Z"
           },
           "Availability": {
             "value": 0,
-            "ts": "2026-03-17T07:59:20.175Z"
+            "ts": "2026-03-17T09:10:47.737Z"
           },
           "Performance": {
             "value": 0,
-            "ts": "2026-03-17T07:59:20.175Z"
+            "ts": "2026-03-17T09:10:47.739Z"
           },
           "Quality": {
             "value": 0,
-            "ts": "2026-03-17T07:59:20.176Z"
+            "ts": "2026-03-17T09:10:47.740Z"
           },
           "OEE": {
             "value": 0,
-            "ts": "2026-03-17T07:59:20.176Z"
+            "ts": "2026-03-17T09:10:47.742Z"
           },
           "Ply": {
             "value": "1/8",
-            "ts": "2026-03-17T07:08:26.298Z"
+            "ts": "2026-03-17T08:47:30.284Z"
           },
           "Assigned Operator Shift 1": {
             "value": {
@@ -707,11 +710,11 @@
           },
           "Product Total Count": {
             "value": 0,
-            "ts": "2026-03-17T08:01:04.334Z"
+            "ts": "2026-03-17T09:10:57.319Z"
           },
           "Job Loader": {
             "value": {
-              "id": "e91e78ad-8ec2-498a-865a-1edef7558461",
+              "id": "237097ca-9efd-486f-a3ab-5f910c5ff5c4",
               "work_center": {
                 "id": 24,
                 "lookup_type": "WORK_CENTER",
@@ -721,9 +724,9 @@
                 "sort_order": 1,
                 "is_active": true
               },
-              "work_order": "WO-2026-0076",
-              "sales_order": "SO-2026-0031",
-              "quantity_order": 1006,
+              "work_order": "WO-2026-0080",
+              "sales_order": "SO-2026-0035",
+              "quantity_order": 1010,
               "quantity_unit": {
                 "id": 22,
                 "lookup_type": "QUANTITY_UNIT",
@@ -733,11 +736,11 @@
                 "sort_order": 1,
                 "is_active": true
               },
-              "planned_start_time": "2026-05-07T08:00:00.000Z",
+              "planned_start_time": "2026-05-11T08:00:00.000Z",
               "job_lifecycle_state": "Running",
               "notes": "Segera"
             },
-            "ts": "2026-03-17T06:39:07.737Z"
+            "ts": "2026-03-17T09:10:47.721Z"
           },
           "Ideal Speed": {
             "value": 9,
@@ -745,19 +748,15 @@
           },
           "Paper/Fold Size": {
             "value": 0.2,
-            "ts": "2026-03-17T07:08:26.301Z"
+            "ts": "2026-03-17T08:47:30.284Z"
           },
           "Job Progress": {
             "value": 0,
-            "ts": "2026-03-17T08:01:04.337Z"
+            "ts": "2026-03-17T09:10:57.321Z"
           },
           "Product Count Target": {
-            "value": "2000 EA",
-            "ts": "2026-03-17T07:25:19.967Z"
-          },
-          "Product Count Per Book": {
-            "value": 4,
-            "ts": "2026-03-17T07:00:26.282Z"
+            "value": "1010 BK",
+            "ts": "2026-03-17T09:10:47.719Z"
           }
         }
       },
@@ -1017,7 +1016,7 @@
             "name": "Product Count Target",
             "valueType": "string",
             "default": 0,
-            "unit": "EA or BK",
+            "unit": "EA",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
             "historianTargetId": "default"
@@ -1118,16 +1117,6 @@
             "valueType": "float32",
             "default": 0,
             "unit": "%",
-            "historianEnabled": false,
-            "historianTimeSourcePath": "",
-            "historianTargetId": "default"
-          },
-          {
-            "enabled": true,
-            "name": "Product Count Per Book",
-            "valueType": "int32",
-            "default": 0,
-            "unit": "",
             "historianEnabled": false,
             "historianTimeSourcePath": "",
             "historianTargetId": "default"
@@ -3011,7 +3000,7 @@
       "id": "template.script_1773723245898",
       "name": "TaiyoProductionProgress",
       "description": "",
-      "script": "const workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst lifecycle = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle\", \"\") ?? \"\").trim().toLowerCase();\nconst targetRaw = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Count Target\", \"\") ?? \"\").trim();\nconst totalCount = Number(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Total Count\", 0) ?? 0);\nconst productCountPerBook = Number(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Count Per Book\", 0) ?? 0);\nconst progressPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Progress\";\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst normalizedTarget = targetRaw.replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\nconst targetMatch = normalizedTarget.match(/^(-?\\d+(?:\\.\\d+)?)\\s*([A-Za-z]+)?$/);\n\nif (!targetMatch) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetValue = Number(targetMatch[1]);\nconst targetUnit = String(targetMatch[2] || \"EA\").toUpperCase();\n\nlet targetEa = 0;\nif (targetUnit === \"EA\") {\n  targetEa = targetValue;\n} else if (targetUnit === \"BK\") {\n  targetEa = targetValue * productCountPerBook;\n}\n\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeTotalCount = Number.isFinite(totalCount) ? totalCount : 0;\nconst progress = Math.max(0, Math.round((safeTotalCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nsend(msg);",
+      "script": "const workOrder = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Work Order\", \"\") ?? \"\").trim();\nconst lifecycle = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle\", \"\") ?? \"\").trim().toLowerCase();\nconst targetRaw = String(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Count Target\", \"\") ?? \"\").trim();\nconst totalCount = Number(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Total Count\", 0) ?? 0);\nconst rejectCount = Number(asset.get(\"Jasuindo.OffsetPrinter.Taiyo1.Product Reject Count\", 0) ?? 0);\nconst progressPath = \"Jasuindo.OffsetPrinter.Taiyo1.Job Progress\";\nconst goodCountPath = \"Jasuindo.OffsetPrinter.Taiyo1.Product Good Count\";\n\nconst safeTotalCount = Number.isFinite(totalCount) ? totalCount : 0;\nconst safeRejectCount = Number.isFinite(rejectCount) ? rejectCount : 0;\nconst goodCount = Math.max(0, Math.round(safeTotalCount - safeRejectCount));\n\nawait asset.set(goodCountPath, goodCount);\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst normalizedTarget = targetRaw.replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\nconst targetMatch = normalizedTarget.match(/^(-?\\d+(?:\\.\\d+)?)\\s*(?:[A-Za-z]+)?$/);\n\nif (!targetMatch) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetValue = Number(targetMatch[1]);\nconst targetEa = targetValue;\n\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst progress = Math.max(0, Math.round((safeTotalCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {

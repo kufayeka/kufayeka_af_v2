@@ -68,6 +68,7 @@ interface EffectiveAttributeRow {
   valueType: AssetAttributeType | "custom";
   unit: string;
   value: unknown;
+  ts?: string;
   source: string;
   overridden: boolean;
   historianEnabled: boolean;
@@ -222,6 +223,7 @@ function getEffectiveAttributes(
           valueType: attr.valueType,
           unit: attr.unit ?? "",
           value: attr.default,
+          ts: undefined,
           source: template.name,
           overridden: false,
           historianEnabled: attr.historianEnabled === true
@@ -233,13 +235,14 @@ function getEffectiveAttributes(
   for (const [name, val] of Object.entries(asset.attributes || {})) {
     const existing = rows.get(name);
     if (existing) {
-      rows.set(name, { ...existing, value: val.value, overridden: true });
+      rows.set(name, { ...existing, value: val.value, ts: val.ts, overridden: true });
     } else {
       rows.set(name, {
         name,
         valueType: "custom",
         unit: "",
         value: val.value,
+        ts: val.ts,
         source: "Custom",
         overridden: true,
         historianEnabled: false
@@ -254,6 +257,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [mainTab, setMainTab] = useState(0);
   const [search, setSearch] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [selectedTreeKey, setSelectedTreeKey] = useState<Key>("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
   const [loadingRuntime, setLoadingRuntime] = useState(false);
@@ -416,6 +420,21 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     if (!selectedAsset) return [];
     return getEffectiveAttributes(selectedAsset, templateById);
   }, [selectedAsset, templateById]);
+
+  useEffect(() => {
+    if (!selectedAssetId) {
+      setSelectedTreeKey("");
+      return;
+    }
+    setSelectedTreeKey((prev) => (String(prev).startsWith("attr:") ? prev : `asset:${selectedAssetId}`));
+  }, [selectedAssetId]);
+
+  const formatAttributeTimestamp = (ts?: string): string => {
+    if (!ts) return "-";
+    const parsed = new Date(ts);
+    if (Number.isNaN(parsed.getTime())) return ts;
+    return parsed.toLocaleString();
+  };
   const assetAttributePaths = useMemo(() => {
     const options: string[] = [];
     for (const asset of assets.assets) {
@@ -743,10 +762,12 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                 variant="outlined"
                 size="small"
                 startIcon={<RefreshCcw size={16} />}
+                aria-label="Reload assets and attribute values from runtime"
+                title="Reload assets and attribute values from runtime"
                 disabled={loadingRuntime}
                 onClick={() => void reloadFromRuntime()}
               >
-                {loadingRuntime ? "loading..." : ""}
+                {loadingRuntime ? "Loading..." : "Reload Runtime"}
               </Button>
             </Box>
             <TextField
@@ -761,11 +782,21 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
               treeData={treeData}
               expandedKeys={expandedKeys}
               onExpand={(keys) => setExpandedKeys(keys)}
-              selectedKeys={selectedAssetId ? [`asset:${selectedAssetId}`] : []}
+              selectedKeys={selectedTreeKey ? [selectedTreeKey] : []}
               onSelect={(keys) => {
                 const key = String(keys[0] ?? "");
-                if (!key.startsWith("asset:")) return;
-                setSelectedAssetId(key.slice("asset:".length));
+                if (!key) return;
+                setSelectedTreeKey(key);
+                if (key.startsWith("asset:")) {
+                  setSelectedAssetId(key.slice("asset:".length));
+                  return;
+                }
+                if (key.startsWith("attr:")) {
+                  const [, assetId] = key.split(":");
+                  if (assetId) {
+                    setSelectedAssetId(assetId);
+                  }
+                }
               }}
             />
           </Paper>
@@ -871,20 +902,35 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                   
                 </Box>
           
-              <Box sx={{ display: "flex", flexDirection: "row", gap: 1.25 }}>
-                <Typography variant="subtitle2" sx={{ mt: 1 }}>
-                  Effective Attributes ({selectedAssetEffectiveAttributes.length})
-                </Typography>
+              <Box
+                sx={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 1.25
+                }}
+              >
+                <Box>
+                  <Typography variant="subtitle2">
+                    Effective Attributes ({selectedAssetEffectiveAttributes.length})
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Klik attribute di tree untuk langsung fokus ke asset pemiliknya.
+                  </Typography>
+                </Box>
                   <Button
                     variant="outlined"
                     size="small"
-                    sx={{ alignSelf: "flex-start" }}
+                    startIcon={<RefreshCcw size={16} />}
+                    aria-label={`Refresh effective attributes for asset ${selectedAsset.name} from assigned templates`}
+                    title={`Refresh effective attributes for asset ${selectedAsset.name} from assigned templates`}
                     onClick={() => {
                       refreshAssetTemplateAttributes(selectedAsset.id);
                       showNotice("success", `Attributes refreshed for "${selectedAsset.name}"`);
                     }}
                   >
-                    Refresh Attributes from Templates
+                    Refresh Effective Attributes
                   </Button>
               </Box>
 
@@ -896,6 +942,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Value</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Type</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Unit</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 180 }}>Updated</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Historian</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Source</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 140 }}>Action</TableCell>
@@ -925,6 +972,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           </TableCell>
                           <TableCell>{row.valueType}</TableCell>
                           <TableCell>{row.unit || "-"}</TableCell>
+                          <TableCell>{formatAttributeTimestamp(row.ts)}</TableCell>
                           <TableCell>{row.historianEnabled ? "enabled" : "-"}</TableCell>
                           <TableCell>{row.source}{row.overridden ? " (override)" : ""}</TableCell>
                           <TableCell>
