@@ -207,21 +207,19 @@ export default function FlowDiagram({
   const nodeMetaMap = useMemo(() => new Map(safeNodes.map((node) => [node.id, node] as const)), [safeNodes]);
 
   const [liveNodePositions, setLiveNodePositions] = useState<Record<string, NodePosition>>({});
-  const [previewNodePositions, setPreviewNodePositions] = useState<Record<string, NodePosition>>({});
   useEffect(() => {
     setLiveNodePositions({});
-    setPreviewNodePositions({});
   }, [nodePositions]);
 
   const placedNodes = useMemo<PlacedNode[]>(() => {
     const list: PlacedNode[] = [];
     for (const node of safeNodes) {
-      const pos = previewNodePositions[node.id] || liveNodePositions[node.id] || nodePositions[node.id];
+      const pos = liveNodePositions[node.id] || nodePositions[node.id];
       if (!pos) continue;
       list.push({ ...node, x: pos.x, y: pos.y });
     }
     return list;
-  }, [previewNodePositions, liveNodePositions, nodePositions, safeNodes]);
+  }, [liveNodePositions, nodePositions, safeNodes]);
 
   const nodeMap = useMemo(() => new Map(placedNodes.map((node) => [node.id, node] as const)), [placedNodes]);
   const maxX = placedNodes.reduce((acc, node) => Math.max(acc, node.x), 0);
@@ -240,7 +238,18 @@ export default function FlowDiagram({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const nodeElementRefs = useRef<Record<string, SVGGElement | null>>({});
   const dragPanRef = useRef({ active: false, x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
-  const previewRafRef = useRef<number | null>(null);
+  const linkElementRefs = useRef<
+    Record<
+      string,
+      {
+        outline: SVGPathElement | null;
+        main: SVGPathElement | null;
+        hit: SVGPathElement | null;
+        badge: SVGCircleElement | null;
+        badgeText: SVGTextElement | null;
+      }
+    >
+  >({});
   const dragNodeRef = useRef({
     active: false,
     nodeIds: [] as string[],
@@ -291,11 +300,6 @@ export default function FlowDiagram({
   };
 
   const clearDragPreview = () => {
-    if (previewRafRef.current !== null) {
-      cancelAnimationFrame(previewRafRef.current);
-      previewRafRef.current = null;
-    }
-    setPreviewNodePositions({});
     for (const nodeId of dragNodeRef.current.nodeIds) {
       const element = nodeElementRefs.current[nodeId];
       if (element) {
@@ -312,6 +316,35 @@ export default function FlowDiagram({
       if (!element || !start || !next) continue;
       element.setAttribute("transform", `translate(${next.x - start.x}, ${next.y - start.y})`);
     }
+  };
+
+  const updatePreviewLinks = (batch?: Record<string, NodePosition>) => {
+    safeLinks.forEach((link, index) => {
+      const from = nodeMap.get(link.from);
+      const to = nodeMap.get(link.to);
+      if (!from || !to) return;
+      const fromPos = batch?.[from.id] || { x: from.x, y: from.y };
+      const toPos = batch?.[to.id] || { x: to.x, y: to.y };
+      const previewFrom = { ...from, x: fromPos.x, y: fromPos.y };
+      const previewTo = { ...to, x: toPos.x, y: toPos.y };
+      const portIndex = Math.max(0, previewFrom.outputs.findIndex((output) => output.id === (link.fromPort || "default")));
+      const outputLabel = previewFrom.outputs[portIndex]?.label ?? "OUT";
+      const outputPillWidth = Math.max(50, outputLabel.length * 7 + 14);
+      const startX = previewFrom.x + NODE_W / 2 + OUTPUT_PILL_OUTSIDE_GAP + outputPillWidth + OUTPUT_PILL_GAP + OUTPUT_PORT_RADIUS;
+      const startY = getOutputY(previewFrom, portIndex);
+      const endX = getInputPortX(previewTo);
+      const endY = previewTo.y;
+      const flowPath = buildFlowPath(startX, startY, endX, endY);
+      const key = `${link.from}-${link.to}-${link.fromPort ?? "default"}-${index}`;
+      const refs = linkElementRefs.current[key];
+      refs?.outline?.setAttribute("d", flowPath.path);
+      refs?.main?.setAttribute("d", flowPath.path);
+      refs?.hit?.setAttribute("d", flowPath.path);
+      refs?.badge?.setAttribute("cx", String(flowPath.labelX));
+      refs?.badge?.setAttribute("cy", String(flowPath.labelY + 5));
+      refs?.badgeText?.setAttribute("x", String(flowPath.labelX));
+      refs?.badgeText?.setAttribute("y", String(flowPath.labelY + 8));
+    });
   };
 
   const zoomView = (factor: number) => {
@@ -370,6 +403,7 @@ export default function FlowDiagram({
       }
     }
     clearDragPreview();
+    updatePreviewLinks();
     dragNodeRef.current.active = false;
     dragNodeRef.current.nodeIds = [];
     dragNodeRef.current.startNodePositions = {};
@@ -398,12 +432,7 @@ export default function FlowDiagram({
       });
       dragNodeRef.current.latestPositions = nextBatch;
       applyDragPreview(nextBatch);
-      if (previewRafRef.current === null) {
-        previewRafRef.current = requestAnimationFrame(() => {
-          previewRafRef.current = null;
-          setPreviewNodePositions({ ...dragNodeRef.current.latestPositions });
-        });
-      }
+      updatePreviewLinks(nextBatch);
       return;
     }
 
@@ -470,12 +499,12 @@ export default function FlowDiagram({
     return () => {
       window.removeEventListener("mousemove", handleWindowMouseMove);
       window.removeEventListener("mouseup", handleWindowMouseUp);
-      if (previewRafRef.current !== null) {
-        cancelAnimationFrame(previewRafRef.current);
-        previewRafRef.current = null;
-      }
     };
   });
+
+  useEffect(() => {
+    updatePreviewLinks();
+  }, [placedNodes, safeLinks]);
 
   const handleDragOver = (event: ReactDragEvent) => {
     event.dataTransfer.dropEffect = "copy";
@@ -633,11 +662,78 @@ export default function FlowDiagram({
 
               return (
                 <g key={`${link.from}-${link.to}-${link.fromPort ?? "default"}-${index}`}>
-                  <path d={flowPath.path} fill="none" stroke="#ffffff" strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={isEnabled ? undefined : "7 5"} markerEnd="url(#flow-arrow)" pointerEvents="none" />
-                  <path d={flowPath.path} fill="none" stroke={isSelected ? "#dc2626" : isEnabled ? "#707070" : "#94a3b8"} strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={isEnabled ? undefined : "7 5"} markerEnd="url(#flow-arrow)" pointerEvents="none" />
-                  <path d={flowPath.path} fill="none" stroke="transparent" strokeWidth={20} data-diagram-interactive="true" onClick={() => onSelectLink(index)} style={{ cursor: "pointer" }} />
-                  <circle cx={flowPath.labelX} cy={flowPath.labelY + 5} r={10} fill="#fff" stroke="#94a3b8" strokeWidth={1} onClick={() => onSelectLink(index)} style={{ cursor: "pointer" }} />
-                  <text x={flowPath.labelX} y={flowPath.labelY + 8} textAnchor="middle" fontFamily="monospace" fontSize="11" fontWeight="700" fill="#0f172a" onClick={() => onSelectLink(index)} style={{ cursor: "pointer" }}>
+                  <path
+                    ref={(element) => {
+                      const key = `${link.from}-${link.to}-${link.fromPort ?? "default"}-${index}`;
+                      linkElementRefs.current[key] = { ...(linkElementRefs.current[key] || {}), outline: element };
+                    }}
+                    d={flowPath.path}
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth={7}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray={isEnabled ? undefined : "7 5"}
+                    markerEnd="url(#flow-arrow)"
+                    pointerEvents="none"
+                  />
+                  <path
+                    ref={(element) => {
+                      const key = `${link.from}-${link.to}-${link.fromPort ?? "default"}-${index}`;
+                      linkElementRefs.current[key] = { ...(linkElementRefs.current[key] || {}), main: element };
+                    }}
+                    d={flowPath.path}
+                    fill="none"
+                    stroke={isSelected ? "#dc2626" : isEnabled ? "#707070" : "#94a3b8"}
+                    strokeWidth={4}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray={isEnabled ? undefined : "7 5"}
+                    markerEnd="url(#flow-arrow)"
+                    pointerEvents="none"
+                  />
+                  <path
+                    ref={(element) => {
+                      const key = `${link.from}-${link.to}-${link.fromPort ?? "default"}-${index}`;
+                      linkElementRefs.current[key] = { ...(linkElementRefs.current[key] || {}), hit: element };
+                    }}
+                    d={flowPath.path}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth={20}
+                    data-diagram-interactive="true"
+                    onClick={() => onSelectLink(index)}
+                    style={{ cursor: "pointer" }}
+                  />
+                  <circle
+                    ref={(element) => {
+                      const key = `${link.from}-${link.to}-${link.fromPort ?? "default"}-${index}`;
+                      linkElementRefs.current[key] = { ...(linkElementRefs.current[key] || {}), badge: element };
+                    }}
+                    cx={flowPath.labelX}
+                    cy={flowPath.labelY + 5}
+                    r={10}
+                    fill="#fff"
+                    stroke="#94a3b8"
+                    strokeWidth={1}
+                    onClick={() => onSelectLink(index)}
+                    style={{ cursor: "pointer" }}
+                  />
+                  <text
+                    ref={(element) => {
+                      const key = `${link.from}-${link.to}-${link.fromPort ?? "default"}-${index}`;
+                      linkElementRefs.current[key] = { ...(linkElementRefs.current[key] || {}), badgeText: element };
+                    }}
+                    x={flowPath.labelX}
+                    y={flowPath.labelY + 8}
+                    textAnchor="middle"
+                    fontFamily="monospace"
+                    fontSize="11"
+                    fontWeight="700"
+                    fill="#0f172a"
+                    onClick={() => onSelectLink(index)}
+                    style={{ cursor: "pointer" }}
+                  >
                     {index + 1}
                   </text>
                 </g>
