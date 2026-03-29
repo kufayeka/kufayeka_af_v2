@@ -242,7 +242,8 @@ export default function TriggerManager({
             <TextField
               label="Trigger ID"
               value={selectedTrigger.id}
-              onChange={(e) => onRenameTrigger(selectedTrigger.id, e.target.value)}
+              disabled
+              helperText="Internal ID is generated automatically and cannot be edited."
             />
             <TextField
               label="Trigger Type"

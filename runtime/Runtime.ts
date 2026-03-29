@@ -359,8 +359,53 @@ class Runtime {
 
       setImmediate(async () => {
         try {
-          const send = (outMsg: RuntimeMessage, port = "default"): void => {
-            this.send(nodeId, outMsg, port);
+          const nodeConfig = this.getGlobal<Record<string, Record<string, unknown>>>("flowNodeConfigById", {});
+          const outputLabels = Array.isArray(nodeConfig?.[nodeId]?.outputs)
+            ? (nodeConfig[nodeId].outputs as unknown[]).map((item) => String(item || "").trim()).filter(Boolean)
+            : [];
+          const resolvePorts = (targets: Array<string | number>): string[] => {
+            const resolved = new Set<string>();
+            for (const target of targets) {
+              if (typeof target === "number" && Number.isFinite(target)) {
+                const index = Math.trunc(target) - 1;
+                const port = outputLabels[index];
+                if (port) resolved.add(port);
+                continue;
+              }
+              const raw = String(target || "").trim();
+              if (!raw) continue;
+              if (/^\d+$/.test(raw)) {
+                const index = Number(raw) - 1;
+                const port = outputLabels[index];
+                if (port) resolved.add(port);
+                continue;
+              }
+              resolved.add(raw);
+            }
+            return Array.from(resolved);
+          };
+          const send = (msgOrPorts: RuntimeMessage | string[] | number[], msgOrPort?: RuntimeMessage | string, maybePort?: string): void => {
+            if (Array.isArray(msgOrPorts)) {
+              const ports = resolvePorts(msgOrPorts as Array<string | number>);
+              const outMsg = msgOrPort as RuntimeMessage;
+              for (const port of ports) {
+                this.send(nodeId, outMsg, port);
+              }
+              return;
+            }
+            const outMsg = msgOrPorts as RuntimeMessage;
+            if (typeof msgOrPort === "string") {
+              this.send(nodeId, outMsg, msgOrPort);
+              return;
+            }
+            if (typeof maybePort === "string") {
+              this.send(nodeId, outMsg, maybePort);
+              return;
+            }
+            const ports = outputLabels.length > 0 ? outputLabels : ["default"];
+            for (const port of ports) {
+              this.send(nodeId, outMsg, port);
+            }
           };
           const context = this.createNodeContext(nodeId);
           if (this.nodeExecutionTimeoutMs > 0) {

@@ -40,10 +40,11 @@ import type {
   ScriptNodeSummary,
   ScriptTemplateDefinition,
   EventNodeSummary,
+  ScriptOutputDefinition,
   TriggerDefinition,
   NodePosition
 } from "../types/program";
-import type { FlowPaletteItem } from "../components/managers/FlowDiagram";
+import type { FlowPaletteItem } from "../components/managers/FlowManager";
 
 const EMPTY_PROGRAM: Program = {
   meta: { name: "Kufayeka AF Program", version: 1 },
@@ -62,6 +63,124 @@ const getBaseEventActionIdFromNode = (nodeId: string): string =>
     : nodeId.startsWith("event.close.")
       ? nodeId.slice("event.close.".length)
       : nodeId;
+
+const makeRandomToken = (prefix: string): string =>
+  `${prefix}_${Math.random().toString(36).slice(2, 8)}${Math.random().toString(36).slice(2, 4)}`;
+
+const getNextIncrementalLabel = (base: string, usedLabels: string[]): string => {
+  const normalizedBase = base.trim() || "Node";
+  let index = 1;
+  let candidate = `${normalizedBase} - ${index}`;
+  const used = new Set(usedLabels.map((item) => item.trim().toLowerCase()).filter(Boolean));
+  while (used.has(candidate.trim().toLowerCase())) {
+    index += 1;
+    candidate = `${normalizedBase} - ${index}`;
+  }
+  return candidate;
+};
+
+const getTriggerBaseLabel = (type: TriggerDefinition["type"]): string => {
+  if (type === "interval") return "Interval Trigger";
+  if (type === "cron") return "Cron Trigger";
+  if (type === "watcher_set") return "Watcher Set";
+  if (type === "watcher_valuechange") return "Watcher Value Change";
+  return "Watcher Event Falling";
+};
+
+const isShortGeneratedId = (value: string, prefix: string): boolean =>
+  new RegExp(`^${prefix}_[a-z0-9]{8}$`, "i").test(String(value || ""));
+
+const remapNodeIdInLinks = (links: FlowLink[], fromId: string, toId: string): FlowLink[] =>
+  links.map((link) => ({
+    ...link,
+    from: link.from === fromId ? toId : link.from,
+    to: link.to === fromId ? toId : link.to
+  }));
+
+const migrateProgramIdentity = (program: Program): Program => {
+  let next = structuredClone(program);
+  let nextLinks = [...(next.flows.links || [])];
+  const nextPositions = { ...(next.flows.nodePositions || {}) };
+  const triggerIdMap = new Map<string, { nextId: string; label: string }>();
+
+  next.triggers = next.triggers.map((trigger, index) => {
+    const nextId = isShortGeneratedId(trigger.id, "trg") ? trigger.id : makeRandomToken("trg");
+    const nextLabel = trigger.label?.trim() || `${getTriggerBaseLabel(trigger.type)} - ${index + 1}`;
+    triggerIdMap.set(trigger.id, { nextId, label: nextLabel });
+    if (nextId !== trigger.id) {
+      nextLinks = remapNodeIdInLinks(nextLinks, trigger.id, nextId);
+      if (nextPositions[trigger.id]) {
+        nextPositions[nextId] = nextPositions[trigger.id];
+        delete nextPositions[trigger.id];
+      }
+    }
+    return {
+      ...trigger,
+      id: nextId,
+      label: nextLabel
+    };
+  });
+
+  const eventRefMap = new Map<string, string>();
+  next.flows.nodes = (next.flows.nodes || []).map((node, index) => {
+    if (node.kind === "trigger") {
+      const mapped = triggerIdMap.get(node.id);
+      if (!mapped) return node;
+      nextLinks = remapNodeIdInLinks(nextLinks, node.id, mapped.nextId);
+      if (nextPositions[node.id] && node.id !== mapped.nextId) {
+        nextPositions[mapped.nextId] = nextPositions[node.id];
+        delete nextPositions[node.id];
+      }
+      return { ...node, id: mapped.nextId, refId: mapped.nextId, label: node.label?.trim() || mapped.label || "" };
+    }
+    if (node.kind === "action") {
+      const nextId = isShortGeneratedId(node.id, "act") ? node.id : makeRandomToken("act");
+      if (nextId !== node.id) {
+        nextLinks = remapNodeIdInLinks(nextLinks, node.id, nextId);
+        if (nextPositions[node.id]) {
+          nextPositions[nextId] = nextPositions[node.id];
+          delete nextPositions[node.id];
+        }
+      }
+      return {
+        ...node,
+        id: nextId,
+        refId: nextId,
+        label: node.label?.trim() || `Action - ${index + 1}`,
+        config: {
+          ...(node.config || {}),
+          outputs: Array.isArray((node.config as Record<string, unknown> | undefined)?.outputs)
+            ? (node.config as Record<string, unknown>).outputs
+            : ["out"]
+        }
+      };
+    }
+    if (node.kind === "event_open" || node.kind === "event_close") {
+      const currentRef = node.refId || node.id;
+      const nextRef = eventRefMap.get(currentRef) || makeRandomToken("evt");
+      eventRefMap.set(currentRef, nextRef);
+      const nextId = node.kind === "event_open" ? getEventActionOpenNodeId(nextRef) : getEventActionCloseNodeId(nextRef);
+      if (nextId !== node.id) {
+        nextLinks = remapNodeIdInLinks(nextLinks, node.id, nextId);
+        if (nextPositions[node.id]) {
+          nextPositions[nextId] = nextPositions[node.id];
+          delete nextPositions[node.id];
+        }
+      }
+      return {
+        ...node,
+        id: nextId,
+        refId: nextRef,
+        label: node.label?.trim() || `${node.kind === "event_open" ? "OPEN" : "CLOSE"} Event - ${index + 1}`
+      };
+    }
+    return node;
+  });
+
+  next.flows.links = nextLinks;
+  next.flows.nodePositions = nextPositions;
+  return next;
+};
 
 const deriveScriptNodeSummaries = (nodes: FlowNodeDefinition[]): ScriptNodeSummary[] =>
   nodes
@@ -332,7 +451,7 @@ export default function HomePage() {
     fetch("/api/program")
       .then((res) => res.json())
       .then((data: { program?: Program }) => {
-        const next = normalizeProgram(data.program ?? EMPTY_PROGRAM);
+        const next = migrateProgramIdentity(normalizeProgram(data.program ?? EMPTY_PROGRAM));
         loadProgramIntoEditor(next);
       })
       .catch((error: Error) => {
@@ -482,19 +601,20 @@ export default function HomePage() {
   };
 
   const addTriggerWithType = (type: TriggerDefinition["type"]): void => {
-    const id =
-      type !== "interval"
-        ? `trigger.watch_${Date.now()}`
-        : `trigger.tick_${Date.now()}`;
+    const id = makeRandomToken("trg");
     const defaultWatchPath =
       type === "watcher_set" || type === "watcher_valuechange"
         ? "*.*.*"
         : type === "watcher_event_falling"
           ? "*"
           : "";
+    const label = getNextIncrementalLabel(
+      getTriggerBaseLabel(type),
+      program.triggers.map((item) => item.label || "")
+    );
     const next: TriggerDefinition = {
       id,
-      label: "",
+      label,
       type,
       enabled: true,
       intervalMs: 1000,
@@ -512,7 +632,7 @@ export default function HomePage() {
             id,
             kind: "trigger",
             refId: id,
-            label: "",
+            label,
             enabled: true,
             config: {
               type,
@@ -534,7 +654,7 @@ export default function HomePage() {
     try {
       const raw = await file.text();
       const parsed = JSON.parse(raw) as Program;
-      const normalized = normalizeProgram(parsed);
+      const normalized = migrateProgramIdentity(normalizeProgram(parsed));
       loadProgramIntoEditor(normalized, `Imported program from ${file.name}`);
       setTab(2);
     } catch (error) {
@@ -544,15 +664,14 @@ export default function HomePage() {
   };
 
   const addAction = (parentPath?: string): void => {
-    const safeParent = (parentPath || "scripts.group")
-      .split(".")
-      .map((segment) => segment.trim())
-      .filter(Boolean)
-      .join(".");
-    const id = `${safeParent}.action_${Date.now()}`;
+    const id = makeRandomToken("act");
+    const label = getNextIncrementalLabel(
+      "Action",
+      flowNodes.filter((item) => item.kind === "action").map((item) => item.label || "")
+    );
     const nextNode: FlowNodeDefinition = {
       id,
-      label: "",
+      label,
       kind: "action",
       refId: id,
       enabled: true,
@@ -560,6 +679,7 @@ export default function HomePage() {
       config: {
         description: "",
         script: "send(msg);",
+        outputs: ["out"],
         templateBindingOverrides: {},
         eventTemplateId: "",
         eventTemplateOverrides: {}
@@ -576,13 +696,15 @@ export default function HomePage() {
   const createActionFromTemplateInFlow = (templateId: string, position: NodePosition): void => {
     const template = program.scriptTemplates.find((item) => item.id === templateId);
     if (!template) return;
-    const baseName = (template.name || template.id || "script")
-      .replace(/[^a-zA-Z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "");
-    const id = `flow.scripts.${baseName || "script"}_${Date.now()}`;
+    const id = makeRandomToken("act");
+    const label = getNextIncrementalLabel(
+      template.name || "Action",
+      flowNodes.filter((item) => item.kind === "action").map((item) => item.label || "")
+    );
     const nextNode: FlowNodeDefinition = {
       id,
-      label: template.name || "",
+      label,
+      subtitle: template.name || label,
       kind: "action",
       refId: id,
       enabled: true,
@@ -590,6 +712,13 @@ export default function HomePage() {
       config: {
         description: template.description || "",
         script: template.script || "send(msg);",
+        outputs:
+          Array.isArray(template.outputs) && template.outputs.length > 0
+            ? template.outputs
+                .slice()
+                .sort((a, b) => a.order - b.order)
+                .map((item) => item.name)
+            : ["out"],
         templateBindingOverrides: {}
       }
     };
@@ -608,9 +737,17 @@ export default function HomePage() {
   };
 
   const addEventAction = (): void => {
-    const id = `events.group.event_${Date.now()}`;
+    const id = makeRandomToken("evt");
     const openNodeId = getEventActionOpenNodeId(id);
     const closeNodeId = getEventActionCloseNodeId(id);
+    const openLabel = getNextIncrementalLabel(
+      "Open Event",
+      flowNodes.filter((item) => item.kind === "event_open").map((item) => item.label || "")
+    );
+    const closeLabel = getNextIncrementalLabel(
+      "Close Event",
+      flowNodes.filter((item) => item.kind === "event_close").map((item) => item.label || "")
+    );
     applyProgramUpdate((prev) => ({
       ...prev,
       flows: {
@@ -619,7 +756,7 @@ export default function HomePage() {
           ...(prev.flows.nodes || []),
           {
             id: openNodeId,
-            label: `OPEN ${id}`,
+            label: openLabel,
             kind: "event_open",
             refId: id,
             enabled: true,
@@ -628,7 +765,7 @@ export default function HomePage() {
           },
           {
             id: closeNodeId,
-            label: `CLOSE ${id}`,
+            label: closeLabel,
             kind: "event_close",
             refId: id,
             enabled: true,
@@ -685,7 +822,7 @@ export default function HomePage() {
   const addEventActionFromTemplate = (templateId: string): void => {
     const template = (program.eventTemplates || []).find((item) => item.id === templateId);
     if (!template) return;
-    const id = `events.group.${templateId}_${Date.now()}`;
+    const id = makeRandomToken("evt");
     const bindings = Object.fromEntries(
       collectTemplateVariables(template).map((key) => [key, defaultEventBindingForVariable(key)])
     );
@@ -699,7 +836,8 @@ export default function HomePage() {
           ...(prev.flows.nodes || []),
           {
             id: openNodeId,
-            label: `OPEN ${template.id}`,
+            label: getNextIncrementalLabel(`OPEN ${template.id}`, flowNodes.map((item) => item.label || "")),
+            subtitle: template.id,
             kind: "event_open",
             refId: id,
             enabled: true,
@@ -713,7 +851,8 @@ export default function HomePage() {
           },
           {
             id: closeNodeId,
-            label: `CLOSE ${template.id}`,
+            label: getNextIncrementalLabel(`CLOSE ${template.id}`, flowNodes.map((item) => item.label || "")),
+            subtitle: template.id,
             kind: "event_close",
             refId: id,
             enabled: true,
@@ -731,58 +870,50 @@ export default function HomePage() {
     setSelectedEventActionId(id);
   };
 
-  const createEventActionFromTemplateInFlow = (templateId: string, position: NodePosition): void => {
+  const createEventNodeFromTemplateInFlow = (
+    templateId: string,
+    eventKind: "event_open" | "event_close",
+    position: NodePosition
+  ): void => {
     const template = (program.eventTemplates || []).find((item) => item.id === templateId);
     if (!template) return;
-    const id = `flow.events.${templateId.replace(/[^a-zA-Z0-9]+/g, "_")}_${Date.now()}`;
+    const id = makeRandomToken("evt");
     const bindings = Object.fromEntries(
       collectTemplateVariables(template).map((key) => [key, defaultEventBindingForVariable(key)])
     );
-    const openNodeId = getEventActionOpenNodeId(id);
-    const closeNodeId = getEventActionCloseNodeId(id);
-    const openNode: FlowNodeDefinition = {
-      id: openNodeId,
-      kind: "event_open",
+    const nodeId = eventKind === "event_open" ? getEventActionOpenNodeId(id) : getEventActionCloseNodeId(id);
+    const nextNode: FlowNodeDefinition = {
+      id: nodeId,
+      kind: eventKind,
       refId: id,
-      label: `OPEN ${template.id}`,
+      label: getNextIncrementalLabel(
+        `${eventKind === "event_open" ? "OPEN" : "CLOSE"} ${template.id}`,
+        flowNodes.map((item) => item.label || "")
+      ),
+      subtitle: template.id,
       enabled: true,
       templateId: template.id,
       config: {
         description: `Event node for template ${template.id}`,
         bindings,
         templateOverrides: {},
-        openNotes: ""
-      }
-    };
-    const closeNode: FlowNodeDefinition = {
-      id: closeNodeId,
-      kind: "event_close",
-      refId: id,
-      label: `CLOSE ${template.id}`,
-      enabled: true,
-      templateId: template.id,
-      config: {
-        description: `Event node for template ${template.id}`,
-        bindings,
-        templateOverrides: {},
-        closeNotes: ""
+        ...(eventKind === "event_open" ? { openNotes: "" } : { closeNotes: "" })
       }
     };
     applyProgramUpdate((prev) => ({
       ...prev,
       flows: {
         ...prev.flows,
-        nodes: [...(prev.flows.nodes || []), openNode, closeNode],
+        nodes: [...(prev.flows.nodes || []), nextNode],
         nodePositions: {
           ...(prev.flows.nodePositions || {}),
-          [openNodeId]: position,
-          [closeNodeId]: { x: position.x, y: position.y + 110 }
+          [nodeId]: position
         }
       }
     }));
     setSelectedEventActionId(id);
     setInspectorTarget({ kind: "event", id });
-    setStatus(`Event node created from template "${template.id}"`);
+    setStatus(`${eventKind === "event_open" ? "Open" : "Close"} event node created from template "${template.id}"`);
   };
 
   const duplicateAction = (id: string): void => {
@@ -975,6 +1106,45 @@ export default function HomePage() {
     [program.flows?.nodes]
   );
 
+  const flowNodeSubtitles = useMemo(
+    () =>
+      Object.fromEntries(
+        (program.flows?.nodes || []).map((node) => {
+          const templateLabel =
+            node.kind === "action"
+              ? program.scriptTemplates.find((item) => item.id === node.templateId)?.name
+              : node.kind === "event_open" || node.kind === "event_close"
+                ? (program.eventTemplates || []).find((item) => item.id === node.templateId)?.id
+                : getTriggerBaseLabel((node.config as Record<string, unknown> | undefined)?.type as TriggerDefinition["type"] || "interval");
+          return [node.id, String(node.subtitle || templateLabel || node.label || node.id)];
+        }) as Array<[string, string]>
+      ),
+    [program.eventTemplates, program.flows?.nodes, program.scriptTemplates]
+  );
+
+  const flowNodeOutputs = useMemo(
+    () =>
+      Object.fromEntries(
+        (program.flows?.nodes || [])
+          .filter((node) => node.kind === "action")
+          .map((node) => {
+            const templateOutputs = program.scriptTemplates.find((template) => template.id === node.templateId)?.outputs;
+            const outputs = Array.isArray((node.config as Record<string, unknown> | undefined)?.outputs)
+              ? (((node.config as Record<string, unknown>).outputs as unknown[])
+                  .map((item) => String(item || "").trim())
+                  .filter(Boolean))
+              : Array.isArray(templateOutputs) && templateOutputs.length > 0
+                ? templateOutputs.slice().sort((a, b) => a.order - b.order).map((item) => item.name)
+                : ["out"];
+            return [
+              node.id,
+              outputs.map((label, index) => ({ id: label || `out${index + 1}`, label: label || `OUT ${index + 1}` }))
+            ];
+          }) as Array<[string, Array<{ id: string; label: string }>]>
+      ),
+    [program.flows?.nodes]
+  );
+
   const flowTriggerIds = useMemo(
     () => (program.flows?.nodes || []).filter((node) => node.kind === "trigger").map((node) => node.id),
     [program.flows?.nodes]
@@ -1102,10 +1272,15 @@ export default function HomePage() {
       }
       const currentConfig = (current.config || {}) as Record<string, unknown>;
       resolvedPatch.script = template ? template.script : patch.script ?? String(currentConfig.script ?? "");
+      const templateOutputs =
+        template?.outputs && template.outputs.length > 0
+          ? template.outputs.slice().sort((a, b) => a.order - b.order).map((item) => item.name)
+          : ["out"];
       resolvedPatch.templateBindingOverrides =
         nextTemplateId
           ? (((currentConfig.templateBindingOverrides as Record<string, unknown>) || {}) as any)
           : {};
+      (resolvedPatch as Partial<ScriptNodeSummary> & { outputs?: string[] }).outputs = templateOutputs;
       latestActionScriptsRef.current[id] = String(resolvedPatch.script ?? "");
     }
     if (Object.prototype.hasOwnProperty.call(patch, "eventTemplateId")) {
@@ -1147,6 +1322,10 @@ export default function HomePage() {
                   ...(Object.prototype.hasOwnProperty.call(resolvedPatch, "eventTemplateOverrides")
                     ? { eventTemplateOverrides: resolvedPatch.eventTemplateOverrides || {} }
                     : {})
+                  ,
+                  ...(((resolvedPatch as Partial<ScriptNodeSummary> & { outputs?: string[] }).outputs)
+                    ? { outputs: (resolvedPatch as Partial<ScriptNodeSummary> & { outputs?: string[] }).outputs || ["out"] }
+                    : {})
                 }
               }
             : node
@@ -1158,10 +1337,10 @@ export default function HomePage() {
   const updateEventAction = (id: string, patch: Partial<EventNodeSummary>): void => {
     const currentOpen = flowNodes.find((item) => item.kind === "event_open" && item.refId === id);
     const currentClose = flowNodes.find((item) => item.kind === "event_close" && item.refId === id);
-    if (!currentOpen || !currentClose) return;
+    if (!currentOpen && !currentClose) return;
     const resolvedPatch: Partial<EventNodeSummary> = { ...patch };
     if (Object.prototype.hasOwnProperty.call(patch, "templateId")) {
-      const currentConfig = (currentOpen.config || {}) as Record<string, unknown>;
+      const currentConfig = ((currentOpen?.config || currentClose?.config || {}) as Record<string, unknown>);
       resolvedPatch.bindings = patch.templateId ? (((currentConfig.bindings as Record<string, unknown>) || {}) as any) : {};
     }
     applyProgramUpdate((prev) => ({
@@ -1212,6 +1391,7 @@ export default function HomePage() {
       name: `Script Template ${program.scriptTemplates.length + 1}`,
       description: "",
       script: "send(msg);",
+      outputs: [{ name: "out", order: 1, description: "" }],
       allowTemplateReuse: true,
       variableBindings: []
     };
@@ -1509,7 +1689,17 @@ export default function HomePage() {
     const uniqueIds = Array.from(new Set(nodeIds));
     const nodesById = new Map((program.flows.nodes || []).map((node) => [node.id, node] as const));
     const actionIds = uniqueIds.filter((id) => nodesById.get(id)?.kind === "action");
-    const eventActionIds = Array.from(new Set(uniqueIds.map((id) => nodesById.get(id)?.refId).filter(Boolean) as string[]));
+    const eventNodeIds = uniqueIds.filter((id) => {
+      const kind = nodesById.get(id)?.kind;
+      return kind === "event_open" || kind === "event_close";
+    });
+    const eventActionIds = Array.from(
+      new Set(
+        eventNodeIds
+          .map((id) => nodesById.get(id)?.refId)
+          .filter(Boolean) as string[]
+      )
+    );
     const triggerIds = uniqueIds.filter((id) => nodesById.get(id)?.kind === "trigger");
 
     actionIds.forEach((id) => delete latestActionScriptsRef.current[id]);
@@ -1519,7 +1709,6 @@ export default function HomePage() {
       uniqueIds.forEach((id) => delete nextPositions[id]);
       const remainingNodes = (prev.flows.nodes || []).filter((node) => {
         if (uniqueIds.includes(node.id)) return false;
-        if (eventActionIds.includes(node.refId) && (node.kind === "event_open" || node.kind === "event_close")) return false;
         return true;
       });
       remainingNodes.forEach((node) => {
@@ -1533,8 +1722,6 @@ export default function HomePage() {
           nodes: remainingNodes,
           links: prev.flows.links.filter((link) => {
             if (uniqueIds.includes(link.from) || uniqueIds.includes(link.to)) return false;
-            if (eventActionIds.some((id) => [getEventActionOpenNodeId(id), getEventActionCloseNodeId(id)].includes(link.from))) return false;
-            if (eventActionIds.some((id) => [getEventActionOpenNodeId(id), getEventActionCloseNodeId(id)].includes(link.to))) return false;
             return true;
           }),
           nodePositions: nextPositions
@@ -1546,7 +1733,9 @@ export default function HomePage() {
     if (inspectorTarget?.kind === "event" && eventActionIds.includes(inspectorTarget.id)) setInspectorTarget(null);
     if (selectedActionId && actionIds.includes(selectedActionId)) setSelectedActionId("");
     if (selectedEventActionId && eventActionIds.includes(selectedEventActionId)) setSelectedEventActionId("");
-    if (triggerIds.length > 0) setStatus(`Removed ${actionIds.length} script node(s), ${eventActionIds.length} event node(s), ${triggerIds.length} trigger placement(s)`);
+    if (triggerIds.length > 0 || actionIds.length > 0 || eventNodeIds.length > 0) {
+      setStatus(`Removed ${actionIds.length} script node(s), ${eventNodeIds.length} event node(s), ${triggerIds.length} trigger placement(s)`);
+    }
   };
 
   const duplicateNodesInFlow = (nodeIds: string[], basePosition?: NodePosition): void => {
@@ -1565,14 +1754,14 @@ export default function HomePage() {
     uniqueIds.forEach((nodeId, index) => {
       const offset = 40 * (index + 1);
       const action = nodesById.get(nodeId);
-      if (action?.kind === "action") {
-        const nextId = `${nodeId}_copy_${timestamp + index}`;
+    if (action?.kind === "action") {
+        const nextId = makeRandomToken("act");
         const position = program.flows.nodePositions?.[nodeId];
         nextNodes.push({
           ...structuredClone(action),
           id: nextId,
           refId: nextId,
-          label: action.label ? `${action.label} Copy` : ""
+          label: getNextIncrementalLabel(action.label || "Action", flowNodes.map((item) => item.label || ""))
         });
         duplicatedNodeMap.set(nodeId, nextId);
         latestActionScriptsRef.current[nextId] = String(((action.config || {}) as Record<string, unknown>).script || "");
@@ -1585,18 +1774,18 @@ export default function HomePage() {
       if (action?.kind === "trigger") {
         const sourceTrigger = program.triggers.find((item) => item.id === nodeId);
         if (!sourceTrigger) return;
-        const nextId = `${nodeId}_copy_${timestamp + index}`;
+        const nextId = makeRandomToken("trg");
         const position = program.flows.nodePositions?.[nodeId];
         nextTriggers.push({
           ...structuredClone(sourceTrigger),
           id: nextId,
-          label: sourceTrigger.label ? `${sourceTrigger.label} Copy` : ""
+          label: getNextIncrementalLabel(sourceTrigger.label || getTriggerBaseLabel(sourceTrigger.type), program.triggers.map((item) => item.label || ""))
         });
         nextNodes.push({
           ...structuredClone(action),
           id: nextId,
           refId: nextId,
-          label: action.label ? `${action.label} Copy` : ""
+          label: getNextIncrementalLabel(action.label || getTriggerBaseLabel(sourceTrigger.type), flowNodes.map((item) => item.label || ""))
         });
         duplicatedNodeMap.set(nodeId, nextId);
         if (basePosition) nextPositions[nextId] = { x: basePosition.x + offset, y: basePosition.y + offset };
@@ -1606,36 +1795,20 @@ export default function HomePage() {
       }
 
       if (action?.kind === "event_open" || action?.kind === "event_close") {
-        const baseId = action.refId;
-        if (nextNodes.some((item) => item.refId === `${baseId}_copy_${timestamp + index}`)) return;
-        const sourceOpen = (program.flows.nodes || []).find((item) => item.kind === "event_open" && item.refId === baseId);
-        const sourceClose = (program.flows.nodes || []).find((item) => item.kind === "event_close" && item.refId === baseId);
-        if (!sourceOpen || !sourceClose) return;
-        const nextId = `${baseId}_copy_${timestamp + index}`;
+        const nextRefId = makeRandomToken("evt");
+        const nextId = action.kind === "event_open" ? getEventActionOpenNodeId(nextRefId) : getEventActionCloseNodeId(nextRefId);
+        const position = program.flows.nodePositions?.[nodeId];
         nextNodes.push({
-          ...structuredClone(sourceOpen),
-          id: getEventActionOpenNodeId(nextId),
-          refId: nextId,
-          label: sourceOpen.label ? `${sourceOpen.label} Copy` : ""
+          ...structuredClone(action),
+          id: nextId,
+          refId: nextRefId,
+          label: getNextIncrementalLabel(action.label || (action.kind === "event_open" ? "Open Event" : "Close Event"), flowNodes.map((item) => item.label || ""))
         });
-        nextNodes.push({
-          ...structuredClone(sourceClose),
-          id: getEventActionCloseNodeId(nextId),
-          refId: nextId,
-          label: sourceClose.label ? `${sourceClose.label} Copy` : ""
-        });
-        duplicatedNodeMap.set(getEventActionOpenNodeId(baseId), getEventActionOpenNodeId(nextId));
-        duplicatedNodeMap.set(getEventActionCloseNodeId(baseId), getEventActionCloseNodeId(nextId));
-        const openPos = program.flows.nodePositions?.[getEventActionOpenNodeId(baseId)];
-        const closePos = program.flows.nodePositions?.[getEventActionCloseNodeId(baseId)];
-        if (basePosition) {
-          nextPositions[getEventActionOpenNodeId(nextId)] = { x: basePosition.x + offset, y: basePosition.y + offset };
-          nextPositions[getEventActionCloseNodeId(nextId)] = { x: basePosition.x + offset, y: basePosition.y + offset + 110 };
-        } else {
-          if (openPos) nextPositions[getEventActionOpenNodeId(nextId)] = { x: openPos.x + offset, y: openPos.y + offset };
-          if (closePos) nextPositions[getEventActionCloseNodeId(nextId)] = { x: closePos.x + offset, y: closePos.y + offset };
-        }
+        duplicatedNodeMap.set(nodeId, nextId);
+        if (basePosition) nextPositions[nextId] = { x: basePosition.x + offset, y: basePosition.y + offset };
+        else if (position) nextPositions[nextId] = { x: position.x + offset, y: position.y + offset };
         eventCount += 1;
+        return;
       }
     });
 
@@ -1678,8 +1851,12 @@ export default function HomePage() {
       createActionFromTemplateInFlow(item.templateId, position);
       return;
     }
-    if (item.type === "event-template") {
-      createEventActionFromTemplateInFlow(item.templateId, position);
+    if (item.type === "event-template-open") {
+      createEventNodeFromTemplateInFlow(item.templateId, "event_open", position);
+      return;
+    }
+    if (item.type === "event-template-close") {
+      createEventNodeFromTemplateInFlow(item.templateId, "event_close", position);
     }
   };
 
@@ -1779,6 +1956,8 @@ export default function HomePage() {
             scriptTemplates={program.scriptTemplates}
             eventTemplates={program.eventTemplates || []}
             nodeLabels={flowNodeLabels}
+            nodeSubtitles={flowNodeSubtitles}
+            nodeOutputs={flowNodeOutputs}
             links={program.flows.links}
             nodePositions={program.flows.nodePositions || {}}
             zoom={flowZoom}
@@ -1801,7 +1980,7 @@ export default function HomePage() {
             onEventNodeDoubleClick={(nodeId) => {
               const eventActionId = getBaseEventActionIdFromNode(nodeId);
               setSelectedEventActionId(eventActionId);
-              setInspectorTarget({ kind: "event", id: eventActionId });
+              setInspectorTarget({ kind: "event", id: nodeId });
             }}
             onNodePositionDragStart={() => dispatch({ type: "PUSH_SNAPSHOT" })}
             onNodePositionChange={updateNodePosition}

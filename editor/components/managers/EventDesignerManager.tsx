@@ -355,7 +355,7 @@ export default function EventDesignerManager({
                     close node: `event.close.{selectedEventAction.id}`
                   </Typography>
                 </Paper>
-                <TextField label="Event Action ID" value={selectedEventAction.id} onChange={(e) => onRenameEventAction(selectedEventAction.id, e.target.value)} helperText="Example: Taiyo1.Events.JobActivity" />
+                <TextField label="Event Action ID" value={selectedEventAction.id} disabled helperText="Internal ID is generated automatically and cannot be edited." />
                 <TextField label="Label" value={selectedEventAction.label ?? ""} onChange={(e) => onUpdateEventAction(selectedEventAction.id, { label: e.target.value })} />
                 <TextField label="Description" value={selectedEventAction.description ?? ""} onChange={(e) => onUpdateEventAction(selectedEventAction.id, { description: e.target.value })} />
                 <FormControlLabel control={<Switch checked={selectedEventAction.enabled !== false} onChange={(_e, checked) => onUpdateEventAction(selectedEventAction.id, { enabled: checked })} />} label="Event Action Enabled" />

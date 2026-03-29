@@ -5,7 +5,7 @@
   },
   "triggers": [
     {
-      "id": "trigger.watch_1772017838146",
+      "id": "trg_3cazbipi",
       "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
       "type": "watcher_set",
       "enabled": true,
@@ -20,7 +20,7 @@
       "activeTo": ""
     },
     {
-      "id": "trigger.watch_1772152779583",
+      "id": "trg_i2jdu13y",
       "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
       "type": "watcher_set",
       "enabled": true,
@@ -35,7 +35,7 @@
       "activeTo": ""
     },
     {
-      "id": "trigger.tick_1772164929424",
+      "id": "trg_y12o0byg",
       "label": "1s trigger",
       "type": "interval",
       "enabled": true,
@@ -50,7 +50,7 @@
       "activeTo": ""
     },
     {
-      "id": "trigger.tick_1774420525757",
+      "id": "trg_g7tvwynx",
       "label": "1s trigger",
       "type": "interval",
       "enabled": true,
@@ -65,7 +65,7 @@
       "activeTo": ""
     },
     {
-      "id": "trigger.watch_1774420654012",
+      "id": "trg_jpp5njaj",
       "label": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle",
       "type": "watcher_set",
       "enabled": true,
@@ -80,7 +80,7 @@
       "activeTo": ""
     },
     {
-      "id": "trigger.watch_1774420675505",
+      "id": "trg_u3ok20vv",
       "label": "Jasuindo.OffsetPrinter.Taiyo2.Job Activity",
       "type": "watcher_set",
       "enabled": true,
@@ -95,7 +95,7 @@
       "activeTo": ""
     },
     {
-      "id": "trigger.watch_1774494096409",
+      "id": "trg_9gbwof0o",
       "label": "Jasuindo.OffsetPrinter.Taiyo2.Encoder Raw Value",
       "type": "watcher_set",
       "enabled": true,
@@ -110,7 +110,7 @@
       "activeTo": ""
     },
     {
-      "id": "trigger.watch_1774494115446",
+      "id": "trg_yaqn0nzn",
       "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Raw Value",
       "type": "watcher_set",
       "enabled": true,
@@ -128,218 +128,219 @@
   "flows": {
     "links": [
       {
-        "from": "Taiyo1.Events.JobActivity",
-        "to": "event.open.Taiyo1.JobActivity",
-        "enabled": true
-      },
-      {
-        "from": "trigger.watch_1774420654012",
-        "to": "Taiyo2.Events.JobLifecycle",
+        "from": "trg_jpp5njaj",
+        "to": "act_j6leu6bc",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1774420675505",
-        "to": "Taiyo2.Events.JobActivity",
+        "from": "trg_u3ok20vv",
+        "to": "act_qu0qv6ud",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "Taiyo2.Events.JobActivity",
-        "to": "event.open.Taiyo2.JobActivity",
-        "fromPort": "default",
-        "enabled": true
-      },
-      {
-        "from": "Taiyo2.Events.JobLifecycle",
-        "to": "event.close.Taiyo2.JobLifecycle",
-        "fromPort": "default",
-        "enabled": true
-      },
-      {
-        "from": "Taiyo2.Events.JobLifecycle",
-        "to": "event.open.Taiyo2.JobLifecycle",
-        "fromPort": "default",
-        "enabled": true
-      },
-      {
-        "from": "event.close.Taiyo2.JobLifecycle",
-        "to": "Taiyo2.MES.JobCompleted",
+        "from": "event.close.evt_hvg3ox66",
+        "to": "act_12mapqyl",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.Taiyo2.JobLifecycle",
-        "to": "Taiyo2.MES.JobLoaded",
+        "from": "event.open.evt_hvg3ox66",
+        "to": "act_lt07ivbc",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "trigger.tick_1774420525757",
-        "to": "Taiyo2.MES.ResolveActivityCategory",
+        "from": "trg_g7tvwynx",
+        "to": "act_1r77baep",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1772152779583",
-        "to": "Taiyo1.Events.JobLifecycle",
+        "from": "trg_i2jdu13y",
+        "to": "act_o750buzm",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1772017838146",
-        "to": "Taiyo1.Events.JobActivity",
+        "from": "trg_3cazbipi",
+        "to": "act_pqgrrjup",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "Taiyo1.Events.JobLifecycle",
-        "to": "event.open.Taiyo1.JobLifecycle",
-        "fromPort": "default",
-        "enabled": true
-      },
-      {
-        "from": "Taiyo1.Events.JobLifecycle",
-        "to": "event.close.Taiyo1.JobLifecycle",
-        "fromPort": "default",
-        "enabled": true
-      },
-      {
-        "from": "event.open.Taiyo1.JobLifecycle",
-        "to": "Taiyo2.Utils.DebugSuccess",
+        "from": "event.open.evt_b4gr9fia",
+        "to": "act_xi9ttxqd",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.close.Taiyo1.JobLifecycle",
-        "to": "Taiyo2.Utils.DebugSuccess",
+        "from": "event.close.evt_b4gr9fia",
+        "to": "act_xi9ttxqd",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.Taiyo1.JobLifecycle",
-        "to": "Taiyo1.MES.JobLoaded",
+        "from": "event.open.evt_b4gr9fia",
+        "to": "act_o8dbxj0x",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.close.Taiyo1.JobLifecycle",
-        "to": "Taiyo1.MES.JobCompleted",
+        "from": "event.close.evt_b4gr9fia",
+        "to": "act_nad2xse9",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.close.Taiyo1.JobLifecycle",
-        "to": "Taiyo2.Utils.DebugFail",
+        "from": "event.close.evt_b4gr9fia",
+        "to": "act_6zilm8v8",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "event.open.Taiyo1.JobLifecycle",
-        "to": "Taiyo2.Utils.DebugFail",
+        "from": "event.open.evt_b4gr9fia",
+        "to": "act_6zilm8v8",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "event.open.Taiyo1.JobActivity",
-        "to": "Taiyo2.Utils.DebugFail",
+        "from": "event.open.evt_pejupy0z",
+        "to": "act_6zilm8v8",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "event.open.Taiyo1.JobActivity",
-        "to": "Taiyo2.Utils.DebugSuccess",
+        "from": "event.open.evt_pejupy0z",
+        "to": "act_xi9ttxqd",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.Taiyo2.JobLifecycle",
-        "to": "Taiyo1.Utils.DebugSuccess",
+        "from": "event.open.evt_hvg3ox66",
+        "to": "act_qb4bn39j",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.close.Taiyo2.JobLifecycle",
-        "to": "Taiyo1.Utils.DebugSuccess",
+        "from": "event.close.evt_hvg3ox66",
+        "to": "act_qb4bn39j",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.Taiyo2.JobActivity",
-        "to": "Taiyo1.Utils.DebugSuccess",
+        "from": "event.open.evt_go13ax80",
+        "to": "act_qb4bn39j",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.Taiyo2.JobLifecycle",
-        "to": "Taiyo1.Utils.DebugFail",
+        "from": "event.open.evt_hvg3ox66",
+        "to": "act_1kwlfjum",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "event.close.Taiyo2.JobLifecycle",
-        "to": "Taiyo1.Utils.DebugFail",
+        "from": "event.close.evt_hvg3ox66",
+        "to": "act_1kwlfjum",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "event.open.Taiyo2.JobActivity",
-        "to": "Taiyo1.Utils.DebugFail",
+        "from": "event.open.evt_go13ax80",
+        "to": "act_1kwlfjum",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "trigger.tick_1772164929424",
-        "to": "Taiyo1.MES.ResolveActivityCategory",
+        "from": "trg_y12o0byg",
+        "to": "act_zxdzcreb",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1774494096409",
-        "to": "Taiyo2.MES.PaperConsumptionPerActivity",
+        "from": "trg_9gbwof0o",
+        "to": "act_5m61f7nr",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1774494096409",
-        "to": "Taiyo2.MES.ProductCounter",
+        "from": "trg_9gbwof0o",
+        "to": "act_ksy3ox97",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1774494115446",
-        "to": "Taiyo1.MES.ProductCounter",
+        "from": "trg_yaqn0nzn",
+        "to": "act_wznj2p9u",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1774494115446",
-        "to": "Taiyo1.MES.PaperConsumptionPerActivity",
+        "from": "trg_yaqn0nzn",
+        "to": "act_bef4hk9d",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "Taiyo1.MES.ResolveActivityCategory",
-        "to": "Taiyo1.MES.TimeSpentPerActivity",
+        "from": "act_zxdzcreb",
+        "to": "act_otya9inq",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "Taiyo2.MES.ResolveActivityCategory",
-        "to": "Taiyo2.MES.TimeSpentPerActivity",
+        "from": "trg_9gbwof0o",
+        "to": "act_e7d8hxsx",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1774494096409",
-        "to": "Taiyo2.MES.ProductionProgress",
+        "from": "trg_yaqn0nzn",
+        "to": "act_uc1u4e3v",
         "fromPort": "default",
         "enabled": true
       },
       {
-        "from": "trigger.watch_1774494115446",
-        "to": "Taiyo1.MES.ProductionProgress",
-        "fromPort": "default",
+        "from": "act_o750buzm",
+        "to": "event.open.evt_b4gr9fia",
+        "fromPort": "open event",
+        "enabled": true
+      },
+      {
+        "from": "act_o750buzm",
+        "to": "event.close.evt_b4gr9fia",
+        "fromPort": "close event",
+        "enabled": true
+      },
+      {
+        "from": "act_pqgrrjup",
+        "to": "event.open.evt_pejupy0z",
+        "fromPort": "out",
+        "enabled": true
+      },
+      {
+        "from": "act_1r77baep",
+        "to": "act_sni8yyc6",
+        "fromPort": "out",
+        "enabled": true
+      },
+      {
+        "from": "act_j6leu6bc",
+        "to": "event.open.evt_hvg3ox66",
+        "fromPort": "open event",
+        "enabled": true
+      },
+      {
+        "from": "act_j6leu6bc",
+        "to": "event.close.evt_hvg3ox66",
+        "fromPort": "close event",
+        "enabled": true
+      },
+      {
+        "from": "act_qu0qv6ud",
+        "to": "event.open.evt_go13ax80",
+        "fromPort": "out",
         "enabled": true
       }
     ],
@@ -376,26 +377,6 @@
         "x": 360,
         "y": 310
       },
-      "Taiyo1.Events.JobLifecycle": {
-        "x": 790,
-        "y": 690
-      },
-      "Taiyo2.Events.JobLifecycle": {
-        "x": 2970,
-        "y": 700
-      },
-      "Taiyo1.Events.JobActivity": {
-        "x": 790,
-        "y": 770
-      },
-      "trigger.tick_1772164929424": {
-        "x": 300,
-        "y": 440
-      },
-      "Taiyo1.MES.ProductCounter": {
-        "x": 780,
-        "y": 250
-      },
       "Taiyo1.PLC.PaperConsupCounter": {
         "x": 1180,
         "y": 650
@@ -403,122 +384,6 @@
       "Taiyo1.Events.EventDetector": {
         "x": 1750,
         "y": 720
-      },
-      "Taiyo1.MES.PaperConsumptionPerActivity": {
-        "x": 780,
-        "y": 320
-      },
-      "Taiyo1.MES.ResolveActivityCategory": {
-        "x": 780,
-        "y": 420
-      },
-      "Taiyo1.MES.TimeSpentPerActivity": {
-        "x": 1310,
-        "y": 420
-      },
-      "Taiyo1.MES.ProductionProgress": {
-        "x": 780,
-        "y": 180
-      },
-      "Taiyo1.MES.JobCompleted": {
-        "x": 1900,
-        "y": 650
-      },
-      "Taiyo1.MES.JobLoaded": {
-        "x": 1900,
-        "y": 580
-      },
-      "trigger.tick_1774420525757": {
-        "x": 2440,
-        "y": 420
-      },
-      "trigger.watch_1774420675505": {
-        "x": 2440,
-        "y": 770
-      },
-      "trigger.watch_1774420654012": {
-        "x": 2440,
-        "y": 690
-      },
-      "Taiyo2.Events.JobActivity": {
-        "x": 2980,
-        "y": 770
-      },
-      "event.open.Taiyo1.JobActivity": {
-        "x": 1310,
-        "y": 800
-      },
-      "event.open.Taiyo2.JobActivity": {
-        "x": 3450,
-        "y": 820
-      },
-      "event.open.Taiyo2.JobLifecycle": {
-        "x": 3450,
-        "y": 640
-      },
-      "event.close.Taiyo2.JobLifecycle": {
-        "x": 3450,
-        "y": 730
-      },
-      "Taiyo2.MES.JobLoaded": {
-        "x": 3980,
-        "y": 590
-      },
-      "Taiyo2.MES.JobCompleted": {
-        "x": 3990,
-        "y": 660
-      },
-      "Taiyo2.MES.TimeSpentPerActivity": {
-        "x": 3420,
-        "y": 420
-      },
-      "Taiyo2.MES.ResolveActivityCategory": {
-        "x": 2940,
-        "y": 420
-      },
-      "Taiyo2.MES.ProductionProgress": {
-        "x": 2930,
-        "y": 180
-      },
-      "Taiyo2.MES.ProductCounter": {
-        "x": 2940,
-        "y": 320
-      },
-      "Taiyo2.MES.PaperConsumptionPerActivity": {
-        "x": 2940,
-        "y": 250
-      },
-      "trigger.watch_1772152779583": {
-        "x": 300,
-        "y": 690
-      },
-      "trigger.watch_1772017838146": {
-        "x": 300,
-        "y": 760
-      },
-      "event.close.Taiyo1.JobLifecycle": {
-        "x": 1310,
-        "y": 710
-      },
-      "event.open.Taiyo1.JobLifecycle": {
-        "x": 1310,
-        "y": 620
-      },
-      "Taiyo2.Utils.DebugFail": {
-        "x": 1900,
-        "y": 800
-      },
-      "Taiyo2.Utils.DebugSuccess": {
-        "x": 1900,
-        "y": 730
-      },
-      "Taiyo1.Utils.DebugFail": {
-        "x": 3990,
-        "y": 820
-      },
-      "Taiyo1.Utils.DebugSuccess": {
-        "x": 3990,
-        "y": 750
       },
       "trigger.watch_1774493877448": {
         "x": 300,
@@ -528,20 +393,156 @@
         "x": 2440,
         "y": 300
       },
-      "trigger.watch_1774494096409": {
-        "x": 2450,
-        "y": 310
-      },
-      "trigger.watch_1774494115446": {
+      "trg_3cazbipi": {
         "x": 300,
-        "y": 320
+        "y": 1040
+      },
+      "trg_i2jdu13y": {
+        "x": 300,
+        "y": 840
+      },
+      "trg_y12o0byg": {
+        "x": 300,
+        "y": 660
+      },
+      "trg_g7tvwynx": {
+        "x": 2440,
+        "y": 660
+      },
+      "trg_jpp5njaj": {
+        "x": 2440,
+        "y": 860
+      },
+      "trg_u3ok20vv": {
+        "x": 2440,
+        "y": 1060
+      },
+      "trg_9gbwof0o": {
+        "x": 2440,
+        "y": 280
+      },
+      "trg_yaqn0nzn": {
+        "x": 300,
+        "y": 260
+      },
+      "act_6zilm8v8": {
+        "x": 1840,
+        "y": 1020
+      },
+      "act_wznj2p9u": {
+        "x": 760,
+        "y": 300
+      },
+      "act_zxdzcreb": {
+        "x": 760,
+        "y": 660
+      },
+      "act_bef4hk9d": {
+        "x": 760,
+        "y": 480
+      },
+      "act_otya9inq": {
+        "x": 1300,
+        "y": 440
+      },
+      "act_o750buzm": {
+        "x": 760,
+        "y": 860
+      },
+      "act_pqgrrjup": {
+        "x": 760,
+        "y": 1060
+      },
+      "act_uc1u4e3v": {
+        "x": 760,
+        "y": 120
+      },
+      "act_nad2xse9": {
+        "x": 1840,
+        "y": 680
+      },
+      "act_o8dbxj0x": {
+        "x": 1840,
+        "y": 520
+      },
+      "act_j6leu6bc": {
+        "x": 2940,
+        "y": 880
+      },
+      "act_qu0qv6ud": {
+        "x": 2940,
+        "y": 1060
+      },
+      "act_12mapqyl": {
+        "x": 4000,
+        "y": 760
+      },
+      "act_lt07ivbc": {
+        "x": 4000,
+        "y": 600
+      },
+      "act_1r77baep": {
+        "x": 2940,
+        "y": 680
+      },
+      "act_sni8yyc6": {
+        "x": 3460,
+        "y": 500
+      },
+      "act_e7d8hxsx": {
+        "x": 2940,
+        "y": 100
+      },
+      "act_ksy3ox97": {
+        "x": 2940,
+        "y": 460
+      },
+      "act_5m61f7nr": {
+        "x": 2940,
+        "y": 280
+      },
+      "act_xi9ttxqd": {
+        "x": 1840,
+        "y": 860
+      },
+      "act_1kwlfjum": {
+        "x": 4000,
+        "y": 1100
+      },
+      "act_qb4bn39j": {
+        "x": 4000,
+        "y": 920
+      },
+      "event.open.evt_b4gr9fia": {
+        "x": 1300,
+        "y": 640
+      },
+      "event.close.evt_b4gr9fia": {
+        "x": 1300,
+        "y": 840
+      },
+      "event.open.evt_pejupy0z": {
+        "x": 1300,
+        "y": 1040
+      },
+      "event.open.evt_go13ax80": {
+        "x": 3460,
+        "y": 1100
+      },
+      "event.open.evt_hvg3ox66": {
+        "x": 3460,
+        "y": 700
+      },
+      "event.close.evt_hvg3ox66": {
+        "x": 3460,
+        "y": 900
       }
     },
     "nodes": [
       {
-        "id": "trigger.watch_1772017838146",
+        "id": "trg_3cazbipi",
         "kind": "trigger",
-        "refId": "trigger.watch_1772017838146",
+        "refId": "trg_3cazbipi",
         "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
         "enabled": true,
         "templateId": "",
@@ -556,9 +557,9 @@
         }
       },
       {
-        "id": "trigger.watch_1772152779583",
+        "id": "trg_i2jdu13y",
         "kind": "trigger",
-        "refId": "trigger.watch_1772152779583",
+        "refId": "trg_i2jdu13y",
         "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
         "enabled": true,
         "templateId": "",
@@ -573,9 +574,9 @@
         }
       },
       {
-        "id": "trigger.tick_1772164929424",
+        "id": "trg_y12o0byg",
         "kind": "trigger",
-        "refId": "trigger.tick_1772164929424",
+        "refId": "trg_y12o0byg",
         "label": "1s trigger",
         "enabled": true,
         "templateId": "",
@@ -590,9 +591,9 @@
         }
       },
       {
-        "id": "trigger.tick_1774420525757",
+        "id": "trg_g7tvwynx",
         "kind": "trigger",
-        "refId": "trigger.tick_1774420525757",
+        "refId": "trg_g7tvwynx",
         "label": "1s trigger",
         "enabled": true,
         "templateId": "",
@@ -607,9 +608,9 @@
         }
       },
       {
-        "id": "trigger.watch_1774420654012",
+        "id": "trg_jpp5njaj",
         "kind": "trigger",
-        "refId": "trigger.watch_1774420654012",
+        "refId": "trg_jpp5njaj",
         "label": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle",
         "enabled": true,
         "templateId": "",
@@ -624,9 +625,9 @@
         }
       },
       {
-        "id": "trigger.watch_1774420675505",
+        "id": "trg_u3ok20vv",
         "kind": "trigger",
-        "refId": "trigger.watch_1774420675505",
+        "refId": "trg_u3ok20vv",
         "label": "Jasuindo.OffsetPrinter.Taiyo2.Job Activity",
         "enabled": true,
         "templateId": "",
@@ -641,9 +642,9 @@
         }
       },
       {
-        "id": "trigger.watch_1774494096409",
+        "id": "trg_9gbwof0o",
         "kind": "trigger",
-        "refId": "trigger.watch_1774494096409",
+        "refId": "trg_9gbwof0o",
         "label": "Jasuindo.OffsetPrinter.Taiyo2.Encoder Raw Value",
         "enabled": true,
         "templateId": "",
@@ -658,9 +659,9 @@
         }
       },
       {
-        "id": "trigger.watch_1774494115446",
+        "id": "trg_yaqn0nzn",
         "kind": "trigger",
-        "refId": "trigger.watch_1774494115446",
+        "refId": "trg_yaqn0nzn",
         "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Raw Value",
         "enabled": true,
         "templateId": "",
@@ -675,10 +676,10 @@
         }
       },
       {
-        "id": "Taiyo2.Utils.DebugFail",
+        "id": "act_6zilm8v8",
         "kind": "action",
-        "refId": "Taiyo2.Utils.DebugFail",
-        "label": "",
+        "refId": "act_6zilm8v8",
+        "label": "Action - 9",
         "enabled": true,
         "templateId": "",
         "config": {
@@ -686,14 +687,17 @@
           "script": "helpers.log(\"msg:\", msg);",
           "templateBindingOverrides": {},
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo1.MES.ProductCounter",
+        "id": "act_wznj2p9u",
         "kind": "action",
-        "refId": "Taiyo1.MES.ProductCounter",
-        "label": "",
+        "refId": "act_wznj2p9u",
+        "label": "Action - 10",
         "enabled": true,
         "templateId": "template.script_1772274570343",
         "config": {
@@ -730,14 +734,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo1.MES.ResolveActivityCategory",
+        "id": "act_zxdzcreb",
         "kind": "action",
-        "refId": "Taiyo1.MES.ResolveActivityCategory",
-        "label": "",
+        "refId": "act_zxdzcreb",
+        "label": "Action - 11",
         "enabled": true,
         "templateId": "template.script_1772300414929",
         "config": {
@@ -753,14 +760,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo1.MES.PaperConsumptionPerActivity",
+        "id": "act_bef4hk9d",
         "kind": "action",
-        "refId": "Taiyo1.MES.PaperConsumptionPerActivity",
-        "label": "",
+        "refId": "act_bef4hk9d",
+        "label": "Action - 12",
         "enabled": true,
         "templateId": "template.script_1772296918869",
         "config": {
@@ -776,14 +786,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo1.MES.TimeSpentPerActivity",
+        "id": "act_otya9inq",
         "kind": "action",
-        "refId": "Taiyo1.MES.TimeSpentPerActivity",
-        "label": "",
+        "refId": "act_otya9inq",
+        "label": "Action - 13",
         "enabled": true,
         "templateId": "template.script_1772340546636",
         "config": {
@@ -799,28 +812,35 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo1.Events.JobLifecycle",
+        "id": "act_o750buzm",
         "kind": "action",
-        "refId": "Taiyo1.Events.JobLifecycle",
+        "refId": "act_o750buzm",
         "label": "Taiyo1 Job Lifecycle Router",
         "enabled": true,
         "templateId": "template.script_1771898442157",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"open\",\n    notes: `${workOrder} loaded`\n  };\n\n  console.log(\"load job\");\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} cancelled`\n  };\n\n  console.log(\"cancel job\");\n\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} completed`\n  };\n\n  console.log(\"complete job\");\n\n  send(msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"open\",\n    notes: `${workOrder} loaded`\n  };\n\n  console.log(\"load job\");\n\n  send([\"open event\"], msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} cancelled`\n  };\n\n  console.log(\"cancel job\");\n\n\n  send([\"close event\"], msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} completed`\n  };\n\n  console.log(\"complete job\");\n\n  send([\"close event\"], msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
           "templateBindingOverrides": {},
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "open event",
+            "close event"
+          ]
         }
       },
       {
-        "id": "Taiyo1.Events.JobActivity",
+        "id": "act_pqgrrjup",
         "kind": "action",
-        "refId": "Taiyo1.Events.JobActivity",
+        "refId": "act_pqgrrjup",
         "label": "Taiyo1 Job Activity Router",
         "enabled": true,
         "templateId": "template.script_1772002036179",
@@ -837,14 +857,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo1.MES.ProductionProgress",
+        "id": "act_uc1u4e3v",
         "kind": "action",
-        "refId": "Taiyo1.MES.ProductionProgress",
-        "label": "",
+        "refId": "act_uc1u4e3v",
+        "label": "Action - 16",
         "enabled": true,
         "templateId": "template.script_1773723245898",
         "config": {
@@ -852,14 +875,17 @@
           "script": "const assetPath = AssetPath.path || \"-\";\n\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst totalCount = Number(asset.get(`${assetPath}.Product Total Count`, 0) ?? 0);\nconst rejectCount = Number(asset.get(`${assetPath}.Product Reject Count`, 0) ?? 0);\nconst progressPath = `${assetPath}.Job Progress`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\n\n\nconst safeTotalCount = Number.isFinite(totalCount) ? totalCount : 0;\nconst safeRejectCount = Number.isFinite(rejectCount) ? rejectCount : 0;\nconst goodCount = Math.max(0, Math.round(safeTotalCount - safeRejectCount));\n\nawait asset.set(goodCountPath, goodCount);\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst normalizedTarget = targetRaw.replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\nconst targetMatch = normalizedTarget.match(/^(-?\\d+(?:\\.\\d+)?)\\s*(?:[A-Za-z]+)?$/);\n\nif (!targetMatch) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetValue = Number(targetMatch[1]);\nconst targetEa = targetValue;\n\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst progress = Math.max(0, Math.round((goodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nsend(msg);",
           "templateBindingOverrides": {},
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo1.MES.JobCompleted",
+        "id": "act_nad2xse9",
         "kind": "action",
-        "refId": "Taiyo1.MES.JobCompleted",
-        "label": "",
+        "refId": "act_nad2xse9",
+        "label": "Action - 17",
         "enabled": true,
         "templateId": "template.script_1774408144628",
         "config": {
@@ -867,14 +893,17 @@
           "script": "const assetPath = AssetPath.path || \"-\";\r\n\r\nawait asset.setMany([\r\n  { path: `${assetPath}.Job Progress`, value: 0 },\r\n  { path: `${assetPath}.Job Loader`, value: {} },\r\n  { path: `${assetPath}.Work Order`, value: 'No Work Order' },\r\n  { path: `${assetPath}.Job Activity`, value: '-' },\r\n  { path: `${assetPath}.Job Lifecycle`, value: '-' },\r\n  { path: `${assetPath}.Paper Consumed Setup`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Idle`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Production`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Waste`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Input`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Output`, value: 0 },\r\n  { path: `${assetPath}.Total Setup Time`, value: 0 },\r\n  { path: `${assetPath}.Total Idle Time`, value: 0 },\r\n  { path: `${assetPath}.Total Production Time`, value: 0 },\r\n  { path: `${assetPath}.Availability`, value: 0 },\r\n  { path: `${assetPath}.Performance`, value: 0 },\r\n  { path: `${assetPath}.Quality`, value: 0 },\r\n  { path: `${assetPath}.OEE`, value: 0 },\r\n  { path: `${assetPath}.Product Count Target`, value: 0 },\r\n]);\r\n\r\nsend(msg);",
           "templateBindingOverrides": {},
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo1.MES.JobLoaded",
+        "id": "act_o8dbxj0x",
         "kind": "action",
-        "refId": "Taiyo1.MES.JobLoaded",
-        "label": "",
+        "refId": "act_o8dbxj0x",
+        "label": "Action - 18",
         "enabled": true,
         "templateId": "template.script_1774407747707",
         "config": {
@@ -890,19 +919,22 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo2.Events.JobLifecycle",
+        "id": "act_j6leu6bc",
         "kind": "action",
-        "refId": "Taiyo2.Events.JobLifecycle",
+        "refId": "act_j6leu6bc",
         "label": "Taiyo2 Job Lifecycle Router",
         "enabled": true,
         "templateId": "template.script_1771898442157",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"open\",\n    notes: `${workOrder} loaded`\n  };\n\n  console.log(\"load job\");\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} cancelled`\n  };\n\n  console.log(\"cancel job\");\n\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} completed`\n  };\n\n  console.log(\"complete job\");\n\n  send(msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"open\",\n    notes: `${workOrder} loaded`\n  };\n\n  console.log(\"load job\");\n\n  send([\"open event\"], msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} cancelled`\n  };\n\n  console.log(\"cancel job\");\n\n\n  send([\"close event\"], msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} completed`\n  };\n\n  console.log(\"complete job\");\n\n  send([\"close event\"], msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -913,13 +945,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "open event",
+            "close event"
+          ]
         }
       },
       {
-        "id": "Taiyo2.Events.JobActivity",
+        "id": "act_qu0qv6ud",
         "kind": "action",
-        "refId": "Taiyo2.Events.JobActivity",
+        "refId": "act_qu0qv6ud",
         "label": "Taiyo2 Job Activity Router",
         "enabled": true,
         "templateId": "template.script_1772002036179",
@@ -936,14 +972,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo2.MES.JobCompleted",
+        "id": "act_12mapqyl",
         "kind": "action",
-        "refId": "Taiyo2.MES.JobCompleted",
-        "label": "",
+        "refId": "act_12mapqyl",
+        "label": "Action - 21",
         "enabled": true,
         "templateId": "template.script_1774408144628",
         "config": {
@@ -959,14 +998,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo2.MES.JobLoaded",
+        "id": "act_lt07ivbc",
         "kind": "action",
-        "refId": "Taiyo2.MES.JobLoaded",
-        "label": "",
+        "refId": "act_lt07ivbc",
+        "label": "Action - 22",
         "enabled": true,
         "templateId": "template.script_1774407747707",
         "config": {
@@ -982,14 +1024,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo2.MES.ResolveActivityCategory",
+        "id": "act_1r77baep",
         "kind": "action",
-        "refId": "Taiyo2.MES.ResolveActivityCategory",
-        "label": "",
+        "refId": "act_1r77baep",
+        "label": "Action - 23",
         "enabled": true,
         "templateId": "template.script_1772300414929",
         "config": {
@@ -1005,14 +1050,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo2.MES.TimeSpentPerActivity",
+        "id": "act_sni8yyc6",
         "kind": "action",
-        "refId": "Taiyo2.MES.TimeSpentPerActivity",
-        "label": "",
+        "refId": "act_sni8yyc6",
+        "label": "Action - 24",
         "enabled": true,
         "templateId": "template.script_1772340546636",
         "config": {
@@ -1028,14 +1076,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo2.MES.ProductionProgress",
+        "id": "act_e7d8hxsx",
         "kind": "action",
-        "refId": "Taiyo2.MES.ProductionProgress",
-        "label": "",
+        "refId": "act_e7d8hxsx",
+        "label": "Action - 25",
         "enabled": true,
         "templateId": "template.script_1773723245898",
         "config": {
@@ -1051,14 +1102,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo2.MES.ProductCounter",
+        "id": "act_ksy3ox97",
         "kind": "action",
-        "refId": "Taiyo2.MES.ProductCounter",
-        "label": "",
+        "refId": "act_ksy3ox97",
+        "label": "Action - 26",
         "enabled": true,
         "templateId": "template.script_1772274570343",
         "config": {
@@ -1095,14 +1149,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo2.MES.PaperConsumptionPerActivity",
+        "id": "act_5m61f7nr",
         "kind": "action",
-        "refId": "Taiyo2.MES.PaperConsumptionPerActivity",
-        "label": "",
+        "refId": "act_5m61f7nr",
+        "label": "Action - 27",
         "enabled": true,
         "templateId": "template.script_1772296918869",
         "config": {
@@ -1118,14 +1175,17 @@
             }
           },
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo2.Utils.DebugSuccess",
+        "id": "act_xi9ttxqd",
         "kind": "action",
-        "refId": "Taiyo2.Utils.DebugSuccess",
-        "label": "",
+        "refId": "act_xi9ttxqd",
+        "label": "Action - 28",
         "enabled": true,
         "templateId": "",
         "config": {
@@ -1133,14 +1193,17 @@
           "script": "helpers.log(\"msg:\", msg);",
           "templateBindingOverrides": {},
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo1.Utils.DebugFail",
+        "id": "act_1kwlfjum",
         "kind": "action",
-        "refId": "Taiyo1.Utils.DebugFail",
-        "label": "",
+        "refId": "act_1kwlfjum",
+        "label": "Action - 29",
         "enabled": true,
         "templateId": "",
         "config": {
@@ -1148,14 +1211,17 @@
           "script": "helpers.log(\"msg:\", msg);",
           "templateBindingOverrides": {},
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "Taiyo1.Utils.DebugSuccess",
+        "id": "act_qb4bn39j",
         "kind": "action",
-        "refId": "Taiyo1.Utils.DebugSuccess",
-        "label": "",
+        "refId": "act_qb4bn39j",
+        "label": "Action - 30",
         "enabled": true,
         "templateId": "",
         "config": {
@@ -1163,13 +1229,16 @@
           "script": "helpers.log(\"msg:\", msg);",
           "templateBindingOverrides": {},
           "eventTemplateId": "",
-          "eventTemplateOverrides": {}
+          "eventTemplateOverrides": {},
+          "outputs": [
+            "out"
+          ]
         }
       },
       {
-        "id": "event.open.Taiyo1.JobLifecycle",
+        "id": "event.open.evt_b4gr9fia",
         "kind": "event_open",
-        "refId": "Taiyo1.JobLifecycle",
+        "refId": "evt_b4gr9fia",
         "label": "OPEN Taiyo1.JobLifecycle",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -1203,9 +1272,9 @@
         }
       },
       {
-        "id": "event.close.Taiyo1.JobLifecycle",
+        "id": "event.close.evt_b4gr9fia",
         "kind": "event_close",
-        "refId": "Taiyo1.JobLifecycle",
+        "refId": "evt_b4gr9fia",
         "label": "CLOSE Taiyo1.JobLifecycle",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -1239,9 +1308,9 @@
         }
       },
       {
-        "id": "event.open.Taiyo1.JobActivity",
+        "id": "event.open.evt_pejupy0z",
         "kind": "event_open",
-        "refId": "Taiyo1.JobActivity",
+        "refId": "evt_pejupy0z",
         "label": "OPEN Taiyo1.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -1275,9 +1344,9 @@
         }
       },
       {
-        "id": "event.close.Taiyo1.JobActivity",
+        "id": "event.close.evt_pejupy0z",
         "kind": "event_close",
-        "refId": "Taiyo1.JobActivity",
+        "refId": "evt_pejupy0z",
         "label": "CLOSE Taiyo1.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -1311,9 +1380,9 @@
         }
       },
       {
-        "id": "event.open.Taiyo2.JobActivity",
+        "id": "event.open.evt_go13ax80",
         "kind": "event_open",
-        "refId": "Taiyo2.JobActivity",
+        "refId": "evt_go13ax80",
         "label": "OPEN Taiyo2.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -1347,9 +1416,9 @@
         }
       },
       {
-        "id": "event.close.Taiyo2.JobActivity",
+        "id": "event.close.evt_go13ax80",
         "kind": "event_close",
-        "refId": "Taiyo2.JobActivity",
+        "refId": "evt_go13ax80",
         "label": "CLOSE Taiyo2.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -1383,9 +1452,9 @@
         }
       },
       {
-        "id": "event.open.Taiyo2.JobLifecycle",
+        "id": "event.open.evt_hvg3ox66",
         "kind": "event_open",
-        "refId": "Taiyo2.JobLifecycle",
+        "refId": "evt_hvg3ox66",
         "label": "OPEN Taiyo2.JobLifecycle",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -1419,9 +1488,9 @@
         }
       },
       {
-        "id": "event.close.Taiyo2.JobLifecycle",
+        "id": "event.close.evt_hvg3ox66",
         "kind": "event_close",
-        "refId": "Taiyo2.JobLifecycle",
+        "refId": "evt_hvg3ox66",
         "label": "CLOSE Taiyo2.JobLifecycle",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -1493,7 +1562,7 @@
           },
           "Job Lifecycle": {
             "value": "load",
-            "ts": "2026-03-29T10:51:35.123Z"
+            "ts": "2026-03-29T13:08:22.448Z"
           },
           "Machine Operator": {
             "value": {
@@ -1504,39 +1573,39 @@
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-03-29T10:51:35.129Z"
+            "ts": "2026-03-29T13:08:22.455Z"
           },
           "Job Activity": {
-            "value": "Production/Run",
-            "ts": "2026-03-16T09:18:55.138Z"
+            "value": "Setup/2",
+            "ts": "2026-03-29T13:08:55.433Z"
           },
           "Paper Consumed Setup": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.253Z"
+            "ts": "2026-03-29T13:08:22.575Z"
           },
           "Job Activity Category": {
             "value": "-",
-            "ts": "2026-03-29T11:19:10.174Z"
+            "ts": "2026-03-29T14:04:27.930Z"
           },
           "Paper Consumed Production": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.257Z"
+            "ts": "2026-03-29T13:08:22.581Z"
           },
           "Paper Consumed Idle": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.256Z"
+            "ts": "2026-03-29T13:08:22.579Z"
           },
           "Total Production Time": {
             "value": 0,
-            "ts": "2026-03-29T11:19:10.178Z"
+            "ts": "2026-03-29T14:04:27.934Z"
           },
           "Total Setup Time": {
-            "value": 0,
-            "ts": "2026-03-29T11:19:10.175Z"
+            "value": 17,
+            "ts": "2026-03-29T14:04:27.932Z"
           },
           "Total Idle Time": {
             "value": 0,
-            "ts": "2026-03-29T11:19:10.177Z"
+            "ts": "2026-03-29T14:04:27.933Z"
           },
           "Material Barcode": {
             "value": "KertasG001",
@@ -1544,43 +1613,43 @@
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-03-29T11:19:10.174Z"
+            "ts": "2026-03-29T14:04:27.931Z"
           },
           "Total Paper Waste": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.259Z"
+            "ts": "2026-03-29T13:08:22.583Z"
           },
           "Product Count Per Fold": {
             "value": 4,
             "ts": "2026-03-17T03:32:05.371Z"
           },
           "Running Hour": {
-            "value": 18122,
-            "ts": "2026-03-29T11:19:10.180Z"
+            "value": 18139,
+            "ts": "2026-03-29T14:04:27.934Z"
           },
           "Product Good Count": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.272Z"
+            "ts": "2026-03-29T13:08:22.599Z"
           },
           "Product Reject Count": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.274Z"
+            "ts": "2026-03-29T13:08:22.602Z"
           },
           "Availability": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.277Z"
+            "ts": "2026-03-29T13:08:22.604Z"
           },
           "Performance": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.279Z"
+            "ts": "2026-03-29T13:08:22.606Z"
           },
           "Quality": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.283Z"
+            "ts": "2026-03-29T13:08:22.608Z"
           },
           "OEE": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.284Z"
+            "ts": "2026-03-29T13:08:22.610Z"
           },
           "Ply": {
             "value": "1/8",
@@ -1609,7 +1678,7 @@
           },
           "Product Total Count": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.275Z"
+            "ts": "2026-03-29T13:08:22.603Z"
           },
           "Job Loader": {
             "value": {},
@@ -1633,11 +1702,11 @@
           },
           "Total Paper Consumed Input": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.260Z"
+            "ts": "2026-03-29T13:08:22.585Z"
           },
           "Total Paper Consumed Output": {
             "value": 0,
-            "ts": "2026-03-29T10:51:35.263Z"
+            "ts": "2026-03-29T13:08:22.587Z"
           }
         }
       },
@@ -1682,27 +1751,27 @@
           },
           "Job Activity Category": {
             "value": "-",
-            "ts": "2026-03-29T11:19:10.168Z"
+            "ts": "2026-03-29T14:04:27.935Z"
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-03-29T11:19:10.168Z"
+            "ts": "2026-03-29T14:04:27.936Z"
           },
           "Total Setup Time": {
             "value": 0,
-            "ts": "2026-03-29T11:19:10.169Z"
+            "ts": "2026-03-29T14:04:27.938Z"
           },
           "Total Idle Time": {
             "value": 0,
-            "ts": "2026-03-29T11:19:10.170Z"
+            "ts": "2026-03-29T14:04:27.939Z"
           },
           "Total Production Time": {
             "value": 0,
-            "ts": "2026-03-29T11:19:10.171Z"
+            "ts": "2026-03-29T14:04:27.940Z"
           },
           "Running Hour": {
             "value": 1506,
-            "ts": "2026-03-29T11:19:10.172Z"
+            "ts": "2026-03-29T14:04:27.941Z"
           },
           "Product Good Count": {
             "value": 0,
@@ -4273,7 +4342,7 @@
       "id": "template.script_1771898442157",
       "name": "TaiyoJobLifecycleEvent",
       "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"open\",\n    notes: `${workOrder} loaded`\n  };\n\n  console.log(\"load job\");\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} cancelled`\n  };\n\n  console.log(\"cancel job\");\n\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} completed`\n  };\n\n  console.log(\"complete job\");\n\n  send(msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"open\",\n    notes: `${workOrder} loaded`\n  };\n\n  console.log(\"load job\");\n\n  send([\"open event\"], msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} cancelled`\n  };\n\n  console.log(\"cancel job\");\n\n\n  send([\"close event\"], msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} completed`\n  };\n\n  console.log(\"complete job\");\n\n  send([\"close event\"], msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
       "variableBindings": [
         {
           "name": "AssetPath",
@@ -4281,6 +4350,18 @@
           "staticValue": "",
           "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
           "allowOverride": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "open event",
+          "order": 1,
+          "description": "Route lifecycle load events to the open event node."
+        },
+        {
+          "name": "close event",
+          "order": 2,
+          "description": "Route lifecycle cancel or complete events to the close event node."
         }
       ],
       "allowActionDuplication": true,
@@ -4465,6 +4546,21 @@
           "allowOverride": true
         }
       ]
+    },
+    {
+      "id": "template.script_1774793043861",
+      "name": "Script Template 13",
+      "description": "",
+      "script": "send(msg);",
+      "outputs": [
+        {
+          "name": "out",
+          "order": 1,
+          "description": ""
+        }
+      ],
+      "allowTemplateReuse": true,
+      "variableBindings": []
     }
   ]
 }

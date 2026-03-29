@@ -20,7 +20,7 @@ export default class TemplateRegistry {
     if (!factory) throw new Error(`Template "${templateId}" is not registered`);
     const handler = factory(config);
     if (typeof handler !== "function") throw new Error(`Template "${templateId}" must return a handler function`);
-    return async (msg: RuntimeMessage, send: (nextMsg: RuntimeMessage) => void, context: RuntimeNodeContext) => {
+    return async (msg: RuntimeMessage, send, context: RuntimeNodeContext) => {
       await handler(msg, send, context);
     };
   }

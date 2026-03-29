@@ -80,9 +80,14 @@ function registerFlowNodes(runtime: Runtime, nodes: unknown[] = []): void {
     ])
   );
 
+  const nodeConfigById: Record<string, Record<string, unknown>> = {};
   for (const rawNode of nodes) {
     const node = rawNode as ProgramFlowNode;
     if (!node.id) throw new Error("Flow node must have an id");
+    nodeConfigById[node.id] =
+      node.config && typeof node.config === "object"
+        ? (node.config as Record<string, unknown>)
+        : {};
     if (node.enabled === false) {
       runtime.addNode(node.id, async (_msg, _send) => {});
       continue;
@@ -145,6 +150,7 @@ function registerFlowNodes(runtime: Runtime, nodes: unknown[] = []): void {
     }
     runtime.addNode(node.id, async (_msg, _send) => {});
   }
+  runtime.setGlobal("flowNodeConfigById", nodeConfigById);
 }
 
 function registerLinks(runtime: Runtime, links: unknown[] = []): void {

@@ -211,11 +211,18 @@ export interface ScriptVariableBindingDefinition {
   allowOverride?: boolean;
 }
 
+export interface ScriptOutputDefinition {
+  name: string;
+  order: number;
+  description?: string;
+}
+
 export interface ScriptTemplateDefinition {
   id: string;
   name: string;
   description?: string;
   script: string;
+  outputs?: ScriptOutputDefinition[];
   allowTemplateReuse?: boolean;
   allowActionDuplication?: boolean;
   variableBindings?: ScriptVariableBindingDefinition[];
@@ -240,10 +247,11 @@ export interface FlowNodeDefinition {
   kind: FlowNodeKind;
   refId: string;
   label?: string;
+  subtitle?: string;
   enabled?: boolean;
   templateId?: string;
   config?: Record<string, unknown>;
- }
+}
 
 export interface Program {
   meta: {

@@ -10,10 +10,36 @@ import type {
   FlowNodeDefinition,
   NodePosition,
   Program,
+  ScriptOutputDefinition,
   ScriptVariableBindingDefinition,
   ScriptTemplateDefinition,
   TriggerDefinition
 } from "../types/program";
+
+function normalizeScriptOutputs(raw: unknown): ScriptOutputDefinition[] {
+  if (!Array.isArray(raw)) return [{ name: "out", order: 1, description: "" }];
+  const normalized = raw
+    .map((item, index): ScriptOutputDefinition | null => {
+      if (typeof item === "string") {
+        const name = item.trim();
+        if (!name) return null;
+        return { name, order: index + 1, description: "" };
+      }
+      if (!item || typeof item !== "object") return null;
+      const typed = item as { name?: unknown; order?: unknown; description?: unknown };
+      const name = String(typed.name || "").trim();
+      if (!name) return null;
+      const order = Math.max(1, Number(typed.order || index + 1) || index + 1);
+      return {
+        name,
+        order,
+        description: String(typed.description || "")
+      };
+    })
+    .filter((item): item is ScriptOutputDefinition => Boolean(item))
+    .sort((a, b) => a.order - b.order);
+  return normalized.length > 0 ? normalized : [{ name: "out", order: 1, description: "" }];
+}
 
 export function getEventActionOpenNodeId(id: string): string {
   return `event.open.${id}`;
@@ -579,6 +605,7 @@ export function normalizeProgram(program: Program): Program {
         ...template,
         description: template.description ?? "",
         script: template.script ?? "send(msg);",
+        outputs: normalizeScriptOutputs((template as { outputs?: unknown[] }).outputs),
         allowTemplateReuse: (template.allowTemplateReuse ?? template.allowActionDuplication) !== false,
         variableBindings: Array.isArray(template.variableBindings)
           ? template.variableBindings.map((binding) =>

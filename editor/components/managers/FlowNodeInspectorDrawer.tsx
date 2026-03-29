@@ -182,6 +182,9 @@ function ScriptNodeInspector({
   const templateBindingOverrides = (config.templateBindingOverrides || {}) as Record<string, ScriptVariableBindingDefinition>;
   const scriptValue = typeof config.script === "string" ? config.script : "";
   const description = typeof config.description === "string" ? config.description : "";
+  const outputLabels = Array.isArray(config.outputs)
+    ? (config.outputs as unknown[]).map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
   const [scriptDraft, setScriptDraft] = useState(scriptValue);
   const [maxEditor, setMaxEditor] = useState(false);
   const scriptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -220,7 +223,7 @@ function ScriptNodeInspector({
   return (
     <Box sx={{ display: "grid", gap: 1.25 }}>
       <Typography variant="h6">Action Detail</Typography>
-      <TextField label="Node ID" value={node.id} onChange={(e) => onRenameNode(node.id, e.target.value)} />
+      <TextField label="Node ID" value={node.id} disabled helperText="Internal ID is generated automatically and cannot be edited." />
       <TextField label="Label" value={node.label ?? ""} onChange={(e) => onUpdateNode(node.id, { label: e.target.value })} />
       <TextField
         label="Description"
@@ -237,6 +240,27 @@ function ScriptNodeInspector({
       <FormControlLabel
         control={<Switch checked={node.enabled !== false} onChange={(_e, checked) => onUpdateNode(node.id, { enabled: checked })} />}
         label="Action Enabled"
+      />
+      <TextField
+        label="Outputs"
+        value={outputLabels.join(", ")}
+        disabled={Boolean(node.templateId)}
+        onChange={(e) =>
+          onUpdateNode(node.id, {
+            config: {
+              ...config,
+              outputs: e.target.value
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean)
+            }
+          })
+        }
+        helperText={
+          node.templateId
+            ? "Outputs are controlled by the selected template."
+            : 'Comma-separated output labels in order. Example: "out1, fail, success"'
+        }
       />
       <FormControl size="small" fullWidth>
         <Select
@@ -431,8 +455,8 @@ function EventNodeInspector({
   onRenameNode,
   onUpdateNode
 }: {
-  openNode: FlowNodeDefinition;
-  closeNode: FlowNodeDefinition;
+  openNode: FlowNodeDefinition | null;
+  closeNode: FlowNodeDefinition | null;
   eventTemplates: EventTemplateDefinition[];
   assets: AssetFrameworkDefinition;
   onRenameNode: (oldId: string, newId: string) => void;
@@ -440,49 +464,75 @@ function EventNodeInspector({
 }) {
   const assetPaths = useMemo(() => getAssetPathOptions(assets), [assets]);
   const assetAttributePaths = useMemo(() => getAssetAttributeOptions(assets), [assets]);
-  const openConfig = (openNode.config || {}) as Record<string, unknown>;
-  const closeConfig = (closeNode.config || {}) as Record<string, unknown>;
-  const selectedTemplate = eventTemplates.find((item) => item.id === (openNode.templateId || closeNode.templateId));
+  const primaryNode = openNode || closeNode;
+  if (!primaryNode) return null;
+  const openConfig = ((openNode?.config || {}) as Record<string, unknown>);
+  const closeConfig = ((closeNode?.config || {}) as Record<string, unknown>);
+  const primaryConfig = ((primaryNode.config || {}) as Record<string, unknown>);
+  const selectedTemplate = eventTemplates.find((item) => item.id === (openNode?.templateId || closeNode?.templateId || primaryNode.templateId));
   const templateVariables = useMemo(() => collectEventTemplateVariables(selectedTemplate), [selectedTemplate]);
+
+  const updateBoth = (patchForOpen: Partial<FlowNodeDefinition> | null, patchForClose?: Partial<FlowNodeDefinition> | null) => {
+    if (openNode && patchForOpen) onUpdateNode(openNode.id, patchForOpen);
+    if (closeNode && (patchForClose || patchForOpen)) onUpdateNode(closeNode.id, (patchForClose || patchForOpen) as Partial<FlowNodeDefinition>);
+  };
 
   return (
     <Box sx={{ display: "grid", gap: 1.25 }}>
       <Typography variant="h6">Event Action Detail</Typography>
-      <TextField
-        label="Open Node ID"
-        value={openNode.id}
-        onChange={(e) => onRenameNode(openNode.id, e.target.value)}
-      />
-      <TextField
-        label="Close Node ID"
-        value={closeNode.id}
-        onChange={(e) => onRenameNode(closeNode.id, e.target.value)}
-      />
-      <TextField label="Label" value={openNode.label ?? ""} onChange={(e) => {
-        onUpdateNode(openNode.id, { label: `OPEN ${e.target.value}` });
-        onUpdateNode(closeNode.id, { label: `CLOSE ${e.target.value}` });
+      {openNode && (
+        <TextField
+          label="Open Node ID"
+          value={openNode.id}
+          disabled
+          helperText="Internal ID is generated automatically and cannot be edited."
+        />
+      )}
+      {closeNode && (
+        <TextField
+          label="Close Node ID"
+          value={closeNode.id}
+          disabled
+          helperText="Internal ID is generated automatically and cannot be edited."
+        />
+      )}
+      <TextField label="Label" value={primaryNode.label ?? ""} onChange={(e) => {
+        if (openNode && closeNode) {
+          updateBoth({ label: e.target.value }, { label: e.target.value });
+        } else {
+          onUpdateNode(primaryNode.id, { label: e.target.value });
+        }
       }} />
       <TextField
         label="Description"
-        value={String(openConfig.description ?? "")}
+        value={String(primaryConfig.description ?? openConfig.description ?? closeConfig.description ?? "")}
         onChange={(e) => {
-          onUpdateNode(openNode.id, { config: { ...openConfig, description: e.target.value } });
-          onUpdateNode(closeNode.id, { config: { ...closeConfig, description: e.target.value } });
+          if (openNode && closeNode) {
+            updateBoth({ config: { ...openConfig, description: e.target.value } }, { config: { ...closeConfig, description: e.target.value } });
+          } else {
+            onUpdateNode(primaryNode.id, { config: { ...primaryConfig, description: e.target.value } });
+          }
         }}
       />
       <FormControlLabel
-        control={<Switch checked={openNode.enabled !== false} onChange={(_e, checked) => {
-          onUpdateNode(openNode.id, { enabled: checked });
-          onUpdateNode(closeNode.id, { enabled: checked });
+        control={<Switch checked={primaryNode.enabled !== false} onChange={(_e, checked) => {
+          if (openNode && closeNode) {
+            updateBoth({ enabled: checked }, { enabled: checked });
+          } else {
+            onUpdateNode(primaryNode.id, { enabled: checked });
+          }
         }} />}
         label="Event Action Enabled"
       />
       <FormControl size="small" fullWidth>
         <Select
-          value={openNode.templateId ?? ""}
+          value={primaryNode.templateId ?? ""}
           onChange={(e) => {
-            onUpdateNode(openNode.id, { templateId: e.target.value || undefined });
-            onUpdateNode(closeNode.id, { templateId: e.target.value || undefined });
+            if (openNode && closeNode) {
+              updateBoth({ templateId: e.target.value || undefined }, { templateId: e.target.value || undefined });
+            } else {
+              onUpdateNode(primaryNode.id, { templateId: e.target.value || undefined });
+            }
           }}
         >
           <MenuItem value="">(Select Event Template)</MenuItem>
@@ -493,8 +543,12 @@ function EventNodeInspector({
           ))}
         </Select>
       </FormControl>
-      <TextField label="Open Notes" value={String(openConfig.openNotes ?? "")} onChange={(e) => onUpdateNode(openNode.id, { config: { ...openConfig, openNotes: e.target.value } })} />
-      <TextField label="Close Notes" value={String(closeConfig.closeNotes ?? "")} onChange={(e) => onUpdateNode(closeNode.id, { config: { ...closeConfig, closeNotes: e.target.value } })} />
+      {openNode && (
+        <TextField label="Open Notes" value={String(openConfig.openNotes ?? "")} onChange={(e) => onUpdateNode(openNode.id, { config: { ...openConfig, openNotes: e.target.value } })} />
+      )}
+      {closeNode && (
+        <TextField label="Close Notes" value={String(closeConfig.closeNotes ?? "")} onChange={(e) => onUpdateNode(closeNode.id, { config: { ...closeConfig, closeNotes: e.target.value } })} />
+      )}
 
       {selectedTemplate && (
         <Box sx={{ display: "grid", gap: 0.75 }}>
@@ -523,18 +577,22 @@ function EventNodeInspector({
                         ...patch
                       }
                     };
-                    onUpdateNode(openNode.id, {
-                      config: {
-                        ...openConfig,
-                        bindings: nextBindings
-                      }
-                    });
-                    onUpdateNode(closeNode.id, {
-                      config: {
-                        ...closeConfig,
-                        bindings: nextBindings
-                      }
-                    });
+                    if (openNode) {
+                      onUpdateNode(openNode.id, {
+                        config: {
+                          ...openConfig,
+                          bindings: nextBindings
+                        }
+                      });
+                    }
+                    if (closeNode) {
+                      onUpdateNode(closeNode.id, {
+                        config: {
+                          ...closeConfig,
+                          bindings: nextBindings
+                        }
+                      });
+                    }
                   };
 
                   return (
@@ -623,8 +681,13 @@ export default function FlowNodeInspectorDrawer(props: FlowNodeInspectorDrawerPr
   } = props;
 
   const actionNode = target?.kind === "action" ? nodes.find((item) => item.id === target.id) || null : null;
-  const openNode = target?.kind === "event" ? nodes.find((item) => item.kind === "event_open" && item.refId === target.id) || null : null;
-  const closeNode = target?.kind === "event" ? nodes.find((item) => item.kind === "event_close" && item.refId === target.id) || null : null;
+  const exactEventNode =
+    target?.kind === "event"
+      ? nodes.find((item) => (item.kind === "event_open" || item.kind === "event_close") && item.id === target.id) || null
+      : null;
+  const eventRefId = exactEventNode?.refId || (target?.kind === "event" ? target.id : "");
+  const openNode = target?.kind === "event" ? nodes.find((item) => item.kind === "event_open" && item.refId === eventRefId) || null : null;
+  const closeNode = target?.kind === "event" ? nodes.find((item) => item.kind === "event_close" && item.refId === eventRefId) || null : null;
 
   return (
     <Drawer
@@ -657,7 +720,7 @@ export default function FlowNodeInspectorDrawer(props: FlowNodeInspectorDrawerPr
             onUpdateNode={onUpdateNode}
           />
         )}
-        {target?.kind === "event" && openNode && closeNode && (
+        {target?.kind === "event" && (openNode || closeNode) && (
           <EventNodeInspector
             openNode={openNode}
             closeNode={closeNode}

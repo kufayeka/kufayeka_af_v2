@@ -432,7 +432,7 @@ export interface RuntimeNodeContext {
 
 export type RuntimeNodeHandler = (
   msg: RuntimeMessage,
-  send: (msg: RuntimeMessage, port?: string) => void,
+  send: (msgOrPorts: RuntimeMessage | string[] | number[], msgOrPort?: RuntimeMessage | string, maybePort?: string) => void,
   context: RuntimeNodeContext
 ) => Promise<void> | void;
 

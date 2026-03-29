@@ -33,6 +33,7 @@ import type {
   AssetFrameworkDefinition,
   ScriptNodeSummary,
   ScriptBindingSource,
+  ScriptOutputDefinition,
   ScriptVariableBindingDefinition,
   ScriptTemplateDefinition
 } from "../../types/program";
@@ -82,6 +83,14 @@ function defaultBinding(): ScriptVariableBindingDefinition {
     staticValue: "",
     attributePath: "",
     allowOverride: false
+  };
+}
+
+function defaultOutput(order: number): ScriptOutputDefinition {
+  return {
+    name: `out${order}`,
+    order,
+    description: ""
   };
 }
 
@@ -528,8 +537,8 @@ export default function ActionManager({
                 <TextField
                   label="Action Name (Hierarchy Path)"
                   value={selectedAction.id}
-                  onChange={(e) => onRenameAction(selectedAction.id, e.target.value)}
-                  helperText="Example: areaA.line1.printer.offset.startup"
+                  disabled
+                  helperText="Internal ID is generated automatically and cannot be edited."
                 />
 
                 <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, maxHeight: 260, ...scrollBothOverflowSx }}>
@@ -926,6 +935,108 @@ export default function ActionManager({
                     onUpdateScriptTemplate(selectedTemplate.id, { description: e.target.value })
                   }
                 />
+                <Box sx={{ display: "grid", gap: 0.75 }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Typography variant="subtitle2">Output Definitions</Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() =>
+                        onUpdateScriptTemplate(selectedTemplate.id, {
+                          outputs: [
+                            ...((selectedTemplate.outputs || []).slice().sort((a, b) => a.order - b.order)),
+                            defaultOutput((selectedTemplate.outputs || []).length + 1)
+                          ]
+                        })
+                      }
+                    >
+                      Add Output
+                    </Button>
+                  </Box>
+                  <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, ...scrollBothOverflowSx }}>
+                    <Table size="small" sx={{ minWidth: 960 }} stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ minWidth: 180 }}>Name</TableCell>
+                          <TableCell sx={{ minWidth: 100 }}>Order</TableCell>
+                          <TableCell sx={{ minWidth: 420 }}>Description</TableCell>
+                          <TableCell sx={{ minWidth: 100 }}>Action</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(selectedTemplate.outputs || []).slice().sort((a, b) => a.order - b.order).map((output, index) => (
+                          <TableRow key={`template-output-${index}`}>
+                            <TableCell>
+                              <TextField
+                                size="small"
+                                fullWidth
+                                value={output.name}
+                                onChange={(e) =>
+                                  onUpdateScriptTemplate(selectedTemplate.id, {
+                                    outputs: (selectedTemplate.outputs || []).map((item, itemIdx) =>
+                                      itemIdx === index ? { ...item, name: e.target.value } : item
+                                    )
+                                  })
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <TextField
+                                size="small"
+                                type="number"
+                                fullWidth
+                                value={output.order}
+                                onChange={(e) =>
+                                  onUpdateScriptTemplate(selectedTemplate.id, {
+                                    outputs: (selectedTemplate.outputs || []).map((item, itemIdx) =>
+                                      itemIdx === index ? { ...item, order: Math.max(1, Number(e.target.value) || index + 1) } : item
+                                    )
+                                  })
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <TextField
+                                size="small"
+                                fullWidth
+                                value={output.description ?? ""}
+                                onChange={(e) =>
+                                  onUpdateScriptTemplate(selectedTemplate.id, {
+                                    outputs: (selectedTemplate.outputs || []).map((item, itemIdx) =>
+                                      itemIdx === index ? { ...item, description: e.target.value } : item
+                                    )
+                                  })
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="small"
+                                color="error"
+                                onClick={() =>
+                                  onUpdateScriptTemplate(selectedTemplate.id, {
+                                    outputs: (selectedTemplate.outputs || []).filter((_item, itemIdx) => itemIdx !== index)
+                                  })
+                                }
+                              >
+                                Remove
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {(selectedTemplate.outputs || []).length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={4}>
+                              <Typography variant="caption" color="text.secondary">
+                                No outputs yet.
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
                 <FormControlLabel
                   control={
                     <Switch

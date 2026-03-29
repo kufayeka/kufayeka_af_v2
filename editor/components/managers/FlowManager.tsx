@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { Box, Menu, MenuItem, Paper, TextField, Typography } from "@mui/material";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Box, CircularProgress } from "@mui/material";
 import type { EventTemplateDefinition, FlowLink, NodePosition, ScriptTemplateDefinition } from "../../types/program";
-import FlowDiagram, { type FlowEditorNode, type FlowNodeKind, type FlowPaletteItem } from "./FlowDiagram";
+
+export type FlowPaletteItem =
+  | { type: "existing-node"; nodeId: string }
+  | { type: "script-template"; templateId: string; label: string }
+  | { type: "event-template-open"; templateId: string; label: string }
+  | { type: "event-template-close"; templateId: string; label: string };
 
 interface FlowManagerProps {
   triggerIds: string[];
@@ -10,6 +15,8 @@ interface FlowManagerProps {
   scriptTemplates: ScriptTemplateDefinition[];
   eventTemplates: EventTemplateDefinition[];
   nodeLabels?: Record<string, string>;
+  nodeSubtitles?: Record<string, string>;
+  nodeOutputs?: Record<string, Array<{ id: string; label: string }>>;
   links: FlowLink[];
   nodePositions: Record<string, NodePosition>;
   zoom?: number;
@@ -29,32 +36,59 @@ interface FlowManagerProps {
   onDropPaletteItem?: (item: FlowPaletteItem, position: NodePosition) => void;
 }
 
+type FlowNodeKind = "trigger" | "action" | "event";
+
+type FlowEditorNode = {
+  id: string;
+  kind: FlowNodeKind;
+  label: string;
+  subtitle?: string;
+  outputs: Array<{ id: string; label: string }>;
+  fillColor: string;
+  borderColor: string;
+  textColor: string;
+};
+
+type PaletteItem = {
+  key: string;
+  label: string;
+  subtitle: string;
+  fillColor: string;
+  borderColor: string;
+  payload: FlowPaletteItem;
+};
+
 function getNodeKindMeta(kind: FlowNodeKind) {
   if (kind === "action") {
     return {
       fillColor: "#01806b",
       borderColor: "#14f4b4",
-      textColor: "#ffffff",
-      icon: "PlayArrowRounded"
+      textColor: "#ffffff"
     };
   }
   if (kind === "event") {
     return {
       fillColor: "#3366e8",
       borderColor: "#8ab4ff",
-      textColor: "#ffffff",
-      icon: "SettingsEthernetRounded"
+      textColor: "#ffffff"
     };
   }
   return {
     fillColor: "#4b5563",
     borderColor: "#22d3ee",
-    textColor: "#ffffff",
-    icon: "SensorsRounded"
+    textColor: "#ffffff"
   };
 }
 
-function getNodeOutputs(nodeId: string, kind: FlowNodeKind): Array<{ id: string; label: string }> {
+function getNodeOutputs(
+  nodeId: string,
+  kind: FlowNodeKind,
+  configuredOutputs?: Record<string, Array<{ id: string; label: string }>>
+): Array<{ id: string; label: string }> {
+  if (kind === "action") {
+    const outputs = configuredOutputs?.[nodeId];
+    if (Array.isArray(outputs) && outputs.length > 0) return outputs;
+  }
   if (kind === "event" && (nodeId.startsWith("event.open.") || nodeId.startsWith("event.close."))) {
     return [
       { id: "onSuccess", label: "SUCCESS" },
@@ -71,12 +105,14 @@ export default function FlowManager({
   scriptTemplates,
   eventTemplates,
   nodeLabels = {},
+  nodeSubtitles = {},
+  nodeOutputs = {},
   links,
   nodePositions,
   zoom,
   onZoomChange,
+  onAddLink,
   onRemoveLink,
-  onRemoveNodeFromFlow,
   onDeleteNodes,
   onDuplicateNodes,
   onTriggerNodeDoubleClick,
@@ -87,11 +123,8 @@ export default function FlowManager({
   onConnectNodes,
   onDropPaletteItem
 }: FlowManagerProps) {
-  const [selectedLinkIndex, setSelectedLinkIndex] = useState(-1);
-  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
-  const [search, setSearch] = useState("");
-  const [nodeMenu, setNodeMenu] = useState<{ nodeId: string; kind: FlowNodeKind; mouseX: number; mouseY: number } | null>(null);
-  const [canvasMenu, setCanvasMenu] = useState<{ mouseX: number; mouseY: number; position: NodePosition } | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [iframeReady, setIframeReady] = useState(false);
 
   const allNodes = useMemo(
     () => [
@@ -104,23 +137,21 @@ export default function FlowManager({
 
   const diagramNodes = useMemo<FlowEditorNode[]>(
     () =>
-      allNodes.map((node) => {
-        const meta = getNodeKindMeta(node.kind);
-        return {
-          id: node.id,
-          kind: node.kind,
-          label: (nodeLabels[node.id] || node.id).trim() || node.id,
-          outputs: getNodeOutputs(node.id, node.kind),
-          ...meta
-        };
-      }),
-    [allNodes, nodeLabels]
+      allNodes.map((node) => ({
+        id: node.id,
+        kind: node.kind,
+        label: (nodeLabels[node.id] || node.id).trim() || node.id,
+        subtitle: (nodeSubtitles[node.id] || "").trim() || (nodeLabels[node.id] || node.id).trim() || node.id,
+        outputs: getNodeOutputs(node.id, node.kind, nodeOutputs),
+        ...getNodeKindMeta(node.kind)
+      })),
+    [allNodes, nodeLabels, nodeOutputs, nodeSubtitles]
   );
 
   const placedIds = useMemo(() => new Set(Object.keys(nodePositions || {})), [nodePositions]);
-  const paletteItems = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
-    const items: Array<{ key: string; label: string; subtitle: string; fillColor: string; borderColor: string; payload: FlowPaletteItem }> = [];
+
+  const paletteItems = useMemo<PaletteItem[]>(() => {
+    const items: PaletteItem[] = [];
 
     for (const node of diagramNodes) {
       if (node.kind !== "trigger") continue;
@@ -129,8 +160,8 @@ export default function FlowManager({
         key: `trigger:${node.id}`,
         label: node.label,
         subtitle: node.id,
-        fillColor: node.fillColor || "#4b5563",
-        borderColor: node.borderColor || "#22d3ee",
+        fillColor: node.fillColor,
+        borderColor: node.borderColor,
         payload: { type: "existing-node", nodeId: node.id }
       });
     }
@@ -148,233 +179,186 @@ export default function FlowManager({
 
     for (const template of eventTemplates) {
       items.push({
-        key: `event-template:${template.id}`,
-        label: template.id,
+        key: `event-template-open:${template.id}`,
+        label: `OPEN ${template.id}`,
         subtitle: template.eventPathTemplate || template.id,
         fillColor: "#3366e8",
         borderColor: "#8ab4ff",
-        payload: { type: "event-template", templateId: template.id, label: template.id }
+        payload: { type: "event-template-open", templateId: template.id, label: `OPEN ${template.id}` }
+      });
+      items.push({
+        key: `event-template-close:${template.id}`,
+        label: `CLOSE ${template.id}`,
+        subtitle: template.eventPathTemplate || template.id,
+        fillColor: "#3366e8",
+        borderColor: "#8ab4ff",
+        payload: { type: "event-template-close", templateId: template.id, label: `CLOSE ${template.id}` }
       });
     }
 
-    return items.filter((item) => {
-      if (!keyword) return true;
-      return `${item.label} ${item.subtitle}`.toLowerCase().includes(keyword);
-    });
-  }, [diagramNodes, eventTemplates, placedIds, scriptTemplates, search]);
+    return items;
+  }, [diagramNodes, eventTemplates, placedIds, scriptTemplates]);
+
+  const syncToIframe = () => {
+    const target = iframeRef.current?.contentWindow;
+    if (!target) return;
+    target.postMessage(
+      {
+        source: "kufayeka-flow:message",
+        type: "sync",
+        payload: {
+          nodes: diagramNodes,
+          links,
+          nodePositions,
+          paletteItems,
+          zoom: zoom ?? 0.5
+        }
+      },
+      "*"
+    );
+  };
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName || "";
-      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
-      const isMeta = event.ctrlKey || event.metaKey;
+    syncToIframe();
+  }, [diagramNodes, iframeReady, links, nodePositions, paletteItems, zoom]);
 
-      if (isMeta && event.key.toLowerCase() === "c" && selectedNodeIds.length > 0) {
-        window.sessionStorage.setItem("flow-node-clipboard", JSON.stringify(selectedNodeIds));
-        event.preventDefault();
-        return;
-      }
-
-      if (isMeta && event.key.toLowerCase() === "v") {
-        const raw = window.sessionStorage.getItem("flow-node-clipboard");
-        if (!raw) return;
-        try {
-          const nodeIds = JSON.parse(raw);
-          if (Array.isArray(nodeIds) && nodeIds.length > 0) {
-            onDuplicateNodes?.(nodeIds);
-            event.preventDefault();
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const data = event.data as
+        | {
+            source?: string;
+            type?: string;
+            payload?: Record<string, unknown>;
           }
-        } catch {
-          // ignore clipboard parse issue
-        }
+        | undefined;
+      if (!data || data.source !== "kufayeka-flow:event") return;
+
+      if (data.type === "ready") {
+        setIframeReady(true);
+        syncToIframe();
         return;
       }
 
-      if (event.key !== "Delete" && event.key !== "Backspace") return;
-      if (selectedNodeIds.length > 0) {
-        if (onDeleteNodes) onDeleteNodes(selectedNodeIds);
-        else selectedNodeIds.forEach((nodeId) => onRemoveNodeFromFlow?.(nodeId));
-        setSelectedNodeIds([]);
-        setSelectedLinkIndex(-1);
-        event.preventDefault();
+      if (data.type === "zoom-change") {
+        const nextZoom = Number(data.payload?.zoom ?? zoom ?? 0.5);
+        onZoomChange?.(nextZoom);
         return;
       }
-      if (selectedLinkIndex >= 0) {
-        onRemoveLink(selectedLinkIndex);
-        setSelectedLinkIndex(-1);
-        event.preventDefault();
+
+      if (data.type === "node-drag-start") {
+        onNodePositionDragStart?.();
+        return;
+      }
+
+      if (data.type === "nodes-position-change") {
+        const positions = (data.payload?.positions as Record<string, NodePosition>) || {};
+        Object.entries(positions).forEach(([nodeId, position]) => {
+          if (!position || typeof position.x !== "number" || typeof position.y !== "number") return;
+          onNodePositionChange?.(nodeId, position);
+        });
+        return;
+      }
+
+      if (data.type === "connect-nodes") {
+        const fromId = String(data.payload?.fromId || "");
+        const toId = String(data.payload?.toId || "");
+        const fromPort = String(data.payload?.fromPort || "default");
+        if (!fromId || !toId) return;
+        if (onConnectNodes) onConnectNodes(fromId, toId, fromPort);
+        else onAddLink({ from: fromId, to: toId, fromPort, enabled: true });
+        return;
+      }
+
+      if (data.type === "drop-palette-item") {
+        const item = data.payload?.item as PaletteItem["payload"] | undefined;
+        const position = data.payload?.position as NodePosition | undefined;
+        if (!item || !position) return;
+        onDropPaletteItem?.(item, position);
+        return;
+      }
+
+      if (data.type === "duplicate-nodes") {
+        const nodeIds = Array.isArray(data.payload?.nodeIds)
+          ? (data.payload?.nodeIds as string[])
+          : [];
+        const basePosition = (data.payload?.basePosition as NodePosition | null | undefined) ?? undefined;
+        if (nodeIds.length > 0) onDuplicateNodes?.(nodeIds, basePosition);
+        return;
+      }
+
+      if (data.type === "delete-nodes") {
+        const nodeIds = Array.isArray(data.payload?.nodeIds)
+          ? (data.payload?.nodeIds as string[])
+          : [];
+        if (nodeIds.length > 0) onDeleteNodes?.(nodeIds);
+        return;
+      }
+
+      if (data.type === "remove-link") {
+        const index = Number(data.payload?.index ?? -1);
+        if (index >= 0) onRemoveLink(index);
+        return;
+      }
+
+      if (data.type === "node-double-click") {
+        const nodeId = String(data.payload?.nodeId || "");
+        const kind = String(data.payload?.kind || "");
+        if (!nodeId) return;
+        if (kind === "trigger") onTriggerNodeDoubleClick?.(nodeId);
+        else if (kind === "action") onActionNodeDoubleClick?.(nodeId);
+        else onEventNodeDoubleClick?.(nodeId);
       }
     };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onDeleteNodes, onDuplicateNodes, onRemoveLink, onRemoveNodeFromFlow, selectedLinkIndex, selectedNodeIds]);
-
-  const closeNodeMenu = () => setNodeMenu(null);
-  const closeCanvasMenu = () => setCanvasMenu(null);
-
-  const handleCopyNode = (nodeIds: string[]) => {
-    if (nodeIds.length === 0) return;
-    window.sessionStorage.setItem("flow-node-clipboard", JSON.stringify(nodeIds));
-  };
-
-  const handlePasteAt = (position?: NodePosition) => {
-    const raw = window.sessionStorage.getItem("flow-node-clipboard");
-    if (!raw) return;
-    try {
-      const nodeIds = JSON.parse(raw);
-      if (Array.isArray(nodeIds) && nodeIds.length > 0) {
-        onDuplicateNodes?.(nodeIds, position);
-      }
-    } catch {
-      // ignore clipboard parse issue
-    }
-  };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [
+    onActionNodeDoubleClick,
+    onAddLink,
+    onConnectNodes,
+    onDeleteNodes,
+    onDropPaletteItem,
+    onDuplicateNodes,
+    onEventNodeDoubleClick,
+    onNodePositionChange,
+    onNodePositionDragStart,
+    onRemoveLink,
+    onTriggerNodeDoubleClick,
+    onZoomChange,
+    zoom
+  ]);
 
   return (
-    <Box sx={{ width: "100%", height: "calc(100vh - 120px)", display: "grid", gridTemplateColumns: "300px 1fr", gap: 1 }}>
-      <Paper variant="outlined" sx={{ p: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto auto 1fr", gap: 0.75 }}>
-        <Typography variant="subtitle1">Available Nodes</Typography>
-        <TextField size="small" label="Search Node" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <Box sx={{ minHeight: 0, overflow: "auto", border: "1px solid #e2e8f0", borderRadius: 0.5, p: 0.5, display: "flex", flexDirection: "column", gap: 0.5, alignItems: "stretch" }}>
-          {paletteItems.map((item) => (
-            <Box
-              key={item.key}
-              draggable
-              onDragStart={(event) => {
-                const payload = JSON.stringify(item.payload);
-                event.dataTransfer.setData("application/x-flow-palette-item", payload);
-                event.dataTransfer.setData("text/plain", item.subtitle);
-                event.dataTransfer.effectAllowed = "copyMove";
-              }}
-              sx={{
-                px: 1,
-                py: 0.75,
-                borderRadius: 1,
-                border: "1px solid",
-                borderColor: item.borderColor,
-                background: item.fillColor,
-                cursor: "grab",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "flex-start",
-                minHeight: 40,
-                maxHeight: 40,
-                width: "100%"
-              }}
-            >
-              <Typography variant="body2" sx={{ fontFamily: "monospace", fontWeight: 700, color: "#fff" }}>
-                {item.label}
-              </Typography>
-              <Typography variant="caption" sx={{ fontFamily: "monospace", color: "#dbeafe", ml: 1, opacity: 0.9 }}>
-                {item.subtitle}
-              </Typography>
-            </Box>
-          ))}
-          {paletteItems.length === 0 && (
-            <Typography variant="caption" color="text.secondary">
-              No available nodes.
-            </Typography>
-          )}
+    <Box sx={{ width: "100%", height: "calc(100vh - 120px)", position: "relative", borderRadius: 1, overflow: "hidden", border: "1px solid #dbe4ee", background: "#fff" }}>
+      {!iframeReady && (
+        <Box
+          sx={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 1.5,
+            zIndex: 1,
+            background: "linear-gradient(180deg, rgba(248,250,252,0.9) 0%, rgba(241,245,249,0.94) 100%)"
+          }}
+        >
+          <CircularProgress size={24} />
+          <Box sx={{ fontSize: 14, color: "#334155", fontWeight: 600 }}>Loading Flow Editor</Box>
         </Box>
-      </Paper>
-
-      <Paper variant="outlined" sx={{ p: 1, minHeight: 0, display: "grid", gridTemplateRows: "1fr" }}>
-        <FlowDiagram
-          nodes={diagramNodes}
-          links={links}
-          nodePositions={nodePositions}
-          zoom={zoom}
-          onZoomChange={onZoomChange}
-          selectedLinkIndex={selectedLinkIndex}
-          selectedNodeIds={selectedNodeIds}
-          onSelectLink={(index) => {
-            setSelectedLinkIndex(index);
-            if (index >= 0) setSelectedNodeIds([]);
-          }}
-          onSelectNodeIds={setSelectedNodeIds}
-          onNodeDoubleClick={(nodeId, kind) => {
-            if (kind === "trigger") onTriggerNodeDoubleClick?.(nodeId);
-            if (kind === "action") onActionNodeDoubleClick?.(nodeId);
-            if (kind === "event") onEventNodeDoubleClick?.(nodeId);
-          }}
-          onNodeContextMenu={(nodeId, kind, anchor) => {
-            closeCanvasMenu();
-            setNodeMenu({ nodeId, kind, mouseX: anchor.x, mouseY: anchor.y });
-          }}
-          onCanvasContextMenu={(anchor, position) => {
-            closeNodeMenu();
-            setCanvasMenu({ mouseX: anchor.x, mouseY: anchor.y, position });
-          }}
-          onNodeDragStart={onNodePositionDragStart}
-          onNodePositionChange={onNodePositionChange}
-          onConnectNodes={(fromId, toId, fromPort) => onConnectNodes?.(fromId, toId, fromPort)}
-          onDropPaletteItem={onDropPaletteItem}
-        />
-        <Menu
-          open={Boolean(nodeMenu)}
-          onClose={closeNodeMenu}
-          anchorReference="anchorPosition"
-          anchorPosition={
-            nodeMenu
-              ? { top: nodeMenu.mouseY, left: nodeMenu.mouseX }
-              : undefined
-          }
-        >
-          <MenuItem
-            onClick={() => {
-              if (!nodeMenu) return;
-              const nodeIds = selectedNodeIds.includes(nodeMenu.nodeId) ? selectedNodeIds : [nodeMenu.nodeId];
-              handleCopyNode(nodeIds);
-              closeNodeMenu();
-            }}
-          >
-            Copy
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              if (!nodeMenu) return;
-              const nodeIds = selectedNodeIds.includes(nodeMenu.nodeId) ? selectedNodeIds : [nodeMenu.nodeId];
-              onDuplicateNodes?.(nodeIds);
-              closeNodeMenu();
-            }}
-          >
-            Duplicate
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              if (!nodeMenu) return;
-              const nodeIds = selectedNodeIds.includes(nodeMenu.nodeId) ? selectedNodeIds : [nodeMenu.nodeId];
-              if (onDeleteNodes) onDeleteNodes(nodeIds);
-              else nodeIds.forEach((nodeId) => onRemoveNodeFromFlow?.(nodeId));
-              setSelectedNodeIds([]);
-              closeNodeMenu();
-            }}
-          >
-            Delete
-          </MenuItem>
-        </Menu>
-        <Menu
-          open={Boolean(canvasMenu)}
-          onClose={closeCanvasMenu}
-          anchorReference="anchorPosition"
-          anchorPosition={
-            canvasMenu
-              ? { top: canvasMenu.mouseY, left: canvasMenu.mouseX }
-              : undefined
-          }
-        >
-          <MenuItem
-            onClick={() => {
-              handlePasteAt(canvasMenu?.position);
-              closeCanvasMenu();
-            }}
-          >
-            Paste
-          </MenuItem>
-        </Menu>
-      </Paper>
+      )}
+      <iframe
+        ref={iframeRef}
+        title="Kufayeka Flow Editor"
+        src="/flow-editor/index.html"
+        onLoad={() => {
+          setIframeReady(true);
+          window.setTimeout(() => {
+            syncToIframe();
+          }, 0);
+        }}
+        style={{ width: "100%", height: "100%", border: 0, display: "block", background: "#fff" }}
+      />
     </Box>
   );
 }

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kufayeka Flow Editor</title>
+    <link rel="stylesheet" href="/flow-editor/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="flow-shell">
+      <aside class="palette">
+        <div class="palette-header">
+          <div class="palette-title">Available Nodes</div>
+          <input id="palette-search" class="palette-search" type="search" placeholder="Search node" />
+        </div>
+        <div id="palette-list" class="palette-list"></div>
+      </aside>
+      <main class="editor">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <button type="button" data-zoom="out">-</button>
+            <button type="button" data-zoom="reset">100%</button>
+            <button type="button" data-zoom="in">+</button>
+          </div>
+          <div class="toolbar-right">
+            <span id="selection-summary">0 selected</span>
+          </div>
+        </div>
+        <div id="viewport" class="viewport" tabindex="0">
+          <div id="stage" class="stage">
+            <div id="grid" class="grid"></div>
+            <div id="group-layer" class="group-layer"></div>
+            <svg id="link-layer" class="link-layer"></svg>
+            <svg id="overlay-layer" class="overlay-layer"></svg>
+            <div id="node-layer" class="node-layer"></div>
+            <div id="marquee" class="marquee hidden"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div id="context-menu" class="context-menu hidden"></div>
+    <script src="/flow-editor/main.js"></script>
+  </body>
+</html>
