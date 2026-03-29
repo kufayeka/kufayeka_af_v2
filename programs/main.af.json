@@ -544,6 +544,7 @@
         "refId": "trigger.watch_1772017838146",
         "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
         "enabled": true,
+        "templateId": "",
         "config": {
           "type": "watcher_set",
           "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
@@ -560,6 +561,7 @@
         "refId": "trigger.watch_1772152779583",
         "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
         "enabled": true,
+        "templateId": "",
         "config": {
           "type": "watcher_set",
           "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
@@ -576,6 +578,7 @@
         "refId": "trigger.tick_1772164929424",
         "label": "1s trigger",
         "enabled": true,
+        "templateId": "",
         "config": {
           "type": "interval",
           "watchPath": "",
@@ -592,6 +595,7 @@
         "refId": "trigger.tick_1774420525757",
         "label": "1s trigger",
         "enabled": true,
+        "templateId": "",
         "config": {
           "type": "interval",
           "watchPath": "",
@@ -608,6 +612,7 @@
         "refId": "trigger.watch_1774420654012",
         "label": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle",
         "enabled": true,
+        "templateId": "",
         "config": {
           "type": "watcher_set",
           "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle",
@@ -624,6 +629,7 @@
         "refId": "trigger.watch_1774420675505",
         "label": "Jasuindo.OffsetPrinter.Taiyo2.Job Activity",
         "enabled": true,
+        "templateId": "",
         "config": {
           "type": "watcher_set",
           "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Job Activity",
@@ -640,6 +646,7 @@
         "refId": "trigger.watch_1774494096409",
         "label": "Jasuindo.OffsetPrinter.Taiyo2.Encoder Raw Value",
         "enabled": true,
+        "templateId": "",
         "config": {
           "type": "watcher_set",
           "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Encoder Raw Value",
@@ -656,6 +663,7 @@
         "refId": "trigger.watch_1774494115446",
         "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Raw Value",
         "enabled": true,
+        "templateId": "",
         "config": {
           "type": "watcher_set",
           "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Raw Value",
@@ -1190,7 +1198,8 @@
             }
           },
           "templateOverrides": {},
-          "openNotes": ""
+          "openNotes": "",
+          "closeNotes": ""
         }
       },
       {
@@ -1225,7 +1234,8 @@
             }
           },
           "templateOverrides": {},
-          "closeNotes": ""
+          "closeNotes": "",
+          "openNotes": ""
         }
       },
       {
@@ -1260,7 +1270,8 @@
             }
           },
           "templateOverrides": {},
-          "openNotes": ""
+          "openNotes": "",
+          "closeNotes": ""
         }
       },
       {
@@ -1295,7 +1306,8 @@
             }
           },
           "templateOverrides": {},
-          "closeNotes": ""
+          "closeNotes": "",
+          "openNotes": ""
         }
       },
       {
@@ -1330,7 +1342,8 @@
             }
           },
           "templateOverrides": {},
-          "openNotes": ""
+          "openNotes": "",
+          "closeNotes": ""
         }
       },
       {
@@ -1365,7 +1378,8 @@
             }
           },
           "templateOverrides": {},
-          "closeNotes": ""
+          "closeNotes": "",
+          "openNotes": ""
         }
       },
       {
@@ -1400,7 +1414,8 @@
             }
           },
           "templateOverrides": {},
-          "openNotes": ""
+          "openNotes": "",
+          "closeNotes": ""
         }
       },
       {
@@ -1435,7 +1450,8 @@
             }
           },
           "templateOverrides": {},
-          "closeNotes": ""
+          "closeNotes": "",
+          "openNotes": ""
         }
       }
     ]
@@ -1451,8 +1467,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": "2026-03-26T09:07:03.317Z",
-            "ts": "2026-03-26T09:07:05.094Z"
+            "value": 1773657028629,
+            "ts": "2026-03-16T10:30:29.318Z"
           }
         }
       },
@@ -1469,151 +1485,159 @@
         "attributes": {
           "Machine Speed": {
             "value": 0,
-            "ts": "2026-03-26T09:07:05.108Z"
+            "ts": "2026-03-27T02:39:40.574Z"
           },
           "Work Order": {
-            "value": "No Work Order",
-            "ts": "2026-03-26T07:59:47.496Z"
+            "value": "WO-2026-0074",
+            "ts": "2026-03-17T04:12:05.445Z"
           },
           "Job Lifecycle": {
-            "value": "-",
-            "ts": "2026-03-26T07:59:47.496Z"
+            "value": "load",
+            "ts": "2026-03-29T10:51:35.123Z"
           },
           "Machine Operator": {
             "value": {
-              "label": "Alice Operator",
-              "value": "90efaa37-9275-41d5-bb90-06352d055f1b"
+              "value": "Alice123",
+              "label": "Alice"
             },
-            "ts": "2026-03-26T08:37:09.124Z"
+            "ts": "2026-03-17T04:31:06.645Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-03-26T07:59:47.477Z"
+            "ts": "2026-03-29T10:51:35.129Z"
           },
           "Job Activity": {
-            "value": "-",
-            "ts": "2026-03-26T07:59:47.496Z"
+            "value": "Production/Run",
+            "ts": "2026-03-16T09:18:55.138Z"
           },
           "Paper Consumed Setup": {
             "value": 0,
-            "ts": "2026-03-26T07:59:47.497Z"
+            "ts": "2026-03-29T10:51:35.253Z"
           },
           "Job Activity Category": {
             "value": "-",
-            "ts": "2026-03-27T03:02:52.106Z"
+            "ts": "2026-03-29T11:19:10.174Z"
           },
           "Paper Consumed Production": {
             "value": 0,
-            "ts": "2026-03-26T07:59:47.498Z"
+            "ts": "2026-03-29T10:51:35.257Z"
           },
           "Paper Consumed Idle": {
             "value": 0,
-            "ts": "2026-03-26T07:59:47.497Z"
+            "ts": "2026-03-29T10:51:35.256Z"
           },
           "Total Production Time": {
             "value": 0,
-            "ts": "2026-03-27T03:02:52.112Z"
+            "ts": "2026-03-29T11:19:10.178Z"
           },
           "Total Setup Time": {
             "value": 0,
-            "ts": "2026-03-27T03:02:52.110Z"
+            "ts": "2026-03-29T11:19:10.175Z"
           },
           "Total Idle Time": {
             "value": 0,
-            "ts": "2026-03-27T03:02:52.112Z"
+            "ts": "2026-03-29T11:19:10.177Z"
           },
           "Material Barcode": {
-            "value": "MaterialA002",
-            "ts": "2026-03-26T07:55:50.113Z"
+            "value": "KertasG001",
+            "ts": "2026-03-17T03:32:05.371Z"
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-03-27T03:02:52.108Z"
+            "ts": "2026-03-29T11:19:10.174Z"
           },
           "Total Paper Waste": {
             "value": 0,
-            "ts": "2026-03-26T07:59:47.498Z"
+            "ts": "2026-03-29T10:51:35.259Z"
           },
           "Product Count Per Fold": {
-            "value": 2,
-            "ts": "2026-03-26T07:55:50.118Z"
+            "value": 4,
+            "ts": "2026-03-17T03:32:05.371Z"
           },
           "Running Hour": {
-            "value": 1093,
-            "ts": "2026-03-27T03:02:52.112Z"
+            "value": 18122,
+            "ts": "2026-03-29T11:19:10.180Z"
           },
           "Product Good Count": {
             "value": 0,
-            "ts": "2026-03-26T09:07:05.111Z"
+            "ts": "2026-03-29T10:51:35.272Z"
           },
           "Product Reject Count": {
-            "value": 200,
-            "ts": "2026-03-26T07:55:50.121Z"
+            "value": 0,
+            "ts": "2026-03-29T10:51:35.274Z"
           },
           "Availability": {
             "value": 0,
-            "ts": "2026-03-26T07:59:47.500Z"
+            "ts": "2026-03-29T10:51:35.277Z"
           },
           "Performance": {
             "value": 0,
-            "ts": "2026-03-26T07:59:47.500Z"
+            "ts": "2026-03-29T10:51:35.279Z"
           },
           "Quality": {
             "value": 0,
-            "ts": "2026-03-26T07:59:47.501Z"
+            "ts": "2026-03-29T10:51:35.283Z"
           },
           "OEE": {
             "value": 0,
-            "ts": "2026-03-26T07:59:47.501Z"
+            "ts": "2026-03-29T10:51:35.284Z"
           },
           "Ply": {
-            "value": "0/0",
-            "ts": "2026-03-26T07:55:50.116Z"
+            "value": "1/8",
+            "ts": "2026-03-17T03:32:05.371Z"
           },
           "Assigned Operator Shift 1": {
             "value": {
               "value": "90efaa37-9275-41d5-bb90-06352d055f1b",
               "label": "Alice Operator - alice2"
             },
-            "ts": "2026-03-26T08:21:55.095Z"
+            "ts": "2026-03-13T10:28:52.894Z"
           },
           "Assigned Operator Shift 3": {
             "value": {
               "value": "-",
               "label": "No Operator"
             },
-            "ts": "2026-03-26T08:21:55.096Z"
+            "ts": "2026-03-13T10:28:52.897Z"
           },
           "Assigned Operator Shift 2": {
             "value": {
-              "value": "65daba01-f961-4322-ba84-54de4e392f87",
-              "label": "Jane - operator1"
+              "value": "3dbfbb76-c229-4bd5-b75a-41a735ca4ea4",
+              "label": "Parjo Stevenson - parjo"
             },
-            "ts": "2026-03-26T08:21:55.095Z"
+            "ts": "2026-03-13T10:28:52.895Z"
           },
           "Product Total Count": {
             "value": 0,
-            "ts": "2026-03-26T09:07:05.105Z"
+            "ts": "2026-03-29T10:51:35.275Z"
           },
           "Job Loader": {
             "value": {},
-            "ts": "2026-03-26T07:59:47.510Z"
+            "ts": "2026-03-17T04:15:27.683Z"
           },
           "Ideal Speed": {
             "value": 9,
             "ts": "2026-03-13T09:23:18.803Z"
           },
           "Paper/Fold Size": {
-            "value": 30,
-            "ts": "2026-03-26T07:55:50.119Z"
+            "value": 20,
+            "ts": "2026-03-17T03:32:05.372Z"
           },
           "Job Progress": {
             "value": 0,
-            "ts": "2026-03-26T09:07:05.113Z"
+            "ts": "2026-03-27T02:39:40.581Z"
           },
           "Product Count Target": {
+            "value": "1010 BK",
+            "ts": "2026-03-17T09:10:47.719Z"
+          },
+          "Total Paper Consumed Input": {
             "value": 0,
-            "ts": "2026-03-26T07:59:47.502Z"
+            "ts": "2026-03-29T10:51:35.260Z"
+          },
+          "Total Paper Consumed Output": {
+            "value": 0,
+            "ts": "2026-03-29T10:51:35.263Z"
           }
         }
       },
@@ -1633,141 +1657,144 @@
               "value": "-",
               "label": "No Operator"
             },
-            "ts": "2026-03-26T08:21:55.096Z"
+            "ts": "2026-03-26T02:13:08.155Z"
           },
           "Assigned Operator Shift 2": {
             "value": {
-              "value": "-",
-              "label": "No Operator"
+              "value": "3dbfbb76-c229-4bd5-b75a-41a735ca4ea4",
+              "label": "Parjo Stevenson - parjo"
             },
-            "ts": "2026-03-26T08:21:55.096Z"
+            "ts": "2026-03-26T02:13:08.157Z"
           },
           "Assigned Operator Shift 3": {
             "value": {
               "value": "-",
               "label": "No Operator"
             },
-            "ts": "2026-03-26T08:21:55.097Z"
+            "ts": "2026-03-26T02:13:08.159Z"
           },
           "Machine Operator": {
-            "value": {},
-            "ts": "2026-03-26T07:10:49.156Z"
+            "value": {
+              "label": "Parjo Stevenson",
+              "value": "3dbfbb76-c229-4bd5-b75a-41a735ca4ea4"
+            },
+            "ts": "2026-03-25T08:29:13.755Z"
           },
           "Job Activity Category": {
             "value": "-",
-            "ts": "2026-03-27T03:02:52.256Z"
+            "ts": "2026-03-29T11:19:10.168Z"
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-03-27T03:02:52.258Z"
+            "ts": "2026-03-29T11:19:10.168Z"
           },
           "Total Setup Time": {
             "value": 0,
-            "ts": "2026-03-27T03:02:52.260Z"
+            "ts": "2026-03-29T11:19:10.169Z"
           },
           "Total Idle Time": {
             "value": 0,
-            "ts": "2026-03-27T03:02:52.262Z"
+            "ts": "2026-03-29T11:19:10.170Z"
           },
           "Total Production Time": {
             "value": 0,
-            "ts": "2026-03-27T03:02:52.264Z"
+            "ts": "2026-03-29T11:19:10.171Z"
           },
           "Running Hour": {
-            "value": 0,
-            "ts": "2026-03-27T03:02:52.266Z"
+            "value": 1506,
+            "ts": "2026-03-29T11:19:10.172Z"
           },
           "Product Good Count": {
             "value": 0,
-            "ts": "2026-03-26T09:07:04.113Z"
+            "ts": "2026-03-27T02:39:40.583Z"
           },
           "Job Progress": {
             "value": 0,
-            "ts": "2026-03-26T09:07:04.115Z"
+            "ts": "2026-03-27T02:39:40.585Z"
           },
           "Product Total Count": {
             "value": 0,
-            "ts": "2026-03-26T09:07:04.110Z"
+            "ts": "2026-03-27T02:39:40.595Z"
           },
           "Machine Speed": {
             "value": 0,
-            "ts": "2026-03-26T09:07:04.108Z"
+            "ts": "2026-03-27T02:39:40.597Z"
           },
           "Material Barcode": {
-            "value": "-",
-            "ts": "2026-03-26T07:11:24.449Z"
+            "value": "MaterialB001",
+            "ts": "2026-03-25T08:26:12.584Z"
           },
           "Ply": {
-            "value": "0/0",
-            "ts": "2026-03-26T07:11:32.567Z"
+            "value": "1/8",
+            "ts": "2026-03-25T08:26:12.586Z"
           },
           "Product Count Per Fold": {
-            "value": 0,
-            "ts": "2026-03-26T07:11:31.809Z"
+            "value": 4,
+            "ts": "2026-03-25T08:26:12.589Z"
           },
           "Paper/Fold Size": {
-            "value": 0,
-            "ts": "2026-03-26T07:11:33.826Z"
+            "value": 20,
+            "ts": "2026-03-25T08:26:12.591Z"
           },
           "Product Reject Count": {
             "value": 0,
-            "ts": "2026-03-26T04:42:21.241Z"
+            "ts": "2026-03-26T01:46:21.390Z"
           },
           "Work Order": {
             "value": "No Work Order",
-            "ts": "2026-03-26T04:47:14.307Z"
+            "ts": "2026-03-26T02:49:14.103Z"
           },
           "Job Lifecycle": {
             "value": "-",
-            "ts": "2026-03-26T04:47:14.309Z"
+            "ts": "2026-03-26T01:47:02.365Z"
           },
           "Product Count Target": {
             "value": 0,
-            "ts": "2026-03-26T04:47:14.315Z"
+            "ts": "2026-03-26T01:47:02.370Z"
           },
           "Job Loader": {
             "value": {},
-            "ts": "2026-03-26T04:47:14.338Z"
+            "ts": "2026-03-26T01:47:02.362Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-03-26T04:47:14.281Z"
+            "ts": "2026-03-26T01:47:02.339Z"
           },
           "Paper Consumed Setup": {
             "value": 0,
-            "ts": "2026-03-26T04:47:14.310Z"
+            "ts": "2026-03-26T01:47:02.365Z"
           },
           "Paper Consumed Idle": {
             "value": 0,
-            "ts": "2026-03-26T04:47:14.310Z"
+            "ts": "2026-03-26T01:47:02.366Z"
           },
           "Paper Consumed Production": {
             "value": 0,
-            "ts": "2026-03-26T04:47:14.311Z"
+            "ts": "2026-03-26T01:47:02.366Z"
           },
           "Total Paper Waste": {
             "value": 0,
-            "ts": "2026-03-26T04:47:14.311Z"
+            "ts": "2026-03-26T01:47:02.367Z"
           },
           "Availability": {
             "value": 0,
-            "ts": "2026-03-26T04:47:14.313Z"
+            "ts": "2026-03-26T01:47:02.368Z"
           },
           "Performance": {
             "value": 0,
-            "ts": "2026-03-26T04:47:14.314Z"
+            "ts": "2026-03-26T01:47:02.369Z"
           },
           "Quality": {
             "value": 0,
-            "ts": "2026-03-26T04:47:14.314Z"
+            "ts": "2026-03-26T01:47:02.369Z"
           },
           "OEE": {
             "value": 0,
-            "ts": "2026-03-26T04:47:14.314Z"
+            "ts": "2026-03-26T01:47:02.370Z"
           },
           "Job Activity": {
             "value": "-",
-            "ts": "2026-03-26T04:47:14.309Z"
+            "ts": "2026-03-26T01:47:02.365Z"
           }
         }
       },

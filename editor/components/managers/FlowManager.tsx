@@ -20,6 +20,7 @@ interface FlowManagerProps {
   onRemoveNodeFromFlow?: (nodeId: string) => void;
   onDeleteNodes?: (nodeIds: string[]) => void;
   onDuplicateNodes?: (nodeIds: string[], basePosition?: NodePosition) => void;
+  onTriggerNodeDoubleClick?: (triggerId: string) => void;
   onActionNodeDoubleClick?: (actionId: string) => void;
   onEventNodeDoubleClick?: (nodeId: string) => void;
   onNodePositionDragStart?: () => void;
@@ -78,6 +79,7 @@ export default function FlowManager({
   onRemoveNodeFromFlow,
   onDeleteNodes,
   onDuplicateNodes,
+  onTriggerNodeDoubleClick,
   onActionNodeDoubleClick,
   onEventNodeDoubleClick,
   onNodePositionDragStart,
@@ -293,6 +295,7 @@ export default function FlowManager({
           }}
           onSelectNodeIds={setSelectedNodeIds}
           onNodeDoubleClick={(nodeId, kind) => {
+            if (kind === "trigger") onTriggerNodeDoubleClick?.(nodeId);
             if (kind === "action") onActionNodeDoubleClick?.(nodeId);
             if (kind === "event") onEventNodeDoubleClick?.(nodeId);
           }}

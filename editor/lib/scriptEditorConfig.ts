@@ -8,6 +8,14 @@ export interface ScriptRuntimeCompletion {
   documentation: string;
 }
 
+function callSnippet(prefix: string, awaitCall = false): string {
+  return `${awaitCall ? "await " : ""}${prefix}($0)`;
+}
+
+function assignCallSnippet(lhs: string, prefix: string, awaitCall = false): string {
+  return `const ${lhs} = ${awaitCall ? "await " : ""}${prefix}($0);`;
+}
+
 export const SCRIPT_EDITOR_SETTINGS = {
   theme: {
     name: "kufayeka-script-monokai",
@@ -68,7 +76,7 @@ export const SCRIPT_EDITOR_SETTINGS = {
       suggestOnTriggerCharacters: true,
       acceptSuggestionOnEnter: "smart",
       parameterHints: { enabled: true },
-      inlayHints: { enabled: "on" },
+      inlayHints: { enabled: "off" },
       autoClosingBrackets: "always",
       autoClosingQuotes: "always",
       matchBrackets: "always",
@@ -273,32 +281,31 @@ declare const db: ScriptContext["db"];
     runtime: [
       {
         label: "helpers.log",
-        insertText: "helpers.log(${1:value});",
+        insertText: "helpers.log($0);",
         detail: "Log runtime message",
         documentation: "Print log from current action id scope."
       },
       {
         label: "helpers.sleep",
-        insertText: "await helpers.sleep(${1:100});",
+        insertText: "await helpers.sleep($0);",
         detail: "Sleep helper",
         documentation: "Pause script execution in async function."
       },
       {
         label: "helpers.fetch",
-        insertText: "const res = await helpers.fetch(${1:url});",
+        insertText: assignCallSnippet("res", "helpers.fetch", true),
         detail: "Fetch helper",
         documentation: "HTTP request helper from runtime."
       },
       {
         label: "helpers.http",
-        insertText:
-          "const res = await helpers.http({\\n  url: ${1:\"https://api.example.com/orders\"},\\n  method: ${2:\"POST\"},\\n  query: ${3:{ line: \"A\" }},\\n  headers: ${4:{ \"x-api-key\": \"token\" }},\\n  cookies: ${5:{ session: \"abc\" }},\\n  body: ${6:{ workOrder: \"WO-1\" }}\\n});",
+        insertText: assignCallSnippet("res", "helpers.http", true),
         detail: "HTTP helper (axios-powered)",
         documentation: "HTTP request helper with query/headers/cookies/body/timeout."
       },
       {
         label: "helpers.axios",
-        insertText: "const res = await helpers.axios.get(${1:\"https://api.example.com/status\"});",
+        insertText: "const res = await helpers.axios.get($0);",
         detail: "Axios instance",
         documentation: "Direct axios client (get/post/put/patch/delete/request)."
       },
@@ -310,51 +317,49 @@ declare const db: ScriptContext["db"];
       },
       {
         label: "eventSys.open",
-        insertText:
-          "await eventSys.open(\\n  /* event path */ ${1:eventPath},\\n  /* event time */ ${2:timestamp},\\n  /* context */ ${3:activityContext},\\n  /* notes */ ${4:`activity ${rawActivity} created`},\\n  /* severity */ ${5:\"info\"},\\n  /* captured data */ ${6:paperConsum}\\n);",
+        insertText: callSnippet("eventSys.open", true),
         detail: "Open event",
-        documentation: "Create new event row with guided argument labels."
+        documentation: "Create new event row. Parameter names stay in Monaco hints instead of being inserted into code."
       },
       {
         label: "eventSys.close",
-        insertText:
-          "await eventSys.close(\\n  /* event pattern */ ${1:eventPattern},\\n  /* event time */ ${2:timestamp},\\n  /* notes */ ${3:\"manual close\"},\\n  /* captured data */ ${4:{}}\\n);",
+        insertText: callSnippet("eventSys.close", true),
         detail: "Close event(s)",
         documentation: "Close open events by wildcard pattern."
       },
       {
         label: "eventSys.get",
-        insertText: "eventSys.get(${1:pattern}, \"*\", \"*\", \"*\", ${2:{}}, ${3:{ limit: 100 }});",
+        insertText: callSnippet("eventSys.get", true),
         detail: "Query events",
         documentation: "Query events by path/time/status/context."
       },
       {
         label: "eventSys.getEarliestTs",
-        insertText: "eventSys.getEarliestTs(${1:pattern}, \"*\", \"*\", \"*\", ${2:{}}, ${3:{ limit: 5000 }});",
+        insertText: callSnippet("eventSys.getEarliestTs", true),
         detail: "Get earliest event start timestamp",
         documentation: "Return earliest start_ts among matched events."
       },
       {
         label: "eventSys.getLatestTs",
-        insertText: "eventSys.getLatestTs(${1:pattern}, \"*\", \"*\", \"*\", ${2:{}}, ${3:{ limit: 5000 }});",
+        insertText: callSnippet("eventSys.getLatestTs", true),
         detail: "Get latest event end timestamp",
         documentation: "Return latest end_ts among matched events. If latest end_ts is empty, fallback to now."
       },
       {
         label: "eventSys.getRange",
-        insertText: "eventSys.getRange(${1:pattern}, \"*\", \"*\", \"*\", ${2:{}}, ${3:{ limit: 5000 }});",
+        insertText: callSnippet("eventSys.getRange", true),
         detail: "Get event time range",
         documentation: "Return earliest start_ts and latest end_ts among matched events. If latest end_ts is empty, fallback to now."
       },
       {
         label: "db.query",
-        insertText: "const r = await db.query(${1:\"SELECT * FROM public.af_event WHERE status = $1 LIMIT $2\"}, [${2:\"open\"}, ${3:100}]);",
+        insertText: assignCallSnippet("r", "db.query", true),
         detail: "Run parameterized SQL",
         documentation: "Execute SQL with bind params against runtime DB connection."
       },
       {
         label: "db.executeSafe",
-        insertText: "const r = await db.executeSafe(${1:\"SELECT NOW() AS ts\"});",
+        insertText: assignCallSnippet("r", "db.executeSafe", true),
         detail: "Run safe SQL (restricted)",
         documentation: "Execute SQL using safe tester guard (blocks destructive DDL)."
       },
@@ -366,109 +371,109 @@ declare const db: ScriptContext["db"];
       },
       {
         label: "asset.get",
-        insertText: "asset.get(${1:path}, ${2:0})",
+        insertText: callSnippet("asset.get"),
         detail: "Get one attribute value",
         documentation: "Alias of context.asset.get(...)"
       },
       {
         label: "asset.query",
-        insertText: "asset.query(${1:path})",
+        insertText: callSnippet("asset.query"),
         detail: "Query asset/attribute",
         documentation: "Alias of context.asset.query(...)"
       },
       {
         label: "asset.set",
-        insertText: "await asset.set(${1:path}, ${2:value});",
+        insertText: callSnippet("asset.set", true),
         detail: "Set one attribute",
         documentation: "Alias of context.asset.set(...)"
       },
       {
         label: "asset.setMany",
-        insertText: "await asset.setMany([\\n  { path: ${1:\"A.B.C\"}, value: ${2:1} }\\n]);",
+        insertText: callSnippet("asset.setMany", true),
         detail: "Set many attributes",
         documentation: "Alias of context.asset.setMany(...)"
       },
       {
         label: "asset.hierarchy",
-        insertText: "asset.hierarchy({ populateAttributes: true })",
+        insertText: callSnippet("asset.hierarchy"),
         detail: "Get asset hierarchy",
         documentation: "Alias of context.asset.hierarchy(...)"
       },
       {
         label: "asset.findByValue",
-        insertText: "asset.findByValue(${1:\"*.MachineSpeed\"}, ${2:10}, { strict: false })",
+        insertText: callSnippet("asset.findByValue"),
         detail: "Find assets by attribute value",
         documentation: "Return assets and matches for attributes with matching value."
       },
       {
         label: "asset.find",
-        insertText: "asset.find(${1:\"*.MachineSpeed\"}, ${2:10}, { strict: false })",
+        insertText: callSnippet("asset.find"),
         detail: "Find assets by attribute value",
         documentation: "Alias of asset.findByValue(...)."
       },
       {
         label: "global.get",
-        insertText: "global.get(${1:key}, ${2:null})",
+        insertText: callSnippet("global.get"),
         detail: "Read runtime global",
         documentation: "Alias of context.global.get(...)"
       },
       {
         label: "global.set",
-        insertText: "global.set(${1:key}, ${2:value});",
+        insertText: callSnippet("global.set"),
         detail: "Write runtime global",
         documentation: "Alias of context.global.set(...)"
       },
       {
         label: "global.has",
-        insertText: "global.has(${1:key})",
+        insertText: callSnippet("global.has"),
         detail: "Check runtime global",
         documentation: "Alias of context.global.has(...)"
       },
       {
         label: "global.delete",
-        insertText: "global.delete(${1:key})",
+        insertText: callSnippet("global.delete"),
         detail: "Delete runtime global",
         documentation: "Alias of context.global.delete(...)"
       },
       {
         label: "context.asset.get",
-        insertText: "context.asset.get(${1:path}, ${2:0})",
+        insertText: callSnippet("context.asset.get"),
         detail: "Get one attribute value",
         documentation: "Return attribute value (single/default/array)."
       },
       {
         label: "context.asset.query",
-        insertText: "context.asset.query(${1:path})",
+        insertText: callSnippet("context.asset.query"),
         detail: "Query asset/attribute",
         documentation: "Return query matches for wildcard path."
       },
       {
         label: "context.asset.set",
-        insertText: "await context.asset.set(${1:path}, ${2:value});",
+        insertText: callSnippet("context.asset.set", true),
         detail: "Set one attribute",
         documentation: "Set attribute value by path."
       },
       {
         label: "context.asset.setMany",
-        insertText: "await context.asset.setMany([\\n  { path: ${1:\"A.B.C\"}, value: ${2:1} }\\n]);",
+        insertText: callSnippet("context.asset.setMany", true),
         detail: "Set many attributes",
         documentation: "Bulk write attribute values."
       },
       {
         label: "context.asset.hierarchy",
-        insertText: "context.asset.hierarchy({ populateAttributes: true })",
+        insertText: callSnippet("context.asset.hierarchy"),
         detail: "Get asset hierarchy",
         documentation: "Returns tree hierarchy from asset storage."
       },
       {
         label: "context.asset.findByValue",
-        insertText: "context.asset.findByValue(${1:\"*.MachineSpeed\"}, ${2:10}, { strict: false })",
+        insertText: callSnippet("context.asset.findByValue"),
         detail: "Find assets by attribute value",
         documentation: "Return assets and matches for attributes with matching value."
       },
       {
         label: "context.asset.find",
-        insertText: "context.asset.find(${1:\"*.MachineSpeed\"}, ${2:10}, { strict: false })",
+        insertText: callSnippet("context.asset.find"),
         detail: "Find assets by attribute value",
         documentation: "Alias of context.asset.findByValue(...)."
       },
@@ -516,11 +521,11 @@ export function configureScriptEditorMonaco(monaco: typeof Monaco): void {
   tsLang.javascriptDefaults.setCompilerOptions(compilerOptions);
   tsLang.typescriptDefaults.setCompilerOptions(compilerOptions);
   tsLang.javascriptDefaults.setInlayHintsOptions?.({
-    includeInlayParameterNameHints: "all",
+    includeInlayParameterNameHints: "none",
     includeInlayParameterNameHintsWhenArgumentMatchesName: false
   });
   tsLang.typescriptDefaults.setInlayHintsOptions?.({
-    includeInlayParameterNameHints: "all",
+    includeInlayParameterNameHints: "none",
     includeInlayParameterNameHintsWhenArgumentMatchesName: false
   });
 

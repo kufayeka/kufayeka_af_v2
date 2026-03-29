@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Autocomplete,
   Box,
+  Button,
+  Dialog,
+  DialogContent,
   Drawer,
   FormControl,
   FormControlLabel,
@@ -180,6 +183,7 @@ function ScriptNodeInspector({
   const scriptValue = typeof config.script === "string" ? config.script : "";
   const description = typeof config.description === "string" ? config.description : "";
   const [scriptDraft, setScriptDraft] = useState(scriptValue);
+  const [maxEditor, setMaxEditor] = useState(false);
   const scriptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -363,6 +367,11 @@ function ScriptNodeInspector({
       )}
 
       <Typography variant="subtitle2">Script</Typography>
+      <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+        <Button size="small" variant="outlined" onClick={() => setMaxEditor(true)}>
+          Maximize Editor
+        </Button>
+      </Box>
       <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
         <StableMonaco
           path={`flow-node-action:${node.id}:${node.templateId || "none"}`}
@@ -379,6 +388,32 @@ function ScriptNodeInspector({
           }}
         />
       </Box>
+      <Dialog fullScreen open={maxEditor} onClose={() => setMaxEditor(false)}>
+        <DialogContent sx={{ p: 1, display: "grid", gridTemplateRows: "auto 1fr", gap: 1 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Typography variant="subtitle1">Script Editor: {node.id}</Typography>
+            <Button variant="outlined" onClick={() => setMaxEditor(false)}>
+              Close
+            </Button>
+          </Box>
+          <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 0.5, overflow: "hidden" }}>
+            <StableMonaco
+              path={`flow-node-action-full:${node.id}:${node.templateId || "none"}`}
+              height="calc(100vh - 96px)"
+              language="javascript"
+              profile="script"
+              bindingNames={bindingNames}
+              value={scriptDraft}
+              readOnly={Boolean(node.templateId)}
+              onChangeText={(next) => {
+                if (node.templateId) return;
+                setScriptDraft(next);
+                scheduleSaveScript(next);
+              }}
+            />
+          </Box>
+        </DialogContent>
+      </Dialog>
       {node.templateId && (
         <Typography variant="caption" color="text.secondary">
           Script is read-only because this node uses a template.

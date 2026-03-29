@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
+  Alert,
   AppBar,
   Box,
   Button,
   Divider,
+  Snackbar,
   Tab,
   Tabs,
   TextField,
@@ -256,8 +258,14 @@ export default function HomePage() {
   const [selectedEventTemplateId, setSelectedEventTemplateId] = useState("");
   const [inspectorTarget, setInspectorTarget] = useState<{ kind: "action" | "event"; id: string } | null>(null);
   const [flowZoom, setFlowZoom] = useState(0.5);
-  const [status, setStatus] = useState("Loading...");
+  const [, setStatusText] = useState("Loading...");
+  const [toast, setToast] = useState<{ open: boolean; message: string; severity: "success" | "info" | "warning" | "error" }>({
+    open: false,
+    message: "",
+    severity: "info"
+  });
   const latestActionScriptsRef = useRef<Record<string, string>>({});
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const program = history.present;
   const flowNodes = program.flows.nodes || [];
@@ -265,6 +273,46 @@ export default function HomePage() {
   const derivedEventActions = useMemo(() => deriveEventNodeSummaries(flowNodes), [flowNodes]);
   const canUndo = history.past.length > 0;
   const canRedo = history.future.length > 0;
+
+  const notify = (message: string, severity: "success" | "info" | "warning" | "error" = "info") => {
+    setStatusText(message);
+    setToast({ open: true, message, severity });
+  };
+
+  const setStatus = (message: string) => {
+    const lowered = message.toLowerCase();
+    if (message === "Program loaded") {
+      setStatusText(message);
+      return;
+    }
+    if (lowered.includes("error") || lowered.includes("failed")) {
+      notify(message, "error");
+      return;
+    }
+    if (lowered.includes("blocked") || lowered.includes("cannot") || lowered.includes("multiple")) {
+      notify(message, "warning");
+      return;
+    }
+    if (lowered.includes("saved") || lowered.includes("downloaded") || lowered.includes("imported") || lowered.includes("created") || lowered.includes("duplicated") || lowered.includes("pasted") || lowered.includes("removed")) {
+      notify(message, "success");
+      return;
+    }
+    notify(message, "info");
+  };
+
+  const loadProgramIntoEditor = (next: Program, toastMessage?: string) => {
+    latestActionScriptsRef.current = Object.fromEntries(
+      deriveScriptNodeSummaries(next.flows.nodes || []).map((action) => [action.id, action.script || ""])
+    );
+    dispatch({ type: "INIT", program: next });
+    setSelectedTriggerId(next.triggers[0]?.id ?? "");
+    setSelectedActionId((next.flows.nodes || []).find((node) => node.kind === "action")?.id ?? "");
+    setSelectedEventActionId((next.flows.nodes || []).find((node) => node.kind === "event_open")?.refId ?? "");
+    setSelectedEventTemplateId(next.eventTemplates?.[0]?.id ?? "");
+    setInspectorTarget(null);
+    if (toastMessage) setStatus(toastMessage);
+    else setStatusText("Program loaded");
+  };
 
   const applyProgramUpdate = (updater: ProgramUpdater) => {
     dispatch({
@@ -285,15 +333,7 @@ export default function HomePage() {
       .then((res) => res.json())
       .then((data: { program?: Program }) => {
         const next = normalizeProgram(data.program ?? EMPTY_PROGRAM);
-        latestActionScriptsRef.current = Object.fromEntries(
-          deriveScriptNodeSummaries(next.flows.nodes || []).map((action) => [action.id, action.script || ""])
-        );
-        dispatch({ type: "INIT", program: next });
-        setSelectedTriggerId(next.triggers[0]?.id ?? "");
-        setSelectedActionId((next.flows.nodes || []).find((node) => node.kind === "action")?.id ?? "");
-        setSelectedEventActionId((next.flows.nodes || []).find((node) => node.kind === "event_open")?.refId ?? "");
-        setSelectedEventTemplateId(next.eventTemplates?.[0]?.id ?? "");
-        setStatus("Program loaded");
+        loadProgramIntoEditor(next);
       })
       .catch((error: Error) => {
         setStatus(`Load error: ${error.message}`);
@@ -488,6 +528,19 @@ export default function HomePage() {
       }
     }));
     setSelectedTriggerId(id);
+  };
+
+  const importProgramJson = async (file: File): Promise<void> => {
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw) as Program;
+      const normalized = normalizeProgram(parsed);
+      loadProgramIntoEditor(normalized, `Imported program from ${file.name}`);
+      setTab(2);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(`Import error: ${message}`);
+    }
   };
 
   const addAction = (parentPath?: string): void => {
@@ -1435,10 +1488,16 @@ export default function HomePage() {
     applyProgramUpdate((prev) => {
       const nextPositions = { ...(prev.flows.nodePositions || {}) };
       delete nextPositions[nodeId];
+      const node = (prev.flows.nodes || []).find((item) => item.id === nodeId);
       return {
         ...prev,
+        triggers:
+          node?.kind === "trigger"
+            ? prev.triggers.filter((item) => item.id !== nodeId)
+            : prev.triggers,
         flows: {
           ...prev.flows,
+          nodes: (prev.flows.nodes || []).filter((item) => item.id !== nodeId),
           links: prev.flows.links.filter((link) => link.from !== nodeId && link.to !== nodeId),
           nodePositions: nextPositions
         }
@@ -1468,6 +1527,7 @@ export default function HomePage() {
       });
       return {
         ...prev,
+        triggers: prev.triggers.filter((item) => !triggerIds.includes(item.id)),
         flows: {
           ...prev.flows,
           nodes: remainingNodes,
@@ -1498,6 +1558,8 @@ export default function HomePage() {
     const duplicatedNodeMap = new Map<string, string>();
     let actionCount = 0;
     let eventCount = 0;
+    let triggerCount = 0;
+    const nextTriggers: TriggerDefinition[] = [];
     const nodesById = new Map((program.flows.nodes || []).map((node) => [node.id, node] as const));
 
     uniqueIds.forEach((nodeId, index) => {
@@ -1517,6 +1579,29 @@ export default function HomePage() {
         if (basePosition) nextPositions[nextId] = { x: basePosition.x + offset, y: basePosition.y + offset };
         else if (position) nextPositions[nextId] = { x: position.x + offset, y: position.y + offset };
         actionCount += 1;
+        return;
+      }
+
+      if (action?.kind === "trigger") {
+        const sourceTrigger = program.triggers.find((item) => item.id === nodeId);
+        if (!sourceTrigger) return;
+        const nextId = `${nodeId}_copy_${timestamp + index}`;
+        const position = program.flows.nodePositions?.[nodeId];
+        nextTriggers.push({
+          ...structuredClone(sourceTrigger),
+          id: nextId,
+          label: sourceTrigger.label ? `${sourceTrigger.label} Copy` : ""
+        });
+        nextNodes.push({
+          ...structuredClone(action),
+          id: nextId,
+          refId: nextId,
+          label: action.label ? `${action.label} Copy` : ""
+        });
+        duplicatedNodeMap.set(nodeId, nextId);
+        if (basePosition) nextPositions[nextId] = { x: basePosition.x + offset, y: basePosition.y + offset };
+        else if (position) nextPositions[nextId] = { x: position.x + offset, y: position.y + offset };
+        triggerCount += 1;
         return;
       }
 
@@ -1554,13 +1639,14 @@ export default function HomePage() {
       }
     });
 
-    if (nextNodes.length === 0) {
-      setStatus("Only script/event nodes can be pasted right now.");
+    if (nextNodes.length === 0 && nextTriggers.length === 0) {
+      setStatus("No nodes available to paste.");
       return;
     }
 
     applyProgramUpdate((prev) => ({
       ...prev,
+      triggers: [...prev.triggers, ...nextTriggers],
       flows: {
         ...prev.flows,
         nodes: [...(prev.flows.nodes || []), ...nextNodes],
@@ -1580,7 +1666,7 @@ export default function HomePage() {
         }
       }
     }));
-    setStatus(`Pasted ${actionCount} script node(s) and ${eventCount} event node(s)`);
+    setStatus(`Pasted ${triggerCount} trigger node(s), ${actionCount} script node(s), and ${eventCount} event node(s)`);
   };
 
   const handleDropPaletteItem = (item: FlowPaletteItem, position: NodePosition): void => {
@@ -1600,6 +1686,18 @@ export default function HomePage() {
   const headerActions = useMemo(
     () => (
       <Box sx={{ display: "flex", gap: 0.75 }}>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".json,.af.json,application/json"
+          style={{ display: "none" }}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.currentTarget.value = "";
+            if (!file) return;
+            void importProgramJson(file);
+          }}
+        />
         <Button disabled={!canUndo} variant="outlined" onClick={() => dispatch({ type: "UNDO" })}>
           Undo
         </Button>
@@ -1607,10 +1705,13 @@ export default function HomePage() {
           Redo
         </Button>
         <Button variant="contained" onClick={saveProgram}>
-          Save JSON
+          Save Program
+        </Button>
+        <Button variant="outlined" onClick={() => importInputRef.current?.click()}>
+          Import Program (JSON)
         </Button>
         <Button variant="outlined" onClick={downloadProgramJson}>
-          Download JSON
+          Export Program to JSON
         </Button>
       </Box>
     ),
@@ -1636,9 +1737,6 @@ export default function HomePage() {
             }
             sx={{ minWidth: 300, maxWidth: 520, flexGrow: 1 }}
           />
-          <Typography variant="caption" sx={{ color: "#475569", minWidth: 170, textAlign: "right" }}>
-            {status}
-          </Typography>
           {headerActions}
         </Toolbar>
         <Divider />
@@ -1691,6 +1789,11 @@ export default function HomePage() {
             onRemoveNodeFromFlow={removeNodeFromFlow}
             onDeleteNodes={deleteNodesFromFlow}
             onDuplicateNodes={duplicateNodesInFlow}
+            onTriggerNodeDoubleClick={(triggerId) => {
+              setSelectedTriggerId(triggerId);
+              setInspectorTarget(null);
+              setTab(1);
+            }}
             onActionNodeDoubleClick={(actionId) => {
               setSelectedActionId(actionId);
               setInspectorTarget({ kind: "action", id: actionId });
@@ -1819,6 +1922,21 @@ export default function HomePage() {
           }
         }}
       />
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={2800}
+        onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+          severity={toast.severity}
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
+          {toast.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
