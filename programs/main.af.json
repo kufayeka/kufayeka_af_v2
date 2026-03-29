@@ -125,456 +125,6 @@
       "activeTo": ""
     }
   ],
-  "actions": [
-    {
-      "id": "Taiyo2.Utils.DebugFail",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "description": "",
-      "script": "helpers.log(\"msg:\", msg);",
-      "templateBindingOverrides": {},
-      "allowNodeDuplication": true,
-      "allowTreeDuplicate": true,
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo1.MES.ProductCounter",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / (productFoldLength/100)) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(0));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nmsg.payload = { productTotalCount, paperConsumedProduction, productFoldLength, productPerFold };\r\n\r\nsend(msg);",
-      "templateId": "template.script_1772274570343",
-      "templateBindingOverrides": {
-        "PaperConsumedProduction": {
-          "name": "PaperConsumedProduction",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production",
-          "allowOverride": true
-        },
-        "ProductFoldLength": {
-          "name": "ProductFoldLength",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper/Fold Size",
-          "allowOverride": true
-        },
-        "ProductPerFold": {
-          "name": "ProductPerFold",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count Per Fold",
-          "allowOverride": true
-        },
-        "ProductTotalCount": {
-          "name": "ProductTotalCount",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Total Count",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo1.MES.ResolveActivityCategory",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst categoryPath = `${assetPath}.Job Activity Category`;\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, \"\") ?? \"\").trim();\n\nlet activeCategory = \"-\";\nconst activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nmsg.activityCategory = activeCategory;\nmsg.activeCategories = activeCategories;\n\nsend(msg);",
-      "templateId": "template.script_1772300414929",
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo1.MES.PaperConsumptionPerActivity",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Input Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Input Prev Value`;\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed`;\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst raw = Number(asset.get(rawPath, 0) ?? 0);\nconst prevRaw = Number(asset.get(prevRawPath, 0) ?? 0);\nconst activeCategory = String(msg.activityCategory ?? asset.get(categoryPath, \"-\") ?? \"-\").trim();\n\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(delta) || delta < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nawait asset.set(machineSpeedPath, delta * 0.6);\n\nif (delta === 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nconst setupPrev = Number(asset.get(setupPath, 0) ?? 0);\nconst idlePrev = Number(asset.get(idlePath, 0) ?? 0);\nconst prodPrev = Number(asset.get(prodPath, 0) ?? 0);\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += delta / 100;\nelse if (activeCategory === \"Idle\") idleNew += delta / 100;\nelse if (activeCategory === \"Production\") prodNew += delta / 100;\n\nconst waste = setupNew + idleNew;\nconst totalConsumed = waste + prodNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste },\n  { path: totalConsumedPath, value: totalConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nsend(msg);",
-      "templateId": "template.script_1772296918869",
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo1.MES.TimeSpentPerActivity",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst activeCategory = String(msg.activityCategory ?? asset.get(`${assetPath}.Job Activity Category`, \"-\") ?? \"-\").trim();\n\nlet setupTime = Number(asset.get(`${assetPath}.Total Setup Time`, 0));\nlet idleTime = Number(asset.get(`${assetPath}.Total Idle Time`, 0));\nlet prodTime = Number(asset.get(`${assetPath}.Total Production Time`, 0));\nlet runningHour = Number(asset.get(`${assetPath}.Running Hour`, 0));\n\nif (activeCategory === \"Setup\") setupTime += 1;\nelse if (activeCategory === \"Idle\") idleTime += 1;\nelse if (activeCategory === \"Production\") prodTime += 1;\n\nif ([\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  runningHour += 1;\n}\n\nawait asset.set(`${assetPath}.Total Setup Time`, setupTime);\nawait asset.set(`${assetPath}.Total Idle Time`, idleTime);\nawait asset.set(`${assetPath}.Total Production Time`, prodTime);\nawait asset.set(`${assetPath}.Running Hour`, runningHour);\n\nsend(msg);",
-      "templateId": "template.script_1772340546636",
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo1.Events.JobLifecycle",
-      "label": "Taiyo1 Job Lifecycle Router",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"open\",\n    notes: `${workOrder} loaded`\n  };\n\n  console.log(\"load job\");\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} cancelled`\n  };\n\n  console.log(\"cancel job\");\n\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} completed`\n  };\n\n  console.log(\"complete job\");\n\n  send(msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {},
-      "templateBindingOverrides": {},
-      "templateId": "template.script_1771898442157"
-    },
-    {
-      "id": "Taiyo1.Events.JobActivity",
-      "label": "Taiyo1 Job Activity Router",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst rawActivity = String(msg.payload?.value ?? \"\").trim();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\n\nif (!rawActivity || rawActivity === \"-\") {\n  await asset.set(alarmPath, \"-\");\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nconst parts = rawActivity.split(\"/\").map((item) => item.trim()).filter(Boolean);\nconst categoryToken = String(parts[0] || \"\").toLowerCase();\nconst activityDetail = parts.slice(1).join(\"/\").trim() || \"Run\";\n\nlet templateId = \"\";\n\nswitch (categoryToken) {\n  case \"production\":\n    templateId = \"template.taiyo.job.activity.production\";\n    break;\n  case \"setup\":\n    templateId = \"template.taiyo.job.activity.setup\";\n    break;\n  case \"idle\":\n    templateId = \"template.taiyo.job.activity.idle\";\n    break;\n  default:\n    await asset.set(alarmPath, `!!!Unknown activity category: ${rawActivity}!!!`);\n    return;\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: \"open\",\n  templateId,\n  vars: { activityDetail },\n  notes: `${workOrder} ${categoryToken}/${activityDetail} opened`\n};\n\nsend(msg);",
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {},
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
-          "allowOverride": true
-        }
-      },
-      "templateId": "template.script_1772002036179"
-    },
-    {
-      "id": "Taiyo1.MES.ProductionProgress",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\n\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst totalCount = Number(asset.get(`${assetPath}.Product Total Count`, 0) ?? 0);\nconst rejectCount = Number(asset.get(`${assetPath}.Product Reject Count`, 0) ?? 0);\nconst progressPath = `${assetPath}.Job Progress`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\n\n\nconst safeTotalCount = Number.isFinite(totalCount) ? totalCount : 0;\nconst safeRejectCount = Number.isFinite(rejectCount) ? rejectCount : 0;\nconst goodCount = Math.max(0, Math.round(safeTotalCount - safeRejectCount));\n\nawait asset.set(goodCountPath, goodCount);\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst normalizedTarget = targetRaw.replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\nconst targetMatch = normalizedTarget.match(/^(-?\\d+(?:\\.\\d+)?)\\s*(?:[A-Za-z]+)?$/);\n\nif (!targetMatch) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetValue = Number(targetMatch[1]);\nconst targetEa = targetValue;\n\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst progress = Math.max(0, Math.round((goodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nsend(msg);",
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {},
-      "templateBindingOverrides": {},
-      "templateId": "template.script_1773723245898"
-    },
-    {
-      "id": "Taiyo1.MES.JobCompleted",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\r\n\r\nawait asset.setMany([\r\n  { path: `${assetPath}.Job Progress`, value: 0 },\r\n  { path: `${assetPath}.Job Loader`, value: {} },\r\n  { path: `${assetPath}.Work Order`, value: 'No Work Order' },\r\n  { path: `${assetPath}.Job Activity`, value: '-' },\r\n  { path: `${assetPath}.Job Lifecycle`, value: '-' },\r\n  { path: `${assetPath}.Paper Consumed Setup`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Idle`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Production`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Waste`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Input`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Output`, value: 0 },\r\n  { path: `${assetPath}.Total Setup Time`, value: 0 },\r\n  { path: `${assetPath}.Total Idle Time`, value: 0 },\r\n  { path: `${assetPath}.Total Production Time`, value: 0 },\r\n  { path: `${assetPath}.Availability`, value: 0 },\r\n  { path: `${assetPath}.Performance`, value: 0 },\r\n  { path: `${assetPath}.Quality`, value: 0 },\r\n  { path: `${assetPath}.OEE`, value: 0 },\r\n  { path: `${assetPath}.Product Count Target`, value: 0 },\r\n]);\r\n\r\nsend(msg);",
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {},
-      "templateBindingOverrides": {},
-      "templateId": "template.script_1774408144628"
-    },
-    {
-      "id": "Taiyo1.MES.JobLoaded",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\r\n\r\nawait asset.setMany([\r\n  { path: `${assetPath}.Paper Consumed Setup`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Idle`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Production`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Waste`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Input`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Output`, value: 0 },\r\n  { path: `${assetPath}.Total Setup Time`, value: 0 },\r\n  { path: `${assetPath}.Total Idle Time`, value: 0 },\r\n  { path: `${assetPath}.Total Production Time`, value: 0 },\r\n  { path: `${assetPath}.Product Good Count`, value: 0 },\r\n  { path: `${assetPath}.Product Reject Count`, value: 0 },\r\n  { path: `${assetPath}.Product Total Count`, value: 0 },\r\n  { path: `${assetPath}.Availability`, value: 0 },\r\n  { path: `${assetPath}.Performance`, value: 0 },\r\n  { path: `${assetPath}.Quality`, value: 0 },\r\n  { path: `${assetPath}.OEE`, value: 0 },\r\n]);\r\n\r\n\r\nsend(msg);",
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {},
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
-          "allowOverride": true
-        }
-      },
-      "templateId": "template.script_1774407747707"
-    },
-    {
-      "id": "Taiyo2.Events.JobLifecycle",
-      "label": "Taiyo2 Job Lifecycle Router",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"open\",\n    notes: `${workOrder} loaded`\n  };\n\n  console.log(\"load job\");\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} cancelled`\n  };\n\n  console.log(\"cancel job\");\n\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} completed`\n  };\n\n  console.log(\"complete job\");\n\n  send(msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
-      "templateId": "template.script_1771898442157",
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo2.Events.JobActivity",
-      "label": "Taiyo2 Job Activity Router",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst rawActivity = String(msg.payload?.value ?? \"\").trim();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\n\nif (!rawActivity || rawActivity === \"-\") {\n  await asset.set(alarmPath, \"-\");\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nconst parts = rawActivity.split(\"/\").map((item) => item.trim()).filter(Boolean);\nconst categoryToken = String(parts[0] || \"\").toLowerCase();\nconst activityDetail = parts.slice(1).join(\"/\").trim() || \"Run\";\n\nlet templateId = \"\";\n\nswitch (categoryToken) {\n  case \"production\":\n    templateId = \"template.taiyo.job.activity.production\";\n    break;\n  case \"setup\":\n    templateId = \"template.taiyo.job.activity.setup\";\n    break;\n  case \"idle\":\n    templateId = \"template.taiyo.job.activity.idle\";\n    break;\n  default:\n    await asset.set(alarmPath, `!!!Unknown activity category: ${rawActivity}!!!`);\n    return;\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: \"open\",\n  templateId,\n  vars: { activityDetail },\n  notes: `${workOrder} ${categoryToken}/${activityDetail} opened`\n};\n\nsend(msg);",
-      "templateId": "template.script_1772002036179",
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo2.MES.JobCompleted",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\r\n\r\nawait asset.setMany([\r\n  { path: `${assetPath}.Job Progress`, value: 0 },\r\n  { path: `${assetPath}.Job Loader`, value: {} },\r\n  { path: `${assetPath}.Work Order`, value: 'No Work Order' },\r\n  { path: `${assetPath}.Job Activity`, value: '-' },\r\n  { path: `${assetPath}.Job Lifecycle`, value: '-' },\r\n  { path: `${assetPath}.Paper Consumed Setup`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Idle`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Production`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Waste`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Input`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Output`, value: 0 },\r\n  { path: `${assetPath}.Total Setup Time`, value: 0 },\r\n  { path: `${assetPath}.Total Idle Time`, value: 0 },\r\n  { path: `${assetPath}.Total Production Time`, value: 0 },\r\n  { path: `${assetPath}.Availability`, value: 0 },\r\n  { path: `${assetPath}.Performance`, value: 0 },\r\n  { path: `${assetPath}.Quality`, value: 0 },\r\n  { path: `${assetPath}.OEE`, value: 0 },\r\n  { path: `${assetPath}.Product Count Target`, value: 0 },\r\n]);\r\n\r\nsend(msg);",
-      "templateId": "template.script_1774408144628",
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo2.MES.JobLoaded",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\r\n\r\nawait asset.setMany([\r\n  { path: `${assetPath}.Paper Consumed Setup`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Idle`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Production`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Waste`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Input`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Output`, value: 0 },\r\n  { path: `${assetPath}.Total Setup Time`, value: 0 },\r\n  { path: `${assetPath}.Total Idle Time`, value: 0 },\r\n  { path: `${assetPath}.Total Production Time`, value: 0 },\r\n  { path: `${assetPath}.Product Good Count`, value: 0 },\r\n  { path: `${assetPath}.Product Reject Count`, value: 0 },\r\n  { path: `${assetPath}.Product Total Count`, value: 0 },\r\n  { path: `${assetPath}.Availability`, value: 0 },\r\n  { path: `${assetPath}.Performance`, value: 0 },\r\n  { path: `${assetPath}.Quality`, value: 0 },\r\n  { path: `${assetPath}.OEE`, value: 0 },\r\n]);\r\n\r\n\r\nsend(msg);",
-      "templateId": "template.script_1774407747707",
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo2.MES.ResolveActivityCategory",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst categoryPath = `${assetPath}.Job Activity Category`;\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, \"\") ?? \"\").trim();\n\nlet activeCategory = \"-\";\nconst activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nmsg.activityCategory = activeCategory;\nmsg.activeCategories = activeCategories;\n\nsend(msg);",
-      "templateId": "template.script_1772300414929",
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo2.MES.TimeSpentPerActivity",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst activeCategory = String(msg.activityCategory ?? asset.get(`${assetPath}.Job Activity Category`, \"-\") ?? \"-\").trim();\n\nlet setupTime = Number(asset.get(`${assetPath}.Total Setup Time`, 0));\nlet idleTime = Number(asset.get(`${assetPath}.Total Idle Time`, 0));\nlet prodTime = Number(asset.get(`${assetPath}.Total Production Time`, 0));\nlet runningHour = Number(asset.get(`${assetPath}.Running Hour`, 0));\n\nif (activeCategory === \"Setup\") setupTime += 1;\nelse if (activeCategory === \"Idle\") idleTime += 1;\nelse if (activeCategory === \"Production\") prodTime += 1;\n\nif ([\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  runningHour += 1;\n}\n\nawait asset.set(`${assetPath}.Total Setup Time`, setupTime);\nawait asset.set(`${assetPath}.Total Idle Time`, idleTime);\nawait asset.set(`${assetPath}.Total Production Time`, prodTime);\nawait asset.set(`${assetPath}.Running Hour`, runningHour);\n\nsend(msg);",
-      "templateId": "template.script_1772340546636",
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo2.MES.ProductionProgress",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\n\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst totalCount = Number(asset.get(`${assetPath}.Product Total Count`, 0) ?? 0);\nconst rejectCount = Number(asset.get(`${assetPath}.Product Reject Count`, 0) ?? 0);\nconst progressPath = `${assetPath}.Job Progress`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\n\n\nconst safeTotalCount = Number.isFinite(totalCount) ? totalCount : 0;\nconst safeRejectCount = Number.isFinite(rejectCount) ? rejectCount : 0;\nconst goodCount = Math.max(0, Math.round(safeTotalCount - safeRejectCount));\n\nawait asset.set(goodCountPath, goodCount);\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst normalizedTarget = targetRaw.replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\nconst targetMatch = normalizedTarget.match(/^(-?\\d+(?:\\.\\d+)?)\\s*(?:[A-Za-z]+)?$/);\n\nif (!targetMatch) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetValue = Number(targetMatch[1]);\nconst targetEa = targetValue;\n\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst progress = Math.max(0, Math.round((goodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nsend(msg);",
-      "templateId": "template.script_1773723245898",
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo2.MES.ProductCounter",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / (productFoldLength/100)) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(0));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nmsg.payload = { productTotalCount, paperConsumedProduction, productFoldLength, productPerFold };\r\n\r\nsend(msg);",
-      "templateId": "template.script_1772274570343",
-      "templateBindingOverrides": {
-        "PaperConsumedProduction": {
-          "name": "PaperConsumedProduction",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Paper Consumed Production",
-          "allowOverride": true
-        },
-        "ProductFoldLength": {
-          "name": "ProductFoldLength",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Paper/Fold Size",
-          "allowOverride": true
-        },
-        "ProductPerFold": {
-          "name": "ProductPerFold",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Product Count Per Fold",
-          "allowOverride": true
-        },
-        "ProductTotalCount": {
-          "name": "ProductTotalCount",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Product Total Count",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo2.MES.PaperConsumptionPerActivity",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "allowTreeDuplicate": true,
-      "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Input Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Input Prev Value`;\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed`;\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst raw = Number(asset.get(rawPath, 0) ?? 0);\nconst prevRaw = Number(asset.get(prevRawPath, 0) ?? 0);\nconst activeCategory = String(msg.activityCategory ?? asset.get(categoryPath, \"-\") ?? \"-\").trim();\n\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(delta) || delta < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nawait asset.set(machineSpeedPath, delta * 0.6);\n\nif (delta === 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nconst setupPrev = Number(asset.get(setupPath, 0) ?? 0);\nconst idlePrev = Number(asset.get(idlePath, 0) ?? 0);\nconst prodPrev = Number(asset.get(prodPath, 0) ?? 0);\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += delta / 100;\nelse if (activeCategory === \"Idle\") idleNew += delta / 100;\nelse if (activeCategory === \"Production\") prodNew += delta / 100;\n\nconst waste = setupNew + idleNew;\nconst totalConsumed = waste + prodNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste },\n  { path: totalConsumedPath, value: totalConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nsend(msg);",
-      "templateId": "template.script_1772296918869",
-      "templateBindingOverrides": {
-        "AssetPath": {
-          "name": "AssetPath",
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
-          "allowOverride": true
-        }
-      },
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo2.Utils.DebugSuccess",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "description": "",
-      "script": "helpers.log(\"msg:\", msg);",
-      "templateBindingOverrides": {},
-      "allowNodeDuplication": true,
-      "allowTreeDuplicate": true,
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo1.Utils.DebugFail",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "description": "",
-      "script": "helpers.log(\"msg:\", msg);",
-      "templateBindingOverrides": {},
-      "allowNodeDuplication": true,
-      "allowTreeDuplicate": true,
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    },
-    {
-      "id": "Taiyo1.Utils.DebugSuccess",
-      "label": "",
-      "type": "script",
-      "enabled": true,
-      "description": "",
-      "script": "helpers.log(\"msg:\", msg);",
-      "templateBindingOverrides": {},
-      "allowNodeDuplication": true,
-      "allowTreeDuplicate": true,
-      "eventTemplateId": "",
-      "eventTemplateOverrides": {}
-    }
-  ],
   "flows": {
     "links": [
       {
@@ -986,7 +536,909 @@
         "x": 300,
         "y": 320
       }
-    }
+    },
+    "nodes": [
+      {
+        "id": "trigger.watch_1772017838146",
+        "kind": "trigger",
+        "refId": "trigger.watch_1772017838146",
+        "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
+        "enabled": true,
+        "config": {
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
+          "intervalMs": 1000,
+          "cronExpression": "",
+          "timezone": "",
+          "activeFrom": "",
+          "activeTo": ""
+        }
+      },
+      {
+        "id": "trigger.watch_1772152779583",
+        "kind": "trigger",
+        "refId": "trigger.watch_1772152779583",
+        "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
+        "enabled": true,
+        "config": {
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
+          "intervalMs": 1000,
+          "cronExpression": "",
+          "timezone": "",
+          "activeFrom": "",
+          "activeTo": ""
+        }
+      },
+      {
+        "id": "trigger.tick_1772164929424",
+        "kind": "trigger",
+        "refId": "trigger.tick_1772164929424",
+        "label": "1s trigger",
+        "enabled": true,
+        "config": {
+          "type": "interval",
+          "watchPath": "",
+          "intervalMs": 1000,
+          "cronExpression": "",
+          "timezone": "",
+          "activeFrom": "",
+          "activeTo": ""
+        }
+      },
+      {
+        "id": "trigger.tick_1774420525757",
+        "kind": "trigger",
+        "refId": "trigger.tick_1774420525757",
+        "label": "1s trigger",
+        "enabled": true,
+        "config": {
+          "type": "interval",
+          "watchPath": "",
+          "intervalMs": 1000,
+          "cronExpression": "",
+          "timezone": "",
+          "activeFrom": "",
+          "activeTo": ""
+        }
+      },
+      {
+        "id": "trigger.watch_1774420654012",
+        "kind": "trigger",
+        "refId": "trigger.watch_1774420654012",
+        "label": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle",
+        "enabled": true,
+        "config": {
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle",
+          "intervalMs": 1000,
+          "cronExpression": "",
+          "timezone": "",
+          "activeFrom": "",
+          "activeTo": ""
+        }
+      },
+      {
+        "id": "trigger.watch_1774420675505",
+        "kind": "trigger",
+        "refId": "trigger.watch_1774420675505",
+        "label": "Jasuindo.OffsetPrinter.Taiyo2.Job Activity",
+        "enabled": true,
+        "config": {
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Job Activity",
+          "intervalMs": 1000,
+          "cronExpression": "",
+          "timezone": "",
+          "activeFrom": "",
+          "activeTo": ""
+        }
+      },
+      {
+        "id": "trigger.watch_1774494096409",
+        "kind": "trigger",
+        "refId": "trigger.watch_1774494096409",
+        "label": "Jasuindo.OffsetPrinter.Taiyo2.Encoder Raw Value",
+        "enabled": true,
+        "config": {
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Encoder Raw Value",
+          "intervalMs": 1000,
+          "cronExpression": "",
+          "timezone": "",
+          "activeFrom": "",
+          "activeTo": ""
+        }
+      },
+      {
+        "id": "trigger.watch_1774494115446",
+        "kind": "trigger",
+        "refId": "trigger.watch_1774494115446",
+        "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Raw Value",
+        "enabled": true,
+        "config": {
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Raw Value",
+          "intervalMs": 1000,
+          "cronExpression": "",
+          "timezone": "",
+          "activeFrom": "",
+          "activeTo": ""
+        }
+      },
+      {
+        "id": "Taiyo2.Utils.DebugFail",
+        "kind": "action",
+        "refId": "Taiyo2.Utils.DebugFail",
+        "label": "",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "description": "",
+          "script": "helpers.log(\"msg:\", msg);",
+          "templateBindingOverrides": {},
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo1.MES.ProductCounter",
+        "kind": "action",
+        "refId": "Taiyo1.MES.ProductCounter",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1772274570343",
+        "config": {
+          "description": "",
+          "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / (productFoldLength/100)) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(0));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nmsg.payload = { productTotalCount, paperConsumedProduction, productFoldLength, productPerFold };\r\n\r\nsend(msg);",
+          "templateBindingOverrides": {
+            "PaperConsumedProduction": {
+              "name": "PaperConsumedProduction",
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production",
+              "allowOverride": true
+            },
+            "ProductFoldLength": {
+              "name": "ProductFoldLength",
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper/Fold Size",
+              "allowOverride": true
+            },
+            "ProductPerFold": {
+              "name": "ProductPerFold",
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count Per Fold",
+              "allowOverride": true
+            },
+            "ProductTotalCount": {
+              "name": "ProductTotalCount",
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Total Count",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo1.MES.ResolveActivityCategory",
+        "kind": "action",
+        "refId": "Taiyo1.MES.ResolveActivityCategory",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1772300414929",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst categoryPath = `${assetPath}.Job Activity Category`;\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, \"\") ?? \"\").trim();\n\nlet activeCategory = \"-\";\nconst activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nmsg.activityCategory = activeCategory;\nmsg.activeCategories = activeCategories;\n\nsend(msg);",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo1.MES.PaperConsumptionPerActivity",
+        "kind": "action",
+        "refId": "Taiyo1.MES.PaperConsumptionPerActivity",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1772296918869",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Input Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Input Prev Value`;\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed`;\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst raw = Number(asset.get(rawPath, 0) ?? 0);\nconst prevRaw = Number(asset.get(prevRawPath, 0) ?? 0);\nconst activeCategory = String(msg.activityCategory ?? asset.get(categoryPath, \"-\") ?? \"-\").trim();\n\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(delta) || delta < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nawait asset.set(machineSpeedPath, delta * 0.6);\n\nif (delta === 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nconst setupPrev = Number(asset.get(setupPath, 0) ?? 0);\nconst idlePrev = Number(asset.get(idlePath, 0) ?? 0);\nconst prodPrev = Number(asset.get(prodPath, 0) ?? 0);\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += delta / 100;\nelse if (activeCategory === \"Idle\") idleNew += delta / 100;\nelse if (activeCategory === \"Production\") prodNew += delta / 100;\n\nconst waste = setupNew + idleNew;\nconst totalConsumed = waste + prodNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste },\n  { path: totalConsumedPath, value: totalConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nsend(msg);",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo1.MES.TimeSpentPerActivity",
+        "kind": "action",
+        "refId": "Taiyo1.MES.TimeSpentPerActivity",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1772340546636",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst activeCategory = String(msg.activityCategory ?? asset.get(`${assetPath}.Job Activity Category`, \"-\") ?? \"-\").trim();\n\nlet setupTime = Number(asset.get(`${assetPath}.Total Setup Time`, 0));\nlet idleTime = Number(asset.get(`${assetPath}.Total Idle Time`, 0));\nlet prodTime = Number(asset.get(`${assetPath}.Total Production Time`, 0));\nlet runningHour = Number(asset.get(`${assetPath}.Running Hour`, 0));\n\nif (activeCategory === \"Setup\") setupTime += 1;\nelse if (activeCategory === \"Idle\") idleTime += 1;\nelse if (activeCategory === \"Production\") prodTime += 1;\n\nif ([\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  runningHour += 1;\n}\n\nawait asset.set(`${assetPath}.Total Setup Time`, setupTime);\nawait asset.set(`${assetPath}.Total Idle Time`, idleTime);\nawait asset.set(`${assetPath}.Total Production Time`, prodTime);\nawait asset.set(`${assetPath}.Running Hour`, runningHour);\n\nsend(msg);",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo1.Events.JobLifecycle",
+        "kind": "action",
+        "refId": "Taiyo1.Events.JobLifecycle",
+        "label": "Taiyo1 Job Lifecycle Router",
+        "enabled": true,
+        "templateId": "template.script_1771898442157",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"open\",\n    notes: `${workOrder} loaded`\n  };\n\n  console.log(\"load job\");\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} cancelled`\n  };\n\n  console.log(\"cancel job\");\n\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} completed`\n  };\n\n  console.log(\"complete job\");\n\n  send(msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
+          "templateBindingOverrides": {},
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo1.Events.JobActivity",
+        "kind": "action",
+        "refId": "Taiyo1.Events.JobActivity",
+        "label": "Taiyo1 Job Activity Router",
+        "enabled": true,
+        "templateId": "template.script_1772002036179",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst rawActivity = String(msg.payload?.value ?? \"\").trim();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\n\nif (!rawActivity || rawActivity === \"-\") {\n  await asset.set(alarmPath, \"-\");\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nconst parts = rawActivity.split(\"/\").map((item) => item.trim()).filter(Boolean);\nconst categoryToken = String(parts[0] || \"\").toLowerCase();\nconst activityDetail = parts.slice(1).join(\"/\").trim() || \"Run\";\n\nlet templateId = \"\";\n\nswitch (categoryToken) {\n  case \"production\":\n    templateId = \"template.taiyo.job.activity.production\";\n    break;\n  case \"setup\":\n    templateId = \"template.taiyo.job.activity.setup\";\n    break;\n  case \"idle\":\n    templateId = \"template.taiyo.job.activity.idle\";\n    break;\n  default:\n    await asset.set(alarmPath, `!!!Unknown activity category: ${rawActivity}!!!`);\n    return;\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: \"open\",\n  templateId,\n  vars: { activityDetail },\n  notes: `${workOrder} ${categoryToken}/${activityDetail} opened`\n};\n\nsend(msg);",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo1.MES.ProductionProgress",
+        "kind": "action",
+        "refId": "Taiyo1.MES.ProductionProgress",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1773723245898",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\n\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst totalCount = Number(asset.get(`${assetPath}.Product Total Count`, 0) ?? 0);\nconst rejectCount = Number(asset.get(`${assetPath}.Product Reject Count`, 0) ?? 0);\nconst progressPath = `${assetPath}.Job Progress`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\n\n\nconst safeTotalCount = Number.isFinite(totalCount) ? totalCount : 0;\nconst safeRejectCount = Number.isFinite(rejectCount) ? rejectCount : 0;\nconst goodCount = Math.max(0, Math.round(safeTotalCount - safeRejectCount));\n\nawait asset.set(goodCountPath, goodCount);\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst normalizedTarget = targetRaw.replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\nconst targetMatch = normalizedTarget.match(/^(-?\\d+(?:\\.\\d+)?)\\s*(?:[A-Za-z]+)?$/);\n\nif (!targetMatch) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetValue = Number(targetMatch[1]);\nconst targetEa = targetValue;\n\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst progress = Math.max(0, Math.round((goodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nsend(msg);",
+          "templateBindingOverrides": {},
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo1.MES.JobCompleted",
+        "kind": "action",
+        "refId": "Taiyo1.MES.JobCompleted",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1774408144628",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\r\n\r\nawait asset.setMany([\r\n  { path: `${assetPath}.Job Progress`, value: 0 },\r\n  { path: `${assetPath}.Job Loader`, value: {} },\r\n  { path: `${assetPath}.Work Order`, value: 'No Work Order' },\r\n  { path: `${assetPath}.Job Activity`, value: '-' },\r\n  { path: `${assetPath}.Job Lifecycle`, value: '-' },\r\n  { path: `${assetPath}.Paper Consumed Setup`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Idle`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Production`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Waste`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Input`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Output`, value: 0 },\r\n  { path: `${assetPath}.Total Setup Time`, value: 0 },\r\n  { path: `${assetPath}.Total Idle Time`, value: 0 },\r\n  { path: `${assetPath}.Total Production Time`, value: 0 },\r\n  { path: `${assetPath}.Availability`, value: 0 },\r\n  { path: `${assetPath}.Performance`, value: 0 },\r\n  { path: `${assetPath}.Quality`, value: 0 },\r\n  { path: `${assetPath}.OEE`, value: 0 },\r\n  { path: `${assetPath}.Product Count Target`, value: 0 },\r\n]);\r\n\r\nsend(msg);",
+          "templateBindingOverrides": {},
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo1.MES.JobLoaded",
+        "kind": "action",
+        "refId": "Taiyo1.MES.JobLoaded",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1774407747707",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\r\n\r\nawait asset.setMany([\r\n  { path: `${assetPath}.Paper Consumed Setup`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Idle`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Production`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Waste`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Input`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Output`, value: 0 },\r\n  { path: `${assetPath}.Total Setup Time`, value: 0 },\r\n  { path: `${assetPath}.Total Idle Time`, value: 0 },\r\n  { path: `${assetPath}.Total Production Time`, value: 0 },\r\n  { path: `${assetPath}.Product Good Count`, value: 0 },\r\n  { path: `${assetPath}.Product Reject Count`, value: 0 },\r\n  { path: `${assetPath}.Product Total Count`, value: 0 },\r\n  { path: `${assetPath}.Availability`, value: 0 },\r\n  { path: `${assetPath}.Performance`, value: 0 },\r\n  { path: `${assetPath}.Quality`, value: 0 },\r\n  { path: `${assetPath}.OEE`, value: 0 },\r\n]);\r\n\r\n\r\nsend(msg);",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo2.Events.JobLifecycle",
+        "kind": "action",
+        "refId": "Taiyo2.Events.JobLifecycle",
+        "label": "Taiyo2 Job Lifecycle Router",
+        "enabled": true,
+        "templateId": "template.script_1771898442157",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"open\",\n    notes: `${workOrder} loaded`\n  };\n\n  console.log(\"load job\");\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} cancelled`\n  };\n\n  console.log(\"cancel job\");\n\n\n  send(msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = {\n    mode: \"close\",\n    notes: `${workOrder} completed`\n  };\n\n  console.log(\"complete job\");\n\n  send(msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo2.Events.JobActivity",
+        "kind": "action",
+        "refId": "Taiyo2.Events.JobActivity",
+        "label": "Taiyo2 Job Activity Router",
+        "enabled": true,
+        "templateId": "template.script_1772002036179",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst rawActivity = String(msg.payload?.value ?? \"\").trim();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\n\nif (!rawActivity || rawActivity === \"-\") {\n  await asset.set(alarmPath, \"-\");\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nconst parts = rawActivity.split(\"/\").map((item) => item.trim()).filter(Boolean);\nconst categoryToken = String(parts[0] || \"\").toLowerCase();\nconst activityDetail = parts.slice(1).join(\"/\").trim() || \"Run\";\n\nlet templateId = \"\";\n\nswitch (categoryToken) {\n  case \"production\":\n    templateId = \"template.taiyo.job.activity.production\";\n    break;\n  case \"setup\":\n    templateId = \"template.taiyo.job.activity.setup\";\n    break;\n  case \"idle\":\n    templateId = \"template.taiyo.job.activity.idle\";\n    break;\n  default:\n    await asset.set(alarmPath, `!!!Unknown activity category: ${rawActivity}!!!`);\n    return;\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: \"open\",\n  templateId,\n  vars: { activityDetail },\n  notes: `${workOrder} ${categoryToken}/${activityDetail} opened`\n};\n\nsend(msg);",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo2.MES.JobCompleted",
+        "kind": "action",
+        "refId": "Taiyo2.MES.JobCompleted",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1774408144628",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\r\n\r\nawait asset.setMany([\r\n  { path: `${assetPath}.Job Progress`, value: 0 },\r\n  { path: `${assetPath}.Job Loader`, value: {} },\r\n  { path: `${assetPath}.Work Order`, value: 'No Work Order' },\r\n  { path: `${assetPath}.Job Activity`, value: '-' },\r\n  { path: `${assetPath}.Job Lifecycle`, value: '-' },\r\n  { path: `${assetPath}.Paper Consumed Setup`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Idle`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Production`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Waste`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Input`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Output`, value: 0 },\r\n  { path: `${assetPath}.Total Setup Time`, value: 0 },\r\n  { path: `${assetPath}.Total Idle Time`, value: 0 },\r\n  { path: `${assetPath}.Total Production Time`, value: 0 },\r\n  { path: `${assetPath}.Availability`, value: 0 },\r\n  { path: `${assetPath}.Performance`, value: 0 },\r\n  { path: `${assetPath}.Quality`, value: 0 },\r\n  { path: `${assetPath}.OEE`, value: 0 },\r\n  { path: `${assetPath}.Product Count Target`, value: 0 },\r\n]);\r\n\r\nsend(msg);",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo2.MES.JobLoaded",
+        "kind": "action",
+        "refId": "Taiyo2.MES.JobLoaded",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1774407747707",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\r\n\r\nawait asset.setMany([\r\n  { path: `${assetPath}.Paper Consumed Setup`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Idle`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Production`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Waste`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Input`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Output`, value: 0 },\r\n  { path: `${assetPath}.Total Setup Time`, value: 0 },\r\n  { path: `${assetPath}.Total Idle Time`, value: 0 },\r\n  { path: `${assetPath}.Total Production Time`, value: 0 },\r\n  { path: `${assetPath}.Product Good Count`, value: 0 },\r\n  { path: `${assetPath}.Product Reject Count`, value: 0 },\r\n  { path: `${assetPath}.Product Total Count`, value: 0 },\r\n  { path: `${assetPath}.Availability`, value: 0 },\r\n  { path: `${assetPath}.Performance`, value: 0 },\r\n  { path: `${assetPath}.Quality`, value: 0 },\r\n  { path: `${assetPath}.OEE`, value: 0 },\r\n]);\r\n\r\n\r\nsend(msg);",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo2.MES.ResolveActivityCategory",
+        "kind": "action",
+        "refId": "Taiyo2.MES.ResolveActivityCategory",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1772300414929",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst categoryPath = `${assetPath}.Job Activity Category`;\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, \"\") ?? \"\").trim();\n\nlet activeCategory = \"-\";\nconst activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nmsg.activityCategory = activeCategory;\nmsg.activeCategories = activeCategories;\n\nsend(msg);",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo2.MES.TimeSpentPerActivity",
+        "kind": "action",
+        "refId": "Taiyo2.MES.TimeSpentPerActivity",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1772340546636",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst activeCategory = String(msg.activityCategory ?? asset.get(`${assetPath}.Job Activity Category`, \"-\") ?? \"-\").trim();\n\nlet setupTime = Number(asset.get(`${assetPath}.Total Setup Time`, 0));\nlet idleTime = Number(asset.get(`${assetPath}.Total Idle Time`, 0));\nlet prodTime = Number(asset.get(`${assetPath}.Total Production Time`, 0));\nlet runningHour = Number(asset.get(`${assetPath}.Running Hour`, 0));\n\nif (activeCategory === \"Setup\") setupTime += 1;\nelse if (activeCategory === \"Idle\") idleTime += 1;\nelse if (activeCategory === \"Production\") prodTime += 1;\n\nif ([\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  runningHour += 1;\n}\n\nawait asset.set(`${assetPath}.Total Setup Time`, setupTime);\nawait asset.set(`${assetPath}.Total Idle Time`, idleTime);\nawait asset.set(`${assetPath}.Total Production Time`, prodTime);\nawait asset.set(`${assetPath}.Running Hour`, runningHour);\n\nsend(msg);",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo2.MES.ProductionProgress",
+        "kind": "action",
+        "refId": "Taiyo2.MES.ProductionProgress",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1773723245898",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\n\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst totalCount = Number(asset.get(`${assetPath}.Product Total Count`, 0) ?? 0);\nconst rejectCount = Number(asset.get(`${assetPath}.Product Reject Count`, 0) ?? 0);\nconst progressPath = `${assetPath}.Job Progress`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\n\n\nconst safeTotalCount = Number.isFinite(totalCount) ? totalCount : 0;\nconst safeRejectCount = Number.isFinite(rejectCount) ? rejectCount : 0;\nconst goodCount = Math.max(0, Math.round(safeTotalCount - safeRejectCount));\n\nawait asset.set(goodCountPath, goodCount);\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst normalizedTarget = targetRaw.replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\nconst targetMatch = normalizedTarget.match(/^(-?\\d+(?:\\.\\d+)?)\\s*(?:[A-Za-z]+)?$/);\n\nif (!targetMatch) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetValue = Number(targetMatch[1]);\nconst targetEa = targetValue;\n\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst progress = Math.max(0, Math.round((goodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nsend(msg);",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo2.MES.ProductCounter",
+        "kind": "action",
+        "refId": "Taiyo2.MES.ProductCounter",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1772274570343",
+        "config": {
+          "description": "",
+          "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / (productFoldLength/100)) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(0));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nmsg.payload = { productTotalCount, paperConsumedProduction, productFoldLength, productPerFold };\r\n\r\nsend(msg);",
+          "templateBindingOverrides": {
+            "PaperConsumedProduction": {
+              "name": "PaperConsumedProduction",
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Paper Consumed Production",
+              "allowOverride": true
+            },
+            "ProductFoldLength": {
+              "name": "ProductFoldLength",
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Paper/Fold Size",
+              "allowOverride": true
+            },
+            "ProductPerFold": {
+              "name": "ProductPerFold",
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Product Count Per Fold",
+              "allowOverride": true
+            },
+            "ProductTotalCount": {
+              "name": "ProductTotalCount",
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Product Total Count",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo2.MES.PaperConsumptionPerActivity",
+        "kind": "action",
+        "refId": "Taiyo2.MES.PaperConsumptionPerActivity",
+        "label": "",
+        "enabled": true,
+        "templateId": "template.script_1772296918869",
+        "config": {
+          "description": "",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Input Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Input Prev Value`;\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed`;\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst raw = Number(asset.get(rawPath, 0) ?? 0);\nconst prevRaw = Number(asset.get(prevRawPath, 0) ?? 0);\nconst activeCategory = String(msg.activityCategory ?? asset.get(categoryPath, \"-\") ?? \"-\").trim();\n\nconst delta = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(delta) || delta < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nawait asset.set(machineSpeedPath, delta * 0.6);\n\nif (delta === 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nconst setupPrev = Number(asset.get(setupPath, 0) ?? 0);\nconst idlePrev = Number(asset.get(idlePath, 0) ?? 0);\nconst prodPrev = Number(asset.get(prodPath, 0) ?? 0);\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += delta / 100;\nelse if (activeCategory === \"Idle\") idleNew += delta / 100;\nelse if (activeCategory === \"Production\") prodNew += delta / 100;\n\nconst waste = setupNew + idleNew;\nconst totalConsumed = waste + prodNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste },\n  { path: totalConsumedPath, value: totalConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nsend(msg);",
+          "templateBindingOverrides": {
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+              "allowOverride": true
+            }
+          },
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo2.Utils.DebugSuccess",
+        "kind": "action",
+        "refId": "Taiyo2.Utils.DebugSuccess",
+        "label": "",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "description": "",
+          "script": "helpers.log(\"msg:\", msg);",
+          "templateBindingOverrides": {},
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo1.Utils.DebugFail",
+        "kind": "action",
+        "refId": "Taiyo1.Utils.DebugFail",
+        "label": "",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "description": "",
+          "script": "helpers.log(\"msg:\", msg);",
+          "templateBindingOverrides": {},
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "Taiyo1.Utils.DebugSuccess",
+        "kind": "action",
+        "refId": "Taiyo1.Utils.DebugSuccess",
+        "label": "",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "description": "",
+          "script": "helpers.log(\"msg:\", msg);",
+          "templateBindingOverrides": {},
+          "eventTemplateId": "",
+          "eventTemplateOverrides": {}
+        }
+      },
+      {
+        "id": "event.open.Taiyo1.JobLifecycle",
+        "kind": "event_open",
+        "refId": "Taiyo1.JobLifecycle",
+        "label": "OPEN Taiyo1.JobLifecycle",
+        "enabled": true,
+        "templateId": "template.taiyo.job.lifecycle",
+        "config": {
+          "description": "",
+          "bindings": {
+            "offsetPrinterAsset": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "activeJob": {
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
+            },
+            "mesMeta": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "mesData": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            }
+          },
+          "templateOverrides": {},
+          "openNotes": ""
+        }
+      },
+      {
+        "id": "event.close.Taiyo1.JobLifecycle",
+        "kind": "event_close",
+        "refId": "Taiyo1.JobLifecycle",
+        "label": "CLOSE Taiyo1.JobLifecycle",
+        "enabled": true,
+        "templateId": "template.taiyo.job.lifecycle",
+        "config": {
+          "description": "",
+          "bindings": {
+            "offsetPrinterAsset": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "activeJob": {
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
+            },
+            "mesMeta": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "mesData": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            }
+          },
+          "templateOverrides": {},
+          "closeNotes": ""
+        }
+      },
+      {
+        "id": "event.open.Taiyo1.JobActivity",
+        "kind": "event_open",
+        "refId": "Taiyo1.JobActivity",
+        "label": "OPEN Taiyo1.JobActivity",
+        "enabled": true,
+        "templateId": "template.taiyo.job.activity.production",
+        "config": {
+          "description": "",
+          "bindings": {
+            "offsetPrinterAsset": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "activeJob": {
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
+            },
+            "mesMeta": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "mesData": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            }
+          },
+          "templateOverrides": {},
+          "openNotes": ""
+        }
+      },
+      {
+        "id": "event.close.Taiyo1.JobActivity",
+        "kind": "event_close",
+        "refId": "Taiyo1.JobActivity",
+        "label": "CLOSE Taiyo1.JobActivity",
+        "enabled": true,
+        "templateId": "template.taiyo.job.activity.production",
+        "config": {
+          "description": "",
+          "bindings": {
+            "offsetPrinterAsset": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "activeJob": {
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
+            },
+            "mesMeta": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "mesData": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            }
+          },
+          "templateOverrides": {},
+          "closeNotes": ""
+        }
+      },
+      {
+        "id": "event.open.Taiyo2.JobActivity",
+        "kind": "event_open",
+        "refId": "Taiyo2.JobActivity",
+        "label": "OPEN Taiyo2.JobActivity",
+        "enabled": true,
+        "templateId": "template.taiyo.job.activity.production",
+        "config": {
+          "description": "",
+          "bindings": {
+            "activeJob": {
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order"
+            },
+            "mesData": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+            },
+            "mesMeta": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+            },
+            "offsetPrinterAsset": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+            }
+          },
+          "templateOverrides": {},
+          "openNotes": ""
+        }
+      },
+      {
+        "id": "event.close.Taiyo2.JobActivity",
+        "kind": "event_close",
+        "refId": "Taiyo2.JobActivity",
+        "label": "CLOSE Taiyo2.JobActivity",
+        "enabled": true,
+        "templateId": "template.taiyo.job.activity.production",
+        "config": {
+          "description": "",
+          "bindings": {
+            "activeJob": {
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order"
+            },
+            "mesData": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+            },
+            "mesMeta": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+            },
+            "offsetPrinterAsset": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+            }
+          },
+          "templateOverrides": {},
+          "closeNotes": ""
+        }
+      },
+      {
+        "id": "event.open.Taiyo2.JobLifecycle",
+        "kind": "event_open",
+        "refId": "Taiyo2.JobLifecycle",
+        "label": "OPEN Taiyo2.JobLifecycle",
+        "enabled": true,
+        "templateId": "template.taiyo.job.lifecycle",
+        "config": {
+          "description": "",
+          "bindings": {
+            "activeJob": {
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order"
+            },
+            "mesData": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+            },
+            "mesMeta": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+            },
+            "offsetPrinterAsset": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+            }
+          },
+          "templateOverrides": {},
+          "openNotes": ""
+        }
+      },
+      {
+        "id": "event.close.Taiyo2.JobLifecycle",
+        "kind": "event_close",
+        "refId": "Taiyo2.JobLifecycle",
+        "label": "CLOSE Taiyo2.JobLifecycle",
+        "enabled": true,
+        "templateId": "template.taiyo.job.lifecycle",
+        "config": {
+          "description": "",
+          "bindings": {
+            "activeJob": {
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order"
+            },
+            "mesData": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+            },
+            "mesMeta": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+            },
+            "offsetPrinterAsset": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+            }
+          },
+          "templateOverrides": {},
+          "closeNotes": ""
+        }
+      }
+    ]
   },
   "assets": {
     "assets": [
@@ -3986,136 +4438,6 @@
           "allowOverride": true
         }
       ]
-    }
-  ],
-  "eventActions": [
-    {
-      "id": "Taiyo1.JobLifecycle",
-      "label": "Taiyo1.JobLifecycle",
-      "enabled": true,
-      "description": "",
-      "templateId": "template.taiyo.job.lifecycle",
-      "bindings": {
-        "offsetPrinterAsset": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-        },
-        "activeJob": {
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
-        },
-        "mesMeta": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-        },
-        "mesData": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-        }
-      },
-      "openNotes": "",
-      "closeNotes": "",
-      "templateOverrides": {}
-    },
-    {
-      "id": "Taiyo1.JobActivity",
-      "label": "Taiyo1.JobActivity",
-      "enabled": true,
-      "description": "",
-      "templateId": "template.taiyo.job.activity.production",
-      "bindings": {
-        "offsetPrinterAsset": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-        },
-        "activeJob": {
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
-        },
-        "mesMeta": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-        },
-        "mesData": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-        }
-      },
-      "openNotes": "",
-      "closeNotes": "",
-      "templateOverrides": {}
-    },
-    {
-      "id": "Taiyo2.JobActivity",
-      "label": "Taiyo2.JobActivity",
-      "enabled": true,
-      "description": "",
-      "templateId": "template.taiyo.job.activity.production",
-      "bindings": {
-        "activeJob": {
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order"
-        },
-        "mesData": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
-        },
-        "mesMeta": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
-        },
-        "offsetPrinterAsset": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
-        }
-      },
-      "openNotes": "",
-      "closeNotes": "",
-      "templateOverrides": {}
-    },
-    {
-      "id": "Taiyo2.JobLifecycle",
-      "label": "Taiyo2.JobLifecycle",
-      "enabled": true,
-      "description": "",
-      "templateId": "template.taiyo.job.lifecycle",
-      "bindings": {
-        "activeJob": {
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order"
-        },
-        "mesData": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
-        },
-        "mesMeta": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
-        },
-        "offsetPrinterAsset": {
-          "source": "asset",
-          "staticValue": "",
-          "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
-        }
-      },
-      "openNotes": "",
-      "closeNotes": "",
-      "templateOverrides": {}
     }
   ]
 }

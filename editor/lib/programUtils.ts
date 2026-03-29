@@ -1,20 +1,39 @@
 import type {
-  ActionDefinition,
   AssetFrameworkDefinition,
   EventActionBindingDefinition,
-  EventActionDefinition,
   EventTemplateAssetPathDefinition,
   EventTemplateInputBindingDefinition,
   EventTemplateFieldDefinition,
   EventTemplateDefinition,
   EventTemplatePathSegmentDefinition,
   FlowLink,
+  FlowNodeDefinition,
   NodePosition,
   Program,
   ScriptVariableBindingDefinition,
   ScriptTemplateDefinition,
   TriggerDefinition
 } from "../types/program";
+
+export function getEventActionOpenNodeId(id: string): string {
+  return `event.open.${id}`;
+}
+
+export function getEventActionCloseNodeId(id: string): string {
+  return `event.close.${id}`;
+}
+
+export function sanitizeProgramStructure(program: Program): Program {
+  return {
+    ...program,
+    flows: {
+      ...(program.flows || { links: [] }),
+      nodes: (Array.isArray(program.flows?.nodes) ? program.flows.nodes : []).map((node) => ({ ...node })),
+      links: ((program.flows && program.flows.links) || []).map((link) => ({ ...link })),
+      nodePositions: { ...((program.flows && program.flows.nodePositions) || {}) }
+    }
+  };
+}
 
 export function upsertById<T extends { id: string }>(
   items: T[],
@@ -519,33 +538,9 @@ export function normalizeProgram(program: Program): Program {
         .filter((item) => item.id.length > 0)
     : [];
 
-  return {
+  return sanitizeProgramStructure({
     ...program,
     eventTemplates: normalizedEventTemplates,
-    eventActions: (program.eventActions || []).map(
-      (item): EventActionDefinition => ({
-        ...item,
-        label: typeof item.label === "string" ? item.label : "",
-        enabled: item.enabled !== false,
-        description: typeof item.description === "string" ? item.description : "",
-        templateId: typeof item.templateId === "string" ? item.templateId : "",
-        templateOverrides:
-          item.templateOverrides && typeof item.templateOverrides === "object"
-            ? item.templateOverrides
-            : {},
-        bindings:
-          item.bindings && typeof item.bindings === "object"
-            ? Object.fromEntries(
-                Object.entries(item.bindings).map(([key, value]) => {
-                  if (!value || typeof value !== "object") return [key, normalizeEventActionBinding({})];
-                  return [key, normalizeEventActionBinding(value as EventActionBindingDefinition)];
-                })
-              )
-            : {},
-        openNotes: typeof item.openNotes === "string" ? item.openNotes : "",
-        closeNotes: typeof item.closeNotes === "string" ? item.closeNotes : ""
-      })
-    ),
     triggers: (program.triggers || []).map(
       (trigger): TriggerDefinition => {
         const rawType = String((trigger as { type?: unknown }).type || "interval");
@@ -579,29 +574,6 @@ export function normalizeProgram(program: Program): Program {
       };
       }
     ),
-    actions: (program.actions || []).map(
-      (action): ActionDefinition => ({
-        ...action,
-        label: typeof action.label === "string" ? action.label : "",
-        enabled: action.enabled !== false,
-        allowTreeDuplicate: (action.allowTreeDuplicate ?? action.allowNodeDuplication) !== false,
-        description: action.description ?? "",
-        eventTemplateId: typeof action.eventTemplateId === "string" ? action.eventTemplateId : "",
-        eventTemplateOverrides:
-          action.eventTemplateOverrides && typeof action.eventTemplateOverrides === "object"
-            ? action.eventTemplateOverrides
-            : {},
-        templateBindingOverrides:
-          action.templateBindingOverrides && typeof action.templateBindingOverrides === "object"
-            ? Object.fromEntries(
-                Object.entries(action.templateBindingOverrides).map(([key, value]) => {
-                  if (!value || typeof value !== "object") return [key, normalizeBinding({ name: key })];
-                  return [key, normalizeBinding({ ...(value as ScriptVariableBindingDefinition), name: key })];
-                })
-              )
-            : {}
-      })
-    ),
     scriptTemplates: (program.scriptTemplates || []).map(
       (template): ScriptTemplateDefinition => ({
         ...template,
@@ -617,11 +589,90 @@ export function normalizeProgram(program: Program): Program {
     ),
     flows: {
       ...program.flows,
+      nodes: Array.isArray(program.flows?.nodes)
+        ? (program.flows?.nodes || [])
+            .map((node) => {
+              const rawConfig =
+                (node as { config?: unknown }).config && typeof (node as { config?: unknown }).config === "object"
+                  ? ((node as { config?: Record<string, unknown> }).config || {})
+                  : {};
+              const rawKind = String((node as { kind?: unknown }).kind || "");
+              const normalizedKind =
+                rawKind === "trigger"
+                  ? ("trigger" as const)
+                  : rawKind === "event_open"
+                    ? ("event_open" as const)
+                    : rawKind === "event_close"
+                      ? ("event_close" as const)
+                      : ("action" as const);
+              const normalizedConfig =
+                normalizedKind === "action"
+                  ? {
+                      ...rawConfig,
+                      description: String(rawConfig.description ?? ""),
+                      script: String(rawConfig.script ?? "send(msg);"),
+                      eventTemplateId: String(rawConfig.eventTemplateId ?? ""),
+                      eventTemplateOverrides:
+                        rawConfig.eventTemplateOverrides && typeof rawConfig.eventTemplateOverrides === "object"
+                          ? rawConfig.eventTemplateOverrides
+                          : {},
+                      templateBindingOverrides:
+                        rawConfig.templateBindingOverrides && typeof rawConfig.templateBindingOverrides === "object"
+                          ? Object.fromEntries(
+                              Object.entries(rawConfig.templateBindingOverrides).map(([key, value]) => {
+                                if (!value || typeof value !== "object") return [key, normalizeBinding({ name: key })];
+                                return [key, normalizeBinding({ ...(value as ScriptVariableBindingDefinition), name: key })];
+                              })
+                            )
+                          : {}
+                    }
+                  : normalizedKind === "event_open" || normalizedKind === "event_close"
+                    ? {
+                        ...rawConfig,
+                        description: String(rawConfig.description ?? ""),
+                        templateOverrides:
+                          rawConfig.templateOverrides && typeof rawConfig.templateOverrides === "object"
+                            ? rawConfig.templateOverrides
+                            : {},
+                        bindings:
+                          rawConfig.bindings && typeof rawConfig.bindings === "object"
+                            ? Object.fromEntries(
+                                Object.entries(rawConfig.bindings).map(([key, value]) => {
+                                  if (!value || typeof value !== "object") return [key, normalizeEventActionBinding({})];
+                                  return [key, normalizeEventActionBinding(value as EventActionBindingDefinition)];
+                                })
+                              )
+                            : {},
+                        openNotes: String(rawConfig.openNotes ?? ""),
+                        closeNotes: String(rawConfig.closeNotes ?? "")
+                      }
+                    : {
+                        ...rawConfig,
+                        type: String(rawConfig.type ?? "interval"),
+                        watchPath: String(rawConfig.watchPath ?? ""),
+                        intervalMs: Math.max(1, Number(rawConfig.intervalMs) || 1000),
+                        cronExpression: String(rawConfig.cronExpression ?? ""),
+                        timezone: String(rawConfig.timezone ?? ""),
+                        activeFrom: String(rawConfig.activeFrom ?? ""),
+                        activeTo: String(rawConfig.activeTo ?? "")
+                      };
+              return {
+              id: String((node as { id?: unknown }).id || "").trim(),
+              kind: normalizedKind,
+              refId: String((node as { refId?: unknown }).refId || "").trim(),
+              label: String((node as { label?: unknown }).label || "").trim(),
+              enabled: (node as { enabled?: unknown }).enabled !== false,
+              templateId: String((node as { templateId?: unknown }).templateId || "").trim(),
+              config: normalizedConfig
+            };
+            })
+            .filter((node) => node.id.length > 0)
+        : [],
       links: ((program.flows && program.flows.links) || []).map((link) => ({
         ...link,
         enabled: link.enabled !== false
       }))
     },
     assets: normalizedAssets
-  };
+  });
 }

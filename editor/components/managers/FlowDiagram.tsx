@@ -7,6 +7,11 @@ import type { FlowLink, NodePosition } from "../../types/program";
 
 export type FlowNodeKind = "trigger" | "action" | "event";
 
+export type FlowPaletteItem =
+  | { type: "existing-node"; nodeId: string }
+  | { type: "script-template"; templateId: string; label: string }
+  | { type: "event-template"; templateId: string; label: string };
+
 export type FlowEditorNode = {
   id: string;
   kind: FlowNodeKind;
@@ -44,10 +49,13 @@ type FlowDiagramProps = {
   onSelectLink: (index: number) => void;
   onSelectNodeIds?: (nodeIds: string[]) => void;
   onNodeDoubleClick?: (nodeId: string, kind: FlowNodeKind) => void;
+  onNodeContextMenu?: (nodeId: string, kind: FlowNodeKind, anchor: { x: number; y: number }) => void;
+  onCanvasContextMenu?: (anchor: { x: number; y: number }, position: NodePosition) => void;
   onNodeDragStart?: () => void;
   onNodePositionChange?: (nodeId: string, position: NodePosition) => void;
   onNodesPositionChange?: (positions: Record<string, NodePosition>) => void;
   onConnectNodes?: (fromId: string, toId: string, fromPort: string) => void;
+  onDropPaletteItem?: (item: FlowPaletteItem, position: NodePosition) => void;
 };
 
 const NODE_W = 248;
@@ -172,10 +180,13 @@ export default function FlowDiagram({
   onSelectLink,
   onSelectNodeIds,
   onNodeDoubleClick,
+  onNodeContextMenu,
+  onCanvasContextMenu,
   onNodeDragStart,
   onNodePositionChange,
   onNodesPositionChange,
-  onConnectNodes
+  onConnectNodes,
+  onDropPaletteItem
 }: FlowDiagramProps) {
   const safeNodes = useMemo(
     () =>
@@ -196,19 +207,21 @@ export default function FlowDiagram({
   const nodeMetaMap = useMemo(() => new Map(safeNodes.map((node) => [node.id, node] as const)), [safeNodes]);
 
   const [liveNodePositions, setLiveNodePositions] = useState<Record<string, NodePosition>>({});
+  const [previewNodePositions, setPreviewNodePositions] = useState<Record<string, NodePosition>>({});
   useEffect(() => {
     setLiveNodePositions({});
+    setPreviewNodePositions({});
   }, [nodePositions]);
 
   const placedNodes = useMemo<PlacedNode[]>(() => {
     const list: PlacedNode[] = [];
     for (const node of safeNodes) {
-      const pos = liveNodePositions[node.id] || nodePositions[node.id];
+      const pos = previewNodePositions[node.id] || liveNodePositions[node.id] || nodePositions[node.id];
       if (!pos) continue;
       list.push({ ...node, x: pos.x, y: pos.y });
     }
     return list;
-  }, [liveNodePositions, nodePositions, safeNodes]);
+  }, [previewNodePositions, liveNodePositions, nodePositions, safeNodes]);
 
   const nodeMap = useMemo(() => new Map(placedNodes.map((node) => [node.id, node] as const)), [placedNodes]);
   const maxX = placedNodes.reduce((acc, node) => Math.max(acc, node.x), 0);
@@ -225,8 +238,9 @@ export default function FlowDiagram({
   const [marquee, setMarquee] = useState<{ startX: number; startY: number; endX: number; endY: number; additive: boolean } | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const nodeElementRefs = useRef<Record<string, SVGGElement | null>>({});
   const dragPanRef = useRef({ active: false, x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
-  const dragRafRef = useRef<number | null>(null);
+  const previewRafRef = useRef<number | null>(null);
   const dragNodeRef = useRef({
     active: false,
     nodeIds: [] as string[],
@@ -276,6 +290,30 @@ export default function FlowDiagram({
     return first;
   };
 
+  const clearDragPreview = () => {
+    if (previewRafRef.current !== null) {
+      cancelAnimationFrame(previewRafRef.current);
+      previewRafRef.current = null;
+    }
+    setPreviewNodePositions({});
+    for (const nodeId of dragNodeRef.current.nodeIds) {
+      const element = nodeElementRefs.current[nodeId];
+      if (element) {
+        element.removeAttribute("transform");
+      }
+    }
+  };
+
+  const applyDragPreview = (batch: Record<string, NodePosition>) => {
+    for (const nodeId of dragNodeRef.current.nodeIds) {
+      const element = nodeElementRefs.current[nodeId];
+      const start = dragNodeRef.current.startNodePositions[nodeId];
+      const next = batch[nodeId];
+      if (!element || !start || !next) continue;
+      element.setAttribute("transform", `translate(${next.x - start.x}, ${next.y - start.y})`);
+    }
+  };
+
   const zoomView = (factor: number) => {
     const nextZoom = Math.max(0.3, Math.min(2, Number(factor.toFixed(2))));
     const scroller = scrollerRef.current;
@@ -322,16 +360,122 @@ export default function FlowDiagram({
       batch[nodeId] = { x: resolved.x, y: resolved.y };
     });
     if (Object.keys(batch).length > 0) {
+      setLiveNodePositions((prev) => ({
+        ...prev,
+        ...batch
+      }));
       onNodesPositionChange?.(batch);
       if (!onNodesPositionChange) {
         Object.entries(batch).forEach(([nodeId, position]) => onNodePositionChange?.(nodeId, position));
       }
     }
+    clearDragPreview();
     dragNodeRef.current.active = false;
     dragNodeRef.current.nodeIds = [];
     dragNodeRef.current.startNodePositions = {};
     dragNodeRef.current.latestPositions = {};
   };
+
+  const handleInteractionMove = (clientX: number, clientY: number) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+
+    if (dragNodeRef.current.active) {
+      const point = getSvgPointFromMouse(clientX, clientY);
+      if (!point) return;
+      const dx = point.x - dragNodeRef.current.startMouseX;
+      const dy = point.y - dragNodeRef.current.startMouseY;
+      const nextBatch: Record<string, NodePosition> = {};
+      dragNodeRef.current.nodeIds.forEach((id) => {
+        const start = dragNodeRef.current.startNodePositions[id];
+        if (!start) return;
+        const rawX = start.x + dx;
+        const rawY = start.y + dy;
+        const nextX = gridSnapEnabled ? Math.round(rawX / GRID_SIZE) * GRID_SIZE : rawX;
+        const nextY = gridSnapEnabled ? Math.round(rawY / GRID_SIZE) * GRID_SIZE : rawY;
+        const resolved = dragNodeRef.current.nodeIds.length > 1 ? { x: nextX, y: nextY } : findNonOverlappingPosition(id, nextX, nextY);
+        nextBatch[id] = resolved;
+      });
+      dragNodeRef.current.latestPositions = nextBatch;
+      applyDragPreview(nextBatch);
+      if (previewRafRef.current === null) {
+        previewRafRef.current = requestAnimationFrame(() => {
+          previewRafRef.current = null;
+          setPreviewNodePositions({ ...dragNodeRef.current.latestPositions });
+        });
+      }
+      return;
+    }
+
+    if (marquee) {
+      const point = getSvgPointFromMouse(clientX, clientY);
+      if (!point) return;
+      setMarquee((prev) => (prev ? { ...prev, endX: point.x, endY: point.y } : prev));
+      return;
+    }
+
+    if (connectFrom) {
+      const point = getSvgPointFromMouse(clientX, clientY);
+      if (point) setConnectCursor(point);
+    }
+
+    if (!dragPanRef.current.active) return;
+    const dx = clientX - dragPanRef.current.x;
+    const dy = clientY - dragPanRef.current.y;
+    el.scrollLeft = dragPanRef.current.scrollLeft - dx;
+    el.scrollTop = dragPanRef.current.scrollTop - dy;
+  };
+
+  const handleInteractionEnd = () => {
+    dragPanRef.current.active = false;
+    if (marquee) {
+      const minX = Math.min(marquee.startX, marquee.endX);
+      const minY = Math.min(marquee.startY, marquee.endY);
+      const maxX = Math.max(marquee.startX, marquee.endX);
+      const maxY = Math.max(marquee.startY, marquee.endY);
+      const isClick = Math.abs(maxX - minX) < 4 && Math.abs(maxY - minY) < 4;
+      const hitIds = isClick
+        ? []
+        : placedNodes
+            .filter((node) => {
+              const nodeH = getNodeHeight(node);
+              const left = node.x - NODE_W / 2;
+              const right = node.x + NODE_W / 2;
+              const top = node.y - nodeH / 2;
+              const bottom = node.y + nodeH / 2;
+              return !(right < minX || left > maxX || bottom < minY || top > maxY);
+            })
+            .map((node) => node.id);
+      if (isClick) {
+        onSelectNodeIds?.(marquee.additive ? selectedNodeIds : []);
+      } else if (marquee.additive) {
+        onSelectNodeIds?.(Array.from(new Set([...(selectedNodeIds ?? []), ...hitIds])));
+      } else {
+        onSelectNodeIds?.(hitIds);
+      }
+      setMarquee(null);
+    }
+    commitDragNode();
+  };
+
+  useEffect(() => {
+    const handleWindowMouseMove = (event: MouseEvent) => {
+      handleInteractionMove(event.clientX, event.clientY);
+    };
+    const handleWindowMouseUp = () => {
+      handleInteractionEnd();
+    };
+    window.addEventListener("mousemove", handleWindowMouseMove);
+    window.addEventListener("mouseup", handleWindowMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleWindowMouseMove);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
+      if (previewRafRef.current !== null) {
+        cancelAnimationFrame(previewRafRef.current);
+        previewRafRef.current = null;
+      }
+    };
+  });
 
   const handleDragOver = (event: ReactDragEvent) => {
     event.dataTransfer.dropEffect = "copy";
@@ -343,6 +487,21 @@ export default function FlowDiagram({
     if (!point) return;
     const nextX = gridSnapEnabled ? Math.round(point.x / GRID_SIZE) * GRID_SIZE : point.x;
     const nextY = gridSnapEnabled ? Math.round(point.y / GRID_SIZE) * GRID_SIZE : point.y;
+    const rawPalette = String(event.dataTransfer.getData("application/x-flow-palette-item") || "").trim();
+    if (rawPalette) {
+      try {
+        const payload = JSON.parse(rawPalette) as FlowPaletteItem;
+        const nodeId = payload.type === "existing-node" ? payload.nodeId : `${payload.type}:${payload.templateId}`;
+        const resolved = findNonOverlappingPosition(nodeId, nextX, nextY);
+        onNodeDragStart?.();
+        onDropPaletteItem?.(payload, resolved);
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      } catch {
+        // fall through to legacy handling
+      }
+    }
     const nodeId = String(event.dataTransfer.getData("application/x-flow-node") || event.dataTransfer.getData("text/plain") || "").trim();
     if (!nodeId) return;
     const resolved = findNonOverlappingPosition(nodeId, nextX, nextY);
@@ -415,6 +574,19 @@ export default function FlowDiagram({
           setConnectFrom(null);
           setConnectCursor(null);
         }}
+        onContextMenu={(event) => {
+          const target = event.target as Element;
+          if (target.closest("[data-diagram-interactive='true']")) return;
+          const point = getSvgPointFromMouse(event.clientX, event.clientY);
+          if (!point) return;
+          event.preventDefault();
+          onSelectLink(-1);
+          onSelectNodeIds?.([]);
+          onCanvasContextMenu?.(
+            { x: event.clientX, y: event.clientY },
+            { x: Math.round(point.x), y: Math.round(point.y) }
+          );
+        }}
         onWheel={(event) => {
           if (!event.altKey) return;
           event.preventDefault();
@@ -422,101 +594,12 @@ export default function FlowDiagram({
           else zoomView(zoom + 0.1);
         }}
         onMouseMove={(event) => {
-          const el = scrollerRef.current;
-          if (!el) return;
-
-          if (dragNodeRef.current.active) {
-            const point = getSvgPointFromMouse(event.clientX, event.clientY);
-            if (!point) return;
-            const dx = point.x - dragNodeRef.current.startMouseX;
-            const dy = point.y - dragNodeRef.current.startMouseY;
-            const nextBatch: Record<string, NodePosition> = {};
-            dragNodeRef.current.nodeIds.forEach((id) => {
-              const start = dragNodeRef.current.startNodePositions[id];
-              if (!start) return;
-              const rawX = start.x + dx;
-              const rawY = start.y + dy;
-              const nextX = gridSnapEnabled ? Math.round(rawX / GRID_SIZE) * GRID_SIZE : rawX;
-              const nextY = gridSnapEnabled ? Math.round(rawY / GRID_SIZE) * GRID_SIZE : rawY;
-              const resolved = dragNodeRef.current.nodeIds.length > 1 ? { x: nextX, y: nextY } : findNonOverlappingPosition(id, nextX, nextY);
-              nextBatch[id] = resolved;
-            });
-            dragNodeRef.current.latestPositions = nextBatch;
-
-            if (dragRafRef.current === null) {
-              dragRafRef.current = requestAnimationFrame(() => {
-                dragRafRef.current = null;
-                if (dragNodeRef.current.nodeIds.length === 0) return;
-                setLiveNodePositions((prev) => ({
-                  ...prev,
-                  ...dragNodeRef.current.latestPositions
-                }));
-              });
-            }
-            return;
-          }
-
-          if (marquee) {
-            const point = getSvgPointFromMouse(event.clientX, event.clientY);
-            if (!point) return;
-            setMarquee((prev) => (prev ? { ...prev, endX: point.x, endY: point.y } : prev));
-            return;
-          }
-
-          if (connectFrom) {
-            const point = getSvgPointFromMouse(event.clientX, event.clientY);
-            if (point) setConnectCursor(point);
-          }
-
-          if (!dragPanRef.current.active) return;
-          const dx = event.clientX - dragPanRef.current.x;
-          const dy = event.clientY - dragPanRef.current.y;
-          el.scrollLeft = dragPanRef.current.scrollLeft - dx;
-          el.scrollTop = dragPanRef.current.scrollTop - dy;
+          handleInteractionMove(event.clientX, event.clientY);
         }}
-        onMouseUp={() => {
-          dragPanRef.current.active = false;
-          if (marquee) {
-            const minX = Math.min(marquee.startX, marquee.endX);
-            const minY = Math.min(marquee.startY, marquee.endY);
-            const maxX = Math.max(marquee.startX, marquee.endX);
-            const maxY = Math.max(marquee.startY, marquee.endY);
-            const isClick = Math.abs(maxX - minX) < 4 && Math.abs(maxY - minY) < 4;
-            const hitIds = isClick
-              ? []
-              : placedNodes
-                  .filter((node) => {
-                    const nodeH = getNodeHeight(node);
-                    const left = node.x - NODE_W / 2;
-                    const right = node.x + NODE_W / 2;
-                    const top = node.y - nodeH / 2;
-                    const bottom = node.y + nodeH / 2;
-                    return !(right < minX || left > maxX || bottom < minY || top > maxY);
-                  })
-                  .map((node) => node.id);
-            if (isClick) {
-              onSelectNodeIds?.(marquee.additive ? selectedNodeIds : []);
-            } else if (marquee.additive) {
-              onSelectNodeIds?.(Array.from(new Set([...(selectedNodeIds ?? []), ...hitIds])));
-            } else {
-              onSelectNodeIds?.(hitIds);
-            }
-            setMarquee(null);
-          }
-          if (dragRafRef.current !== null) {
-            cancelAnimationFrame(dragRafRef.current);
-            dragRafRef.current = null;
-          }
-          commitDragNode();
-        }}
+        onMouseUp={handleInteractionEnd}
         onMouseLeave={() => {
-          dragPanRef.current.active = false;
-          if (marquee) setMarquee(null);
-          if (dragRafRef.current !== null) {
-            cancelAnimationFrame(dragRafRef.current);
-            dragRafRef.current = null;
-          }
-          commitDragNode();
+          if (!dragNodeRef.current.active && !dragPanRef.current.active) return;
+          handleInteractionEnd();
         }}
       >
         <Box sx={{ width: Math.max(1, diagramWidth * zoom), height: Math.max(1, diagramHeight * zoom), display: "inline-block" }}>
@@ -580,6 +663,9 @@ export default function FlowDiagram({
               return (
                 <g
                   key={node.id}
+                  ref={(element) => {
+                    nodeElementRefs.current[node.id] = element;
+                  }}
                   onClick={(event) => {
                     onSelectLink(-1);
                     if (event.ctrlKey || event.metaKey) {
@@ -593,6 +679,13 @@ export default function FlowDiagram({
                     event.stopPropagation();
                   }}
                   onDoubleClick={() => onNodeDoubleClick?.(node.id, node.kind)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    onSelectLink(-1);
+                    onSelectNodeIds?.([node.id]);
+                    onNodeContextMenu?.(node.id, node.kind, { x: event.clientX, y: event.clientY });
+                    event.stopPropagation();
+                  }}
                   onMouseDown={(event) => {
                     const target = event.target as Element;
                     if (target.closest("[data-node-port='true']")) return;

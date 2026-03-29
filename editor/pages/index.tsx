@@ -14,6 +14,7 @@ import TriggerManager from "../components/managers/TriggerManager";
 import ActionManager from "../components/managers/ActionManager";
 import EventDesignerManager from "../components/managers/EventDesignerManager";
 import FlowManager from "../components/managers/FlowManager";
+import FlowNodeInspectorDrawer from "../components/managers/FlowNodeInspectorDrawer";
 import AssetManager from "../components/managers/AssetManager";
 import EventManager from "../components/managers/EventManager";
 import DocsManager from "../components/managers/DocsManager";
@@ -29,24 +30,25 @@ import {
   upsertById
 } from "../lib/programUtils";
 import type {
-  ActionDefinition,
   AssetFrameworkDefinition,
-  EventActionDefinition,
   EventTemplateDefinition,
+  FlowNodeDefinition,
   FlowLink,
   Program,
+  ScriptNodeSummary,
   ScriptTemplateDefinition,
-  TriggerDefinition
+  EventNodeSummary,
+  TriggerDefinition,
+  NodePosition
 } from "../types/program";
+import type { FlowPaletteItem } from "../components/managers/FlowDiagram";
 
 const EMPTY_PROGRAM: Program = {
   meta: { name: "Kufayeka AF Program", version: 1 },
   eventTemplates: [],
-  eventActions: [],
   triggers: [],
-  actions: [],
   scriptTemplates: [],
-  flows: { links: [] },
+  flows: { nodes: [], links: [] },
   assets: { assets: [], attributeTemplates: [] }
 };
 
@@ -58,6 +60,51 @@ const getBaseEventActionIdFromNode = (nodeId: string): string =>
     : nodeId.startsWith("event.close.")
       ? nodeId.slice("event.close.".length)
       : nodeId;
+
+const deriveScriptNodeSummaries = (nodes: FlowNodeDefinition[]): ScriptNodeSummary[] =>
+  nodes
+    .filter((node) => node.kind === "action")
+    .map((node) => ({
+      id: node.id,
+      label: node.label ?? "",
+      type: "script",
+      enabled: node.enabled !== false,
+      description: String((node.config as Record<string, unknown> | undefined)?.description ?? ""),
+      templateId: node.templateId ?? "",
+      templateBindingOverrides:
+        (((node.config as Record<string, unknown> | undefined)?.templateBindingOverrides as Record<string, unknown>) || {}) as any,
+      eventTemplateId: String((node.config as Record<string, unknown> | undefined)?.eventTemplateId ?? ""),
+      eventTemplateOverrides:
+        (((node.config as Record<string, unknown> | undefined)?.eventTemplateOverrides as Record<string, unknown>) || {}) as any,
+      script: String((node.config as Record<string, unknown> | undefined)?.script ?? "")
+    }));
+
+const deriveEventNodeSummaries = (nodes: FlowNodeDefinition[]): EventNodeSummary[] => {
+  const grouped = new Map<string, { open?: FlowNodeDefinition; close?: FlowNodeDefinition }>();
+  nodes.forEach((node) => {
+    if (node.kind !== "event_open" && node.kind !== "event_close") return;
+    const key = node.refId;
+    const entry = grouped.get(key) || {};
+    if (node.kind === "event_open") entry.open = node;
+    if (node.kind === "event_close") entry.close = node;
+    grouped.set(key, entry);
+  });
+  return Array.from(grouped.entries()).map(([id, entry]) => {
+    const openConfig = (entry.open?.config || {}) as Record<string, unknown>;
+    const closeConfig = (entry.close?.config || {}) as Record<string, unknown>;
+    return {
+      id,
+      label: (entry.open?.label || entry.close?.label || "").replace(/^OPEN\s+|^CLOSE\s+/i, ""),
+      enabled: (entry.open?.enabled ?? entry.close?.enabled) !== false,
+      description: String(openConfig.description ?? closeConfig.description ?? ""),
+      templateId: entry.open?.templateId || entry.close?.templateId || "",
+      templateOverrides: (openConfig.templateOverrides || closeConfig.templateOverrides || {}) as any,
+      bindings: (openConfig.bindings || closeConfig.bindings || {}) as any,
+      openNotes: String(openConfig.openNotes ?? ""),
+      closeNotes: String(closeConfig.closeNotes ?? "")
+    };
+  });
+};
 
 const collectTemplateVariables = (template: EventTemplateDefinition | undefined): string[] => {
   if (!template) return [];
@@ -197,7 +244,7 @@ function historyReducer(state: HistoryState, action: HistoryAction): HistoryStat
 }
 
 export default function HomePage() {
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState(2);
   const [history, dispatch] = useReducer(historyReducer, {
     past: [],
     present: EMPTY_PROGRAM,
@@ -207,20 +254,30 @@ export default function HomePage() {
   const [selectedActionId, setSelectedActionId] = useState("");
   const [selectedEventActionId, setSelectedEventActionId] = useState("");
   const [selectedEventTemplateId, setSelectedEventTemplateId] = useState("");
+  const [inspectorTarget, setInspectorTarget] = useState<{ kind: "action" | "event"; id: string } | null>(null);
   const [flowZoom, setFlowZoom] = useState(0.5);
   const [status, setStatus] = useState("Loading...");
   const latestActionScriptsRef = useRef<Record<string, string>>({});
 
   const program = history.present;
+  const flowNodes = program.flows.nodes || [];
+  const derivedActions = useMemo(() => deriveScriptNodeSummaries(flowNodes), [flowNodes]);
+  const derivedEventActions = useMemo(() => deriveEventNodeSummaries(flowNodes), [flowNodes]);
   const canUndo = history.past.length > 0;
   const canRedo = history.future.length > 0;
 
   const applyProgramUpdate = (updater: ProgramUpdater) => {
-    dispatch({ type: "APPLY", updater });
+    dispatch({
+      type: "APPLY",
+      updater
+    });
   };
 
   const applyProgramNoHistory = (updater: ProgramUpdater) => {
-    dispatch({ type: "APPLY_NO_HISTORY", updater });
+    dispatch({
+      type: "APPLY_NO_HISTORY",
+      updater
+    });
   };
 
   useEffect(() => {
@@ -229,12 +286,12 @@ export default function HomePage() {
       .then((data: { program?: Program }) => {
         const next = normalizeProgram(data.program ?? EMPTY_PROGRAM);
         latestActionScriptsRef.current = Object.fromEntries(
-          next.actions.map((action) => [action.id, action.script || ""])
+          deriveScriptNodeSummaries(next.flows.nodes || []).map((action) => [action.id, action.script || ""])
         );
         dispatch({ type: "INIT", program: next });
         setSelectedTriggerId(next.triggers[0]?.id ?? "");
-        setSelectedActionId(next.actions[0]?.id ?? "");
-        setSelectedEventActionId(next.eventActions?.[0]?.id ?? "");
+        setSelectedActionId((next.flows.nodes || []).find((node) => node.kind === "action")?.id ?? "");
+        setSelectedEventActionId((next.flows.nodes || []).find((node) => node.kind === "event_open")?.refId ?? "");
         setSelectedEventTemplateId(next.eventTemplates?.[0]?.id ?? "");
         setStatus("Program loaded");
       })
@@ -288,13 +345,23 @@ export default function HomePage() {
           attributes: {}
         }))
       },
-      actions: program.actions.map((action) => ({
-        ...action,
-        script:
-          latestActionScriptsRef.current[action.id] !== undefined
-            ? latestActionScriptsRef.current[action.id]
-            : action.script
-      }))
+      flows: {
+        ...(program.flows || { links: [] }),
+        nodes: ((program.flows?.nodes || []) as FlowNodeDefinition[]).map((node) =>
+          node.kind === "action"
+            ? {
+                ...node,
+                config: {
+                  ...(node.config || {}),
+                  script:
+                    latestActionScriptsRef.current[node.id] !== undefined
+                      ? latestActionScriptsRef.current[node.id]
+                      : String((node.config as Record<string, unknown> | undefined)?.script ?? "")
+                }
+              }
+            : node
+        )
+      }
     };
 
     try {
@@ -329,13 +396,23 @@ export default function HomePage() {
 
   const buildProgramForExport = (): Program => ({
     ...program,
-    actions: program.actions.map((action) => ({
-      ...action,
-      script:
-        latestActionScriptsRef.current[action.id] !== undefined
-          ? latestActionScriptsRef.current[action.id]
-          : action.script
-    }))
+    flows: {
+      ...(program.flows || { links: [] }),
+      nodes: ((program.flows?.nodes || []) as FlowNodeDefinition[]).map((node) =>
+        node.kind === "action"
+          ? {
+              ...node,
+              config: {
+                ...(node.config || {}),
+                script:
+                  latestActionScriptsRef.current[node.id] !== undefined
+                    ? latestActionScriptsRef.current[node.id]
+                    : String((node.config as Record<string, unknown> | undefined)?.script ?? "")
+              }
+            }
+          : node
+      )
+    }
   });
 
   const downloadProgramJson = (): void => {
@@ -384,7 +461,32 @@ export default function HomePage() {
       watchPath: defaultWatchPath,
       message: { payload: 0 }
     };
-    applyProgramUpdate((prev) => ({ ...prev, triggers: [...prev.triggers, next] }));
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      triggers: [...prev.triggers, next],
+      flows: {
+        ...prev.flows,
+        nodes: [
+          ...(prev.flows.nodes || []),
+          {
+            id,
+            kind: "trigger",
+            refId: id,
+            label: "",
+            enabled: true,
+            config: {
+              type,
+              watchPath: defaultWatchPath,
+              intervalMs: 1000,
+              cronExpression: "",
+              timezone: "",
+              activeFrom: "",
+              activeTo: ""
+            }
+          }
+        ]
+      }
+    }));
     setSelectedTriggerId(id);
   };
 
@@ -395,62 +497,133 @@ export default function HomePage() {
       .filter(Boolean)
       .join(".");
     const id = `${safeParent}.action_${Date.now()}`;
-    const next: ActionDefinition = {
+    const nextNode: FlowNodeDefinition = {
       id,
       label: "",
-      type: "script",
+      kind: "action",
+      refId: id,
       enabled: true,
-      allowTreeDuplicate: true,
-      description: "",
-      script: "send(msg);"
+      templateId: "",
+      config: {
+        description: "",
+        script: "send(msg);",
+        templateBindingOverrides: {},
+        eventTemplateId: "",
+        eventTemplateOverrides: {}
+      }
     };
-    latestActionScriptsRef.current[id] = next.script;
-    applyProgramUpdate((prev) => ({ ...prev, actions: [...prev.actions, next] }));
+    latestActionScriptsRef.current[id] = "send(msg);";
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      flows: { ...prev.flows, nodes: [...(prev.flows.nodes || []), nextNode] }
+    }));
     setSelectedActionId(id);
+  };
+
+  const createActionFromTemplateInFlow = (templateId: string, position: NodePosition): void => {
+    const template = program.scriptTemplates.find((item) => item.id === templateId);
+    if (!template) return;
+    const baseName = (template.name || template.id || "script")
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    const id = `flow.scripts.${baseName || "script"}_${Date.now()}`;
+    const nextNode: FlowNodeDefinition = {
+      id,
+      label: template.name || "",
+      kind: "action",
+      refId: id,
+      enabled: true,
+      templateId: template.id,
+      config: {
+        description: template.description || "",
+        script: template.script || "send(msg);",
+        templateBindingOverrides: {}
+      }
+    };
+    latestActionScriptsRef.current[id] = String((nextNode.config as Record<string, unknown>).script || "");
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      flows: {
+        ...prev.flows,
+        nodes: [...(prev.flows.nodes || []), nextNode],
+        nodePositions: { ...(prev.flows.nodePositions || {}), [id]: position }
+      }
+    }));
+    setSelectedActionId(id);
+    setInspectorTarget({ kind: "action", id });
+    setStatus(`Script node created from template "${template.name}"`);
   };
 
   const addEventAction = (): void => {
     const id = `events.group.event_${Date.now()}`;
-    const next: EventActionDefinition = {
-      id,
-      label: "",
-      enabled: true,
-      description: "",
-      templateId: "",
-      bindings: {},
-      openNotes: "",
-      closeNotes: ""
-    };
+    const openNodeId = getEventActionOpenNodeId(id);
+    const closeNodeId = getEventActionCloseNodeId(id);
     applyProgramUpdate((prev) => ({
       ...prev,
-      eventActions: [...(prev.eventActions || []), next]
+      flows: {
+        ...prev.flows,
+        nodes: [
+          ...(prev.flows.nodes || []),
+          {
+            id: openNodeId,
+            label: `OPEN ${id}`,
+            kind: "event_open",
+            refId: id,
+            enabled: true,
+            templateId: "",
+            config: { description: "", bindings: {}, templateOverrides: {}, openNotes: "" }
+          },
+          {
+            id: closeNodeId,
+            label: `CLOSE ${id}`,
+            kind: "event_close",
+            refId: id,
+            enabled: true,
+            templateId: "",
+            config: { description: "", bindings: {}, templateOverrides: {}, closeNotes: "" }
+          }
+        ]
+      }
     }));
     setSelectedEventActionId(id);
   };
 
   const duplicateEventAction = (id: string): void => {
-    const source = (program.eventActions || []).find((item) => item.id === id);
-    if (!source) return;
-    const segments = source.id.split(".").filter(Boolean);
-    const leaf = segments.length > 0 ? segments[segments.length - 1] : source.id;
+    const sourceOpen = flowNodes.find((item) => item.kind === "event_open" && item.refId === id);
+    const sourceClose = flowNodes.find((item) => item.kind === "event_close" && item.refId === id);
+    if (!sourceOpen || !sourceClose) return;
+    const segments = id.split(".").filter(Boolean);
+    const leaf = segments.length > 0 ? segments[segments.length - 1] : id;
     const baseParent = segments.slice(0, -1).join(".");
     const copyLeaf = `${leaf}_copy`;
     let candidateId = baseParent ? `${baseParent}.${copyLeaf}` : copyLeaf;
     let seq = 2;
-    const idSet = new Set((program.eventActions || []).map((item) => item.id));
+    const idSet = new Set(flowNodes.filter((item) => item.kind === "event_open" || item.kind === "event_close").map((item) => item.refId));
     while (idSet.has(candidateId)) {
       candidateId = baseParent ? `${baseParent}.${copyLeaf}_${seq}` : `${copyLeaf}_${seq}`;
       seq += 1;
     }
 
-    const next: EventActionDefinition = {
-      ...structuredClone(source),
-      id: candidateId,
-      label: source.label ? `${source.label} (Copy)` : ""
-    };
     applyProgramUpdate((prev) => ({
       ...prev,
-      eventActions: [...(prev.eventActions || []), next]
+      flows: {
+        ...prev.flows,
+        nodes: [
+          ...(prev.flows.nodes || []),
+          {
+            ...structuredClone(sourceOpen),
+            id: getEventActionOpenNodeId(candidateId),
+            refId: candidateId,
+            label: sourceOpen.label ? `${sourceOpen.label} (Copy)` : ""
+          },
+          {
+            ...structuredClone(sourceClose),
+            id: getEventActionCloseNodeId(candidateId),
+            refId: candidateId,
+            label: sourceClose.label ? `${sourceClose.label} (Copy)` : ""
+          }
+        ]
+      }
     }));
     setSelectedEventActionId(candidateId);
     setStatus(`Event action duplicated: ${candidateId}`);
@@ -463,31 +636,105 @@ export default function HomePage() {
     const bindings = Object.fromEntries(
       collectTemplateVariables(template).map((key) => [key, defaultEventBindingForVariable(key)])
     );
-    const next: EventActionDefinition = {
-      id,
-      label: template.id,
-      enabled: true,
-      description: `Event action for template ${template.id}`,
-      templateId: template.id,
-      bindings,
-      openNotes: "",
-      closeNotes: ""
-    };
+    const openNodeId = getEventActionOpenNodeId(id);
+    const closeNodeId = getEventActionCloseNodeId(id);
     applyProgramUpdate((prev) => ({
       ...prev,
-      eventActions: [...(prev.eventActions || []), next]
+      flows: {
+        ...prev.flows,
+        nodes: [
+          ...(prev.flows.nodes || []),
+          {
+            id: openNodeId,
+            label: `OPEN ${template.id}`,
+            kind: "event_open",
+            refId: id,
+            enabled: true,
+            templateId: template.id,
+            config: {
+              description: `Event action for template ${template.id}`,
+              bindings,
+              templateOverrides: {},
+              openNotes: ""
+            }
+          },
+          {
+            id: closeNodeId,
+            label: `CLOSE ${template.id}`,
+            kind: "event_close",
+            refId: id,
+            enabled: true,
+            templateId: template.id,
+            config: {
+              description: `Event action for template ${template.id}`,
+              bindings,
+              templateOverrides: {},
+              closeNotes: ""
+            }
+          }
+        ]
+      }
     }));
     setSelectedEventActionId(id);
   };
 
-  const duplicateAction = (id: string): void => {
-    const source = program.actions.find((item) => item.id === id);
-    if (!source) return;
-    if (source.allowTreeDuplicate === false) {
-      setStatus(`Duplicate blocked: action "${source.id}" does not allow tree duplication`);
-      return;
-    }
+  const createEventActionFromTemplateInFlow = (templateId: string, position: NodePosition): void => {
+    const template = (program.eventTemplates || []).find((item) => item.id === templateId);
+    if (!template) return;
+    const id = `flow.events.${templateId.replace(/[^a-zA-Z0-9]+/g, "_")}_${Date.now()}`;
+    const bindings = Object.fromEntries(
+      collectTemplateVariables(template).map((key) => [key, defaultEventBindingForVariable(key)])
+    );
+    const openNodeId = getEventActionOpenNodeId(id);
+    const closeNodeId = getEventActionCloseNodeId(id);
+    const openNode: FlowNodeDefinition = {
+      id: openNodeId,
+      kind: "event_open",
+      refId: id,
+      label: `OPEN ${template.id}`,
+      enabled: true,
+      templateId: template.id,
+      config: {
+        description: `Event node for template ${template.id}`,
+        bindings,
+        templateOverrides: {},
+        openNotes: ""
+      }
+    };
+    const closeNode: FlowNodeDefinition = {
+      id: closeNodeId,
+      kind: "event_close",
+      refId: id,
+      label: `CLOSE ${template.id}`,
+      enabled: true,
+      templateId: template.id,
+      config: {
+        description: `Event node for template ${template.id}`,
+        bindings,
+        templateOverrides: {},
+        closeNotes: ""
+      }
+    };
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      flows: {
+        ...prev.flows,
+        nodes: [...(prev.flows.nodes || []), openNode, closeNode],
+        nodePositions: {
+          ...(prev.flows.nodePositions || {}),
+          [openNodeId]: position,
+          [closeNodeId]: { x: position.x, y: position.y + 110 }
+        }
+      }
+    }));
+    setSelectedEventActionId(id);
+    setInspectorTarget({ kind: "event", id });
+    setStatus(`Event node created from template "${template.id}"`);
+  };
 
+  const duplicateAction = (id: string): void => {
+    const source = flowNodes.find((item) => item.kind === "action" && item.id === id);
+    if (!source) return;
     const sourceTemplate = source.templateId
       ? program.scriptTemplates.find((item) => item.id === source.templateId)
       : null;
@@ -502,22 +749,26 @@ export default function HomePage() {
     const copyLeaf = `${leaf}_copy`;
     let candidateId = baseParent ? `${baseParent}.${copyLeaf}` : copyLeaf;
     let seq = 2;
-    const idSet = new Set(program.actions.map((item) => item.id));
+    const idSet = new Set(flowNodes.filter((item) => item.kind === "action").map((item) => item.id));
     while (idSet.has(candidateId)) {
       candidateId = baseParent ? `${baseParent}.${copyLeaf}_${seq}` : `${copyLeaf}_${seq}`;
       seq += 1;
     }
 
-    const next: ActionDefinition = {
+    const next: FlowNodeDefinition = {
       ...structuredClone(source),
       id: candidateId,
+      refId: candidateId,
       label: source.label ? `${source.label} (Copy)` : ""
     };
-    latestActionScriptsRef.current[candidateId] = next.script || "";
+    latestActionScriptsRef.current[candidateId] = String(((next.config || {}) as Record<string, unknown>).script || "");
 
     applyProgramUpdate((prev) => ({
       ...prev,
-      actions: [...prev.actions, next]
+      flows: {
+        ...prev.flows,
+        nodes: [...(prev.flows.nodes || []), next]
+      }
     }));
     setSelectedActionId(candidateId);
     setStatus(`Action duplicated: ${candidateId}`);
@@ -527,7 +778,16 @@ export default function HomePage() {
     applyProgramUpdate((prev) => ({
       ...prev,
       triggers: prev.triggers.filter((item) => item.id !== id),
-      flows: { ...prev.flows, links: removeNodeFromLinks(prev.flows.links, id) }
+      flows: {
+        ...prev.flows,
+        nodes: (prev.flows.nodes || []).filter((item) => item.id !== id),
+        links: removeNodeFromLinks(prev.flows.links, id),
+        nodePositions: (() => {
+          const next = { ...(prev.flows.nodePositions || {}) };
+          delete next[id];
+          return next;
+        })()
+      }
     }));
     if (selectedTriggerId === id) setSelectedTriggerId("");
   };
@@ -536,10 +796,19 @@ export default function HomePage() {
     delete latestActionScriptsRef.current[id];
     applyProgramUpdate((prev) => ({
       ...prev,
-      actions: prev.actions.filter((item) => item.id !== id),
-      flows: { ...prev.flows, links: removeNodeFromLinks(prev.flows.links, id) }
+      flows: {
+        ...prev.flows,
+        nodes: (prev.flows.nodes || []).filter((item) => item.id !== id),
+        links: removeNodeFromLinks(prev.flows.links, id),
+        nodePositions: (() => {
+          const next = { ...(prev.flows.nodePositions || {}) };
+          delete next[id];
+          return next;
+        })()
+      }
     }));
     if (selectedActionId === id) setSelectedActionId("");
+    if (inspectorTarget?.kind === "action" && inspectorTarget.id === id) setInspectorTarget(null);
   };
 
   const removeEventAction = (id: string): void => {
@@ -547,9 +816,9 @@ export default function HomePage() {
     const closeNodeId = getEventActionCloseNodeId(id);
     applyProgramUpdate((prev) => ({
       ...prev,
-      eventActions: (prev.eventActions || []).filter((item) => item.id !== id),
       flows: {
         ...prev.flows,
+        nodes: (prev.flows.nodes || []).filter((item) => item.refId !== id),
         links: removeNodeFromLinks(removeNodeFromLinks(prev.flows.links, openNodeId), closeNodeId),
         nodePositions: (() => {
           const next = { ...(prev.flows.nodePositions || {}) };
@@ -560,6 +829,7 @@ export default function HomePage() {
       }
     }));
     if (selectedEventActionId === id) setSelectedEventActionId("");
+    if (inspectorTarget?.kind === "event" && inspectorTarget.id === id) setInspectorTarget(null);
   };
 
   const renameTrigger = (oldId: string, newId: string): void => {
@@ -582,11 +852,16 @@ export default function HomePage() {
       if (value !== undefined) latestActionScriptsRef.current[newId] = value;
     }
     setSelectedActionId(newId);
+    if (inspectorTarget?.kind === "action" && inspectorTarget.id === oldId) {
+      setInspectorTarget({ kind: "action", id: newId });
+    }
     applyProgramUpdate((prev) => ({
       ...prev,
-      actions: upsertById(prev.actions, oldId, { id: newId }),
       flows: {
         ...prev.flows,
+        nodes: (prev.flows.nodes || []).map((node) =>
+          node.id === oldId ? { ...node, id: newId, refId: newId } : node
+        ),
         links: renameNodeInLinks(prev.flows.links, oldId, newId),
         nodePositions: renameNodePositionKey(prev.flows.nodePositions, oldId, newId)
       }
@@ -598,7 +873,9 @@ export default function HomePage() {
     if (!normalizedNewId) return;
     if (
       oldId !== normalizedNewId &&
-      (program.eventActions || []).some((item) => item.id === normalizedNewId)
+      flowNodes.some(
+        (item) => (item.kind === "event_open" || item.kind === "event_close") && item.refId === normalizedNewId
+      )
     ) {
       setStatus(`Duplicate blocked: event action id "${normalizedNewId}" already exists`);
       return;
@@ -608,11 +885,21 @@ export default function HomePage() {
     const nextOpen = getEventActionOpenNodeId(normalizedNewId);
     const nextClose = getEventActionCloseNodeId(normalizedNewId);
     setSelectedEventActionId(normalizedNewId);
+    if (inspectorTarget?.kind === "event" && inspectorTarget.id === oldId) {
+      setInspectorTarget({ kind: "event", id: normalizedNewId });
+    }
     applyProgramUpdate((prev) => ({
       ...prev,
-      eventActions: upsertById(prev.eventActions || [], oldId, { id: normalizedNewId }),
       flows: {
         ...prev.flows,
+        nodes: (prev.flows.nodes || []).map((node) => {
+          if (node.refId !== oldId) return node;
+          return {
+            ...node,
+            id: node.kind === "event_open" ? nextOpen : nextClose,
+            refId: normalizedNewId
+          };
+        }),
         links: renameNodeInLinks(
           renameNodeInLinks(prev.flows.links, oldOpen, nextOpen),
           oldClose,
@@ -629,15 +916,28 @@ export default function HomePage() {
 
   const flowNodeLabels = useMemo(
     () =>
-      Object.fromEntries([
-        ...program.triggers.map((item) => [item.id, (item.label || item.id).trim() || item.id]),
-        ...program.actions.map((item) => [item.id, (item.label || item.id).trim() || item.id]),
-        ...(program.eventActions || []).flatMap((item) => [
-          [getEventActionOpenNodeId(item.id), `OPEN ${item.label || item.id}`],
-          [getEventActionCloseNodeId(item.id), `CLOSE ${item.label || item.id}`]
-        ])
-      ]),
-    [program.actions, program.eventActions, program.triggers]
+      Object.fromEntries(
+        (program.flows?.nodes || []).map((node) => [node.id, (node.label || node.id).trim() || node.id]) as Array<[string, string]>
+      ),
+    [program.flows?.nodes]
+  );
+
+  const flowTriggerIds = useMemo(
+    () => (program.flows?.nodes || []).filter((node) => node.kind === "trigger").map((node) => node.id),
+    [program.flows?.nodes]
+  );
+
+  const flowActionIds = useMemo(
+    () => (program.flows?.nodes || []).filter((node) => node.kind === "action").map((node) => node.id),
+    [program.flows?.nodes]
+  );
+
+  const flowEventNodeIds = useMemo(
+    () =>
+      (program.flows?.nodes || [])
+        .filter((node) => node.kind === "event_open" || node.kind === "event_close")
+        .map((node) => node.id),
+    [program.flows?.nodes]
   );
 
   const watchPathOptions = useMemo(() => {
@@ -700,15 +1000,39 @@ export default function HomePage() {
   const updateTrigger = (id: string, patch: Partial<TriggerDefinition>): void => {
     applyProgramUpdate((prev) => ({
       ...prev,
-      triggers: upsertById(prev.triggers, id, patch)
+      triggers: upsertById(prev.triggers, id, patch),
+      flows: {
+        ...prev.flows,
+        nodes: (prev.flows.nodes || []).map((node) =>
+          node.id === id && node.kind === "trigger"
+            ? {
+                ...node,
+                label: Object.prototype.hasOwnProperty.call(patch, "label") ? patch.label ?? "" : node.label,
+                enabled: Object.prototype.hasOwnProperty.call(patch, "enabled") ? patch.enabled !== false : node.enabled,
+                config: {
+                  ...(node.config || {}),
+                  ...(Object.prototype.hasOwnProperty.call(patch, "type") ? { type: patch.type } : {}),
+                  ...(Object.prototype.hasOwnProperty.call(patch, "watchPath") ? { watchPath: patch.watchPath ?? "" } : {}),
+                  ...(Object.prototype.hasOwnProperty.call(patch, "intervalMs") ? { intervalMs: patch.intervalMs } : {}),
+                  ...(Object.prototype.hasOwnProperty.call(patch, "cronExpression") ? { cronExpression: patch.cronExpression ?? "" } : {}),
+                  ...(Object.prototype.hasOwnProperty.call(patch, "timezone") ? { timezone: patch.timezone ?? "" } : {}),
+                  ...(Object.prototype.hasOwnProperty.call(patch, "activeFrom") ? { activeFrom: patch.activeFrom ?? "" } : {}),
+                  ...(Object.prototype.hasOwnProperty.call(patch, "activeTo") ? { activeTo: patch.activeTo ?? "" } : {})
+                }
+              }
+            : node
+        )
+      }
     }));
   };
 
-  const updateAction = (id: string, patch: Partial<ActionDefinition>): void => {
+  const updateAction = (id: string, patch: Partial<ScriptNodeSummary>): void => {
+    const current = flowNodes.find((item) => item.kind === "action" && item.id === id);
+    if (!current) return;
     if (typeof patch.script === "string") {
       latestActionScriptsRef.current[id] = patch.script;
     }
-    const resolvedPatch: Partial<ActionDefinition> = { ...patch };
+    const resolvedPatch: Partial<ScriptNodeSummary> = { ...patch };
     if (Object.prototype.hasOwnProperty.call(patch, "templateId")) {
       const nextTemplateId = patch.templateId;
       const template = nextTemplateId
@@ -718,36 +1042,113 @@ export default function HomePage() {
         nextTemplateId &&
         template &&
         template.allowTemplateReuse === false &&
-        program.actions.some((item) => item.id !== id && item.templateId === nextTemplateId)
+        flowNodes.some((item) => item.kind === "action" && item.id !== id && item.templateId === nextTemplateId)
       ) {
         setStatus(`Template "${template.name}" is singleton and already used by another action`);
         return;
       }
-      const current = program.actions.find((item) => item.id === id);
-      resolvedPatch.script = template ? template.script : patch.script ?? current?.script ?? "";
-      resolvedPatch.templateBindingOverrides = nextTemplateId ? current?.templateBindingOverrides || {} : {};
-      latestActionScriptsRef.current[id] = resolvedPatch.script;
+      const currentConfig = (current.config || {}) as Record<string, unknown>;
+      resolvedPatch.script = template ? template.script : patch.script ?? String(currentConfig.script ?? "");
+      resolvedPatch.templateBindingOverrides =
+        nextTemplateId
+          ? (((currentConfig.templateBindingOverrides as Record<string, unknown>) || {}) as any)
+          : {};
+      latestActionScriptsRef.current[id] = String(resolvedPatch.script ?? "");
     }
     if (Object.prototype.hasOwnProperty.call(patch, "eventTemplateId")) {
       const nextEventTemplateId = patch.eventTemplateId;
-      const current = program.actions.find((item) => item.id === id);
-      resolvedPatch.eventTemplateOverrides = nextEventTemplateId ? current?.eventTemplateOverrides || {} : {};
+      const currentConfig = (current.config || {}) as Record<string, unknown>;
+      resolvedPatch.eventTemplateOverrides =
+        nextEventTemplateId
+          ? (((currentConfig.eventTemplateOverrides as Record<string, unknown>) || {}) as any)
+          : {};
     }
     applyProgramUpdate((prev) => ({
       ...prev,
-      actions: upsertById(prev.actions, id, resolvedPatch)
+      flows: {
+        ...prev.flows,
+        nodes: (prev.flows.nodes || []).map((node) =>
+          node.id === id && node.kind === "action"
+            ? {
+                ...node,
+                label: Object.prototype.hasOwnProperty.call(resolvedPatch, "label") ? resolvedPatch.label ?? "" : node.label,
+                enabled: Object.prototype.hasOwnProperty.call(resolvedPatch, "enabled") ? resolvedPatch.enabled !== false : node.enabled,
+                templateId:
+                  Object.prototype.hasOwnProperty.call(resolvedPatch, "templateId")
+                    ? resolvedPatch.templateId ?? ""
+                    : node.templateId,
+                config: {
+                  ...(node.config || {}),
+                  ...(Object.prototype.hasOwnProperty.call(resolvedPatch, "description")
+                    ? { description: resolvedPatch.description ?? "" }
+                    : {}),
+                  ...(Object.prototype.hasOwnProperty.call(resolvedPatch, "script")
+                    ? { script: resolvedPatch.script ?? "send(msg);" }
+                    : {}),
+                  ...(Object.prototype.hasOwnProperty.call(resolvedPatch, "templateBindingOverrides")
+                    ? { templateBindingOverrides: resolvedPatch.templateBindingOverrides || {} }
+                    : {}),
+                  ...(Object.prototype.hasOwnProperty.call(resolvedPatch, "eventTemplateId")
+                    ? { eventTemplateId: resolvedPatch.eventTemplateId ?? "" }
+                    : {}),
+                  ...(Object.prototype.hasOwnProperty.call(resolvedPatch, "eventTemplateOverrides")
+                    ? { eventTemplateOverrides: resolvedPatch.eventTemplateOverrides || {} }
+                    : {})
+                }
+              }
+            : node
+        )
+      }
     }));
   };
 
-  const updateEventAction = (id: string, patch: Partial<EventActionDefinition>): void => {
-    const resolvedPatch: Partial<EventActionDefinition> = { ...patch };
+  const updateEventAction = (id: string, patch: Partial<EventNodeSummary>): void => {
+    const currentOpen = flowNodes.find((item) => item.kind === "event_open" && item.refId === id);
+    const currentClose = flowNodes.find((item) => item.kind === "event_close" && item.refId === id);
+    if (!currentOpen || !currentClose) return;
+    const resolvedPatch: Partial<EventNodeSummary> = { ...patch };
     if (Object.prototype.hasOwnProperty.call(patch, "templateId")) {
-      const current = (program.eventActions || []).find((item) => item.id === id);
-      resolvedPatch.bindings = patch.templateId ? current?.bindings || {} : {};
+      const currentConfig = (currentOpen.config || {}) as Record<string, unknown>;
+      resolvedPatch.bindings = patch.templateId ? (((currentConfig.bindings as Record<string, unknown>) || {}) as any) : {};
     }
     applyProgramUpdate((prev) => ({
       ...prev,
-      eventActions: upsertById(prev.eventActions || [], id, resolvedPatch)
+      flows: {
+        ...prev.flows,
+        nodes: (prev.flows.nodes || []).map((node) => {
+          if (node.refId !== id || (node.kind !== "event_open" && node.kind !== "event_close")) return node;
+          const isOpen = node.kind === "event_open";
+          return {
+            ...node,
+            label: Object.prototype.hasOwnProperty.call(resolvedPatch, "label")
+              ? `${isOpen ? "OPEN" : "CLOSE"} ${resolvedPatch.label || id}`
+              : node.label,
+            enabled: Object.prototype.hasOwnProperty.call(resolvedPatch, "enabled") ? resolvedPatch.enabled !== false : node.enabled,
+            templateId:
+              Object.prototype.hasOwnProperty.call(resolvedPatch, "templateId")
+                ? resolvedPatch.templateId ?? ""
+                : node.templateId,
+            config: {
+              ...(node.config || {}),
+              ...(Object.prototype.hasOwnProperty.call(resolvedPatch, "description")
+                ? { description: resolvedPatch.description ?? "" }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(resolvedPatch, "templateOverrides")
+                ? { templateOverrides: resolvedPatch.templateOverrides || {} }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(resolvedPatch, "bindings")
+                ? { bindings: resolvedPatch.bindings || {} }
+                : {}),
+              ...(isOpen && Object.prototype.hasOwnProperty.call(resolvedPatch, "openNotes")
+                ? { openNotes: resolvedPatch.openNotes ?? "" }
+                : {}),
+              ...(!isOpen && Object.prototype.hasOwnProperty.call(resolvedPatch, "closeNotes")
+                ? { closeNotes: resolvedPatch.closeNotes ?? "" }
+                : {})
+            }
+          };
+        })
+      }
     }));
   };
 
@@ -876,9 +1277,14 @@ export default function HomePage() {
       setSelectedEventTemplateId(String(normalizedPatch.id || ""));
       applyProgramUpdate((prev) => ({
         ...prev,
-        eventActions: (prev.eventActions || []).map((action) =>
-          action.templateId === id ? { ...action, templateId: String(normalizedPatch.id || "") } : action
-        )
+        flows: {
+          ...prev.flows,
+          nodes: (prev.flows.nodes || []).map((node) =>
+            (node.kind === "event_open" || node.kind === "event_close") && node.templateId === id
+              ? { ...node, templateId: String(normalizedPatch.id || "") }
+              : node
+          )
+        }
       }));
     }
   };
@@ -887,9 +1293,24 @@ export default function HomePage() {
     applyProgramUpdate((prev) => ({
       ...prev,
       eventTemplates: (prev.eventTemplates || []).filter((item) => item.id !== id),
-      actions: prev.actions.map((action) =>
-        action.eventTemplateId === id ? { ...action, eventTemplateId: undefined } : action
-      )
+      flows: {
+        ...prev.flows,
+        nodes: (prev.flows.nodes || []).map((node) =>
+          node.kind === "action"
+            ? {
+                ...node,
+                config:
+                  ((node.config as Record<string, unknown> | undefined)?.eventTemplateId || "") === id
+                    ? {
+                        ...(node.config || {}),
+                        eventTemplateId: "",
+                        eventTemplateOverrides: {}
+                      }
+                    : node.config
+              }
+            : node
+        )
+      }
     }));
     if (selectedEventTemplateId === id) setSelectedEventTemplateId("");
   };
@@ -906,7 +1327,7 @@ export default function HomePage() {
     patch: Partial<ScriptTemplateDefinition>
   ): void => {
     if (patch.allowTemplateReuse === false) {
-      const usageCount = program.actions.filter((action) => action.templateId === id).length;
+      const usageCount = flowNodes.filter((node) => node.kind === "action" && node.templateId === id).length;
       if (usageCount > 1) {
         const templateName = program.scriptTemplates.find((item) => item.id === id)?.name || id;
         setStatus(`Cannot disable template reuse: template "${templateName}" is used by ${usageCount} actions`);
@@ -922,29 +1343,35 @@ export default function HomePage() {
           scriptTemplates: nextScriptTemplates
         };
       }
-      const shouldSyncScriptToActions = Object.prototype.hasOwnProperty.call(patch, "script");
-      if (!shouldSyncScriptToActions) {
+      const shouldSyncScriptToNodes = Object.prototype.hasOwnProperty.call(patch, "script");
+      if (!shouldSyncScriptToNodes) {
         return {
           ...prev,
           scriptTemplates: nextScriptTemplates
         };
       }
-      const nextActions = prev.actions.map((action) =>
-        action.templateId === id
+      const nextNodes = (prev.flows.nodes || []).map((node) =>
+        node.kind === "action" && node.templateId === id
           ? {
-              ...action,
-              script: updatedTemplate.script
+              ...node,
+              config: {
+                ...(node.config || {}),
+                script: updatedTemplate.script
+              }
             }
-          : action
+          : node
       );
-      for (const action of nextActions) {
-        if (action.templateId !== id) continue;
-        latestActionScriptsRef.current[action.id] = action.script || "";
+      for (const node of nextNodes) {
+        if (node.kind !== "action" || node.templateId !== id) continue;
+        latestActionScriptsRef.current[node.id] = String(((node.config || {}) as Record<string, unknown>).script || "");
       }
       return {
         ...prev,
         scriptTemplates: nextScriptTemplates,
-        actions: nextActions
+        flows: {
+          ...prev.flows,
+          nodes: nextNodes
+        }
       };
     });
   };
@@ -1019,6 +1446,157 @@ export default function HomePage() {
     });
   };
 
+  const deleteNodesFromFlow = (nodeIds: string[]): void => {
+    const uniqueIds = Array.from(new Set(nodeIds));
+    const nodesById = new Map((program.flows.nodes || []).map((node) => [node.id, node] as const));
+    const actionIds = uniqueIds.filter((id) => nodesById.get(id)?.kind === "action");
+    const eventActionIds = Array.from(new Set(uniqueIds.map((id) => nodesById.get(id)?.refId).filter(Boolean) as string[]));
+    const triggerIds = uniqueIds.filter((id) => nodesById.get(id)?.kind === "trigger");
+
+    actionIds.forEach((id) => delete latestActionScriptsRef.current[id]);
+
+    applyProgramUpdate((prev) => {
+      const nextPositions = { ...(prev.flows.nodePositions || {}) };
+      uniqueIds.forEach((id) => delete nextPositions[id]);
+      const remainingNodes = (prev.flows.nodes || []).filter((node) => {
+        if (uniqueIds.includes(node.id)) return false;
+        if (eventActionIds.includes(node.refId) && (node.kind === "event_open" || node.kind === "event_close")) return false;
+        return true;
+      });
+      remainingNodes.forEach((node) => {
+        if (!nextPositions[node.id]) return;
+      });
+      return {
+        ...prev,
+        flows: {
+          ...prev.flows,
+          nodes: remainingNodes,
+          links: prev.flows.links.filter((link) => {
+            if (uniqueIds.includes(link.from) || uniqueIds.includes(link.to)) return false;
+            if (eventActionIds.some((id) => [getEventActionOpenNodeId(id), getEventActionCloseNodeId(id)].includes(link.from))) return false;
+            if (eventActionIds.some((id) => [getEventActionOpenNodeId(id), getEventActionCloseNodeId(id)].includes(link.to))) return false;
+            return true;
+          }),
+          nodePositions: nextPositions
+        }
+      };
+    });
+
+    if (inspectorTarget?.kind === "action" && actionIds.includes(inspectorTarget.id)) setInspectorTarget(null);
+    if (inspectorTarget?.kind === "event" && eventActionIds.includes(inspectorTarget.id)) setInspectorTarget(null);
+    if (selectedActionId && actionIds.includes(selectedActionId)) setSelectedActionId("");
+    if (selectedEventActionId && eventActionIds.includes(selectedEventActionId)) setSelectedEventActionId("");
+    if (triggerIds.length > 0) setStatus(`Removed ${actionIds.length} script node(s), ${eventActionIds.length} event node(s), ${triggerIds.length} trigger placement(s)`);
+  };
+
+  const duplicateNodesInFlow = (nodeIds: string[], basePosition?: NodePosition): void => {
+    const uniqueIds = Array.from(new Set(nodeIds));
+    if (uniqueIds.length === 0) return;
+    const timestamp = Date.now();
+    const nextNodes: FlowNodeDefinition[] = [];
+    const nextPositions: Record<string, NodePosition> = {};
+    const duplicatedNodeMap = new Map<string, string>();
+    let actionCount = 0;
+    let eventCount = 0;
+    const nodesById = new Map((program.flows.nodes || []).map((node) => [node.id, node] as const));
+
+    uniqueIds.forEach((nodeId, index) => {
+      const offset = 40 * (index + 1);
+      const action = nodesById.get(nodeId);
+      if (action?.kind === "action") {
+        const nextId = `${nodeId}_copy_${timestamp + index}`;
+        const position = program.flows.nodePositions?.[nodeId];
+        nextNodes.push({
+          ...structuredClone(action),
+          id: nextId,
+          refId: nextId,
+          label: action.label ? `${action.label} Copy` : ""
+        });
+        duplicatedNodeMap.set(nodeId, nextId);
+        latestActionScriptsRef.current[nextId] = String(((action.config || {}) as Record<string, unknown>).script || "");
+        if (basePosition) nextPositions[nextId] = { x: basePosition.x + offset, y: basePosition.y + offset };
+        else if (position) nextPositions[nextId] = { x: position.x + offset, y: position.y + offset };
+        actionCount += 1;
+        return;
+      }
+
+      if (action?.kind === "event_open" || action?.kind === "event_close") {
+        const baseId = action.refId;
+        if (nextNodes.some((item) => item.refId === `${baseId}_copy_${timestamp + index}`)) return;
+        const sourceOpen = (program.flows.nodes || []).find((item) => item.kind === "event_open" && item.refId === baseId);
+        const sourceClose = (program.flows.nodes || []).find((item) => item.kind === "event_close" && item.refId === baseId);
+        if (!sourceOpen || !sourceClose) return;
+        const nextId = `${baseId}_copy_${timestamp + index}`;
+        nextNodes.push({
+          ...structuredClone(sourceOpen),
+          id: getEventActionOpenNodeId(nextId),
+          refId: nextId,
+          label: sourceOpen.label ? `${sourceOpen.label} Copy` : ""
+        });
+        nextNodes.push({
+          ...structuredClone(sourceClose),
+          id: getEventActionCloseNodeId(nextId),
+          refId: nextId,
+          label: sourceClose.label ? `${sourceClose.label} Copy` : ""
+        });
+        duplicatedNodeMap.set(getEventActionOpenNodeId(baseId), getEventActionOpenNodeId(nextId));
+        duplicatedNodeMap.set(getEventActionCloseNodeId(baseId), getEventActionCloseNodeId(nextId));
+        const openPos = program.flows.nodePositions?.[getEventActionOpenNodeId(baseId)];
+        const closePos = program.flows.nodePositions?.[getEventActionCloseNodeId(baseId)];
+        if (basePosition) {
+          nextPositions[getEventActionOpenNodeId(nextId)] = { x: basePosition.x + offset, y: basePosition.y + offset };
+          nextPositions[getEventActionCloseNodeId(nextId)] = { x: basePosition.x + offset, y: basePosition.y + offset + 110 };
+        } else {
+          if (openPos) nextPositions[getEventActionOpenNodeId(nextId)] = { x: openPos.x + offset, y: openPos.y + offset };
+          if (closePos) nextPositions[getEventActionCloseNodeId(nextId)] = { x: closePos.x + offset, y: closePos.y + offset };
+        }
+        eventCount += 1;
+      }
+    });
+
+    if (nextNodes.length === 0) {
+      setStatus("Only script/event nodes can be pasted right now.");
+      return;
+    }
+
+    applyProgramUpdate((prev) => ({
+      ...prev,
+      flows: {
+        ...prev.flows,
+        nodes: [...(prev.flows.nodes || []), ...nextNodes],
+        links: [
+          ...prev.flows.links,
+          ...prev.flows.links
+            .filter((link) => duplicatedNodeMap.has(link.from) && duplicatedNodeMap.has(link.to))
+            .map((link) => ({
+              ...link,
+              from: duplicatedNodeMap.get(link.from) || link.from,
+              to: duplicatedNodeMap.get(link.to) || link.to
+            }))
+        ],
+        nodePositions: {
+          ...(prev.flows.nodePositions || {}),
+          ...nextPositions
+        }
+      }
+    }));
+    setStatus(`Pasted ${actionCount} script node(s) and ${eventCount} event node(s)`);
+  };
+
+  const handleDropPaletteItem = (item: FlowPaletteItem, position: NodePosition): void => {
+    if (item.type === "existing-node") {
+      updateNodePosition(item.nodeId, position);
+      return;
+    }
+    if (item.type === "script-template") {
+      createActionFromTemplateInFlow(item.templateId, position);
+      return;
+    }
+    if (item.type === "event-template") {
+      createEventActionFromTemplateInFlow(item.templateId, position);
+    }
+  };
+
   const headerActions = useMemo(
     () => (
       <Box sx={{ display: "flex", gap: 0.75 }}>
@@ -1067,9 +1645,9 @@ export default function HomePage() {
         <Tabs value={tab} onChange={(_, value: number) => setTab(value)} variant="scrollable" scrollButtons="auto">
           <Tab label="Asset Manager" />
           <Tab label="Trigger Manager" />
-          <Tab label="Action Script Manager" />
-          <Tab label="Event Manager" />
           <Tab label="Flow Manager" />
+          <Tab label="Script Templates" />
+          <Tab label="Event Templates" />
           <Tab label="DB Connection" />
           <Tab label="Event View" />
           <Tab label="Global Store" />
@@ -1096,8 +1674,41 @@ export default function HomePage() {
           />
         )}
         {tab === 2 && (
+          <FlowManager
+            triggerIds={flowTriggerIds}
+            actionIds={flowActionIds}
+            eventNodeIds={flowEventNodeIds}
+            scriptTemplates={program.scriptTemplates}
+            eventTemplates={program.eventTemplates || []}
+            nodeLabels={flowNodeLabels}
+            links={program.flows.links}
+            nodePositions={program.flows.nodePositions || {}}
+            zoom={flowZoom}
+            onZoomChange={setFlowZoom}
+            onAddLink={addLink}
+            onUpdateLink={updateLink}
+            onRemoveLink={removeLink}
+            onRemoveNodeFromFlow={removeNodeFromFlow}
+            onDeleteNodes={deleteNodesFromFlow}
+            onDuplicateNodes={duplicateNodesInFlow}
+            onActionNodeDoubleClick={(actionId) => {
+              setSelectedActionId(actionId);
+              setInspectorTarget({ kind: "action", id: actionId });
+            }}
+            onEventNodeDoubleClick={(nodeId) => {
+              const eventActionId = getBaseEventActionIdFromNode(nodeId);
+              setSelectedEventActionId(eventActionId);
+              setInspectorTarget({ kind: "event", id: eventActionId });
+            }}
+            onNodePositionDragStart={() => dispatch({ type: "PUSH_SNAPSHOT" })}
+            onNodePositionChange={updateNodePosition}
+            onConnectNodes={(fromId, toId, fromPort) => addLink({ from: fromId, to: toId, fromPort, enabled: true })}
+            onDropPaletteItem={handleDropPaletteItem}
+          />
+        )}
+        {tab === 3 && (
           <ActionManager
-            actions={program.actions}
+            actions={derivedActions}
             scriptTemplates={program.scriptTemplates}
             assets={program.assets}
             selectedActionId={selectedActionId}
@@ -1110,11 +1721,12 @@ export default function HomePage() {
             onAddScriptTemplate={addScriptTemplate}
             onRemoveScriptTemplate={removeScriptTemplate}
             onUpdateScriptTemplate={updateScriptTemplate}
+            templateOnly
           />
         )}
-        {tab === 3 && (
+        {tab === 4 && (
           <EventDesignerManager
-            eventActions={program.eventActions || []}
+            eventActions={derivedEventActions}
             eventTemplates={program.eventTemplates || []}
             assets={program.assets}
             selectedEventActionId={selectedEventActionId}
@@ -1131,36 +1743,7 @@ export default function HomePage() {
             onDuplicateEventTemplate={duplicateEventTemplate}
             onRemoveEventTemplate={removeEventTemplate}
             onUpdateEventTemplate={updateEventTemplate}
-          />
-        )}
-        {tab === 4 && (
-          <FlowManager
-            triggerIds={program.triggers.map((item) => item.id)}
-            actionIds={program.actions.map((item) => item.id)}
-            eventNodeIds={(program.eventActions || []).flatMap((item) => [
-              getEventActionOpenNodeId(item.id),
-              getEventActionCloseNodeId(item.id)
-            ])}
-            nodeLabels={flowNodeLabels}
-            links={program.flows.links}
-            nodePositions={program.flows.nodePositions || {}}
-            zoom={flowZoom}
-            onZoomChange={setFlowZoom}
-            onAddLink={addLink}
-            onUpdateLink={updateLink}
-            onRemoveLink={removeLink}
-            onRemoveNodeFromFlow={removeNodeFromFlow}
-            onActionNodeDoubleClick={(actionId) => {
-              setSelectedActionId(actionId);
-              setTab(2);
-            }}
-            onEventNodeDoubleClick={(nodeId) => {
-              setSelectedEventActionId(getBaseEventActionIdFromNode(nodeId));
-              setTab(3);
-            }}
-            onNodePositionDragStart={() => dispatch({ type: "PUSH_SNAPSHOT" })}
-            onNodePositionChange={updateNodePosition}
-            onConnectNodes={(fromId, toId, fromPort) => addLink({ from: fromId, to: toId, fromPort, enabled: true })}
+            templateOnly
           />
         )}
         {tab === 5 && <DbConnectionManager />}
@@ -1168,6 +1751,74 @@ export default function HomePage() {
         {tab === 7 && <GlobalStoreManager onStatus={setStatus} />}
         {tab === 8 && <DocsManager />}
       </Box>
+
+      <FlowNodeInspectorDrawer
+        open={Boolean(inspectorTarget)}
+        target={inspectorTarget}
+        nodes={program.flows.nodes || []}
+        scriptTemplates={program.scriptTemplates}
+        eventTemplates={program.eventTemplates || []}
+        assets={program.assets}
+        onClose={() => setInspectorTarget(null)}
+        onRenameNode={(oldId, newId) => {
+          const targetNode = (program.flows.nodes || []).find((node) => node.id === oldId);
+          if (!targetNode) return;
+          if (targetNode.kind === "action") {
+            renameAction(oldId, newId);
+            return;
+          }
+          if (targetNode.kind === "event_open" || targetNode.kind === "event_close") {
+            renameEventAction(targetNode.refId, newId);
+          }
+        }}
+        onUpdateNode={(id, patch) => {
+          const targetNode = (program.flows.nodes || []).find((node) => node.id === id);
+          if (!targetNode) return;
+          if (targetNode.kind === "action") {
+            const config = (patch.config || {}) as Record<string, unknown>;
+            updateAction(id, {
+              ...(Object.prototype.hasOwnProperty.call(patch, "label") ? { label: patch.label } : {}),
+              ...(Object.prototype.hasOwnProperty.call(patch, "enabled") ? { enabled: patch.enabled } : {}),
+              ...(Object.prototype.hasOwnProperty.call(patch, "templateId") ? { templateId: patch.templateId } : {}),
+              ...(Object.prototype.hasOwnProperty.call(config, "description") ? { description: String(config.description ?? "") } : {}),
+              ...(Object.prototype.hasOwnProperty.call(config, "script") ? { script: String(config.script ?? "") } : {}),
+              ...(Object.prototype.hasOwnProperty.call(config, "templateBindingOverrides")
+                ? { templateBindingOverrides: (config.templateBindingOverrides as Record<string, any>) || {} }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(config, "eventTemplateId")
+                ? { eventTemplateId: String(config.eventTemplateId ?? "") }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(config, "eventTemplateOverrides")
+                ? { eventTemplateOverrides: (config.eventTemplateOverrides as Record<string, any>) || {} }
+                : {})
+            });
+            return;
+          }
+          if (targetNode.kind === "event_open" || targetNode.kind === "event_close") {
+            const config = (patch.config || {}) as Record<string, unknown>;
+            updateEventAction(targetNode.refId, {
+              ...(Object.prototype.hasOwnProperty.call(patch, "label")
+                ? { label: String(patch.label ?? "").replace(/^OPEN\s+|^CLOSE\s+/i, "") }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(patch, "enabled") ? { enabled: patch.enabled } : {}),
+              ...(Object.prototype.hasOwnProperty.call(patch, "templateId") ? { templateId: patch.templateId } : {}),
+              ...(Object.prototype.hasOwnProperty.call(config, "description") ? { description: String(config.description ?? "") } : {}),
+              ...(Object.prototype.hasOwnProperty.call(config, "templateOverrides")
+                ? { templateOverrides: (config.templateOverrides as Record<string, any>) || {} }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(config, "bindings")
+                ? { bindings: (config.bindings as Record<string, any>) || {} }
+                : {}),
+              ...(targetNode.kind === "event_open" && Object.prototype.hasOwnProperty.call(config, "openNotes")
+                ? { openNotes: String(config.openNotes ?? "") }
+                : {}),
+              ...(targetNode.kind === "event_close" && Object.prototype.hasOwnProperty.call(config, "closeNotes")
+                ? { closeNotes: String(config.closeNotes ?? "") }
+                : {})
+            });
+          }
+        }}
+      />
     </Box>
   );
 }

@@ -30,15 +30,15 @@ import type { DataNode, Key } from "rc-tree/lib/interface";
 import { FileCode2, FolderTree } from "lucide-react";
 import StableMonaco from "../common/StableMonaco";
 import type {
-  ActionDefinition,
   AssetFrameworkDefinition,
+  ScriptNodeSummary,
   ScriptBindingSource,
   ScriptVariableBindingDefinition,
   ScriptTemplateDefinition
 } from "../../types/program";
 
 interface ActionManagerProps {
-  actions: ActionDefinition[];
+  actions: ScriptNodeSummary[];
   scriptTemplates: ScriptTemplateDefinition[];
   assets: AssetFrameworkDefinition;
   selectedActionId: string;
@@ -47,10 +47,11 @@ interface ActionManagerProps {
   onDuplicateAction: (id: string) => void;
   onRemoveAction: (id: string) => void;
   onRenameAction: (oldId: string, newId: string) => void;
-  onUpdateAction: (id: string, patch: Partial<ActionDefinition>) => void;
+  onUpdateAction: (id: string, patch: Partial<ScriptNodeSummary>) => void;
   onAddScriptTemplate: () => void;
   onRemoveScriptTemplate: (id: string) => void;
   onUpdateScriptTemplate: (id: string, patch: Partial<ScriptTemplateDefinition>) => void;
+  templateOnly?: boolean;
 }
 
 function parseMaybeJson(raw: string): unknown {
@@ -208,16 +209,16 @@ function resolveAssetPath(path: string, options: string[]) {
   return found || path;
 }
 
-function buildHierarchyTree(actions: ActionDefinition[], search: string): DataNode[] {
+function buildHierarchyTree(actions: ScriptNodeSummary[], search: string): DataNode[] {
   const keyword = search.trim().toLowerCase();
   const filteredActions = keyword
     ? actions.filter((action) =>
-        `${action.id} ${action.label ?? ""} ${action.description ?? ""} ${action.type}`.toLowerCase().includes(keyword)
+        `${action.id} ${action.label ?? ""} ${action.description ?? ""}`.toLowerCase().includes(keyword)
       )
     : actions;
 
   const folderChildren = new Map<string, Set<string>>();
-  const actionChildren = new Map<string, ActionDefinition[]>();
+  const actionChildren = new Map<string, ScriptNodeSummary[]>();
   const ensureFolder = (path: string) => {
     if (!folderChildren.has(path)) folderChildren.set(path, new Set<string>());
     if (!actionChildren.has(path)) actionChildren.set(path, []);
@@ -281,7 +282,7 @@ function buildHierarchyTree(actions: ActionDefinition[], search: string): DataNo
 }
 
 function getTemplateScriptForAction(
-  action: ActionDefinition,
+  action: ScriptNodeSummary,
   scriptTemplates: ScriptTemplateDefinition[]
 ): string {
   if (!action.templateId) return action.script;
@@ -302,9 +303,10 @@ export default function ActionManager({
   onUpdateAction,
   onAddScriptTemplate,
   onRemoveScriptTemplate,
-  onUpdateScriptTemplate
+  onUpdateScriptTemplate,
+  templateOnly = false
 }: ActionManagerProps) {
-  const [mainTab, setMainTab] = useState(0);
+  const [mainTab, setMainTab] = useState(templateOnly ? 1 : 0);
   const [search, setSearch] = useState("");
   const [selectedHierarchyKey, setSelectedHierarchyKey] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
@@ -327,8 +329,7 @@ export default function ActionManager({
   const selectedActionTemplate = scriptTemplates.find((item) => item.id === selectedAction?.templateId);
   const isTemplateDuplicationBlocked =
     !!selectedActionTemplate && selectedActionTemplate.allowTemplateReuse === false;
-  const isActionDuplicationBlocked = selectedAction?.allowTreeDuplicate === false;
-  const isSelectedActionDuplicationBlocked = isTemplateDuplicationBlocked || isActionDuplicationBlocked;
+  const isSelectedActionDuplicationBlocked = isTemplateDuplicationBlocked;
   const selectedActionBindingNames = useMemo(
     () =>
       (selectedActionTemplate?.variableBindings || [])
@@ -452,14 +453,20 @@ export default function ActionManager({
     setExpandedKeys(nextExpanded);
   }, [hierarchyTree]);
 
+  useEffect(() => {
+    if (templateOnly) setMainTab(1);
+  }, [templateOnly]);
+
   return (
     <Box sx={{ p: 1.25, display: "grid", gap: 1.25 }}>
-      <Paper variant="outlined" sx={{ p: 0.5 }}>
-        <Tabs value={mainTab} onChange={(_e, value: number) => setMainTab(value)}>
-          <Tab label="Action Script" />
-          <Tab label="Script Template" />
-        </Tabs>
-      </Paper>
+      {!templateOnly && (
+        <Paper variant="outlined" sx={{ p: 0.5 }}>
+          <Tabs value={mainTab} onChange={(_e, value: number) => setMainTab(value)}>
+            <Tab label="Action Script" />
+            <Tab label="Script Template" />
+          </Tabs>
+        </Paper>
+      )}
 
       {mainTab === 0 && (
         <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
@@ -789,20 +796,6 @@ export default function ActionManager({
                   }
                   label="Action Enabled"
                 />
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={selectedAction.allowTreeDuplicate !== false}
-                      onChange={(_event, checked) =>
-                        onUpdateAction(selectedAction.id, { allowTreeDuplicate: checked })
-                      }
-                    />
-                  }
-                  label="Allow Tree Duplicate"
-                />
-                <Typography variant="caption" color="text.secondary">
-                  If disabled, this action instance cannot be duplicated from the action list.
-                </Typography>
                 <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
                   <Button size="small" variant="outlined" onClick={() => setMaxEditor(true)}>
                     Maximize Editor

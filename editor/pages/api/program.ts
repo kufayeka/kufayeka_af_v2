@@ -68,11 +68,9 @@ function ensureProgramFile(programPath: string) {
   const initialProgram: Program = {
     meta: { name: "Kufayeka AF Program", version: 1 },
     eventTemplates: [],
-    eventActions: [],
     triggers: [],
-    actions: [],
     scriptTemplates: [],
-    flows: { links: [] },
+    flows: { nodes: [], links: [] },
     assets: { assets: [], attributeTemplates: [] }
   };
   fs.writeFileSync(programPath, JSON.stringify(initialProgram, null, 2));

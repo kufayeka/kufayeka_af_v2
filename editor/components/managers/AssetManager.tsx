@@ -532,9 +532,8 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         data.program ?? {
           meta: { name: "Kufayeka AF Program", version: 1 },
           triggers: [],
-          actions: [],
           scriptTemplates: [],
-          flows: { links: [] },
+          flows: { nodes: [], links: [] },
           assets: { assets: [], attributeTemplates: [] }
         }
       );

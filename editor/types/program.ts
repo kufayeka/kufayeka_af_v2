@@ -4,7 +4,6 @@ export type TriggerType =
   | "watcher_set"
   | "watcher_valuechange"
   | "watcher_event_falling";
-export type ActionType = "script";
 export type AssetAttributeType =
   | "int8"
   | "uint8"
@@ -95,13 +94,10 @@ export interface TriggerDefinition {
   };
 }
 
-export interface ActionDefinition {
+export interface ScriptNodeSummary {
   id: string;
   label?: string;
-  type: ActionType;
   enabled: boolean;
-  allowTreeDuplicate?: boolean;
-  allowNodeDuplication?: boolean;
   description?: string;
   templateId?: string;
   eventTemplateId?: string;
@@ -116,7 +112,7 @@ export interface EventActionBindingDefinition {
   attributePath?: string;
 }
 
-export interface EventActionDefinition {
+export interface EventNodeSummary {
   id: string;
   label?: string;
   enabled: boolean;
@@ -237,17 +233,28 @@ export interface NodePosition {
   y: number;
 }
 
+export type FlowNodeKind = "trigger" | "action" | "event_open" | "event_close";
+
+export interface FlowNodeDefinition {
+  id: string;
+  kind: FlowNodeKind;
+  refId: string;
+  label?: string;
+  enabled?: boolean;
+  templateId?: string;
+  config?: Record<string, unknown>;
+ }
+
 export interface Program {
   meta: {
     name: string;
     version: number;
   };
   eventTemplates?: EventTemplateDefinition[];
-  eventActions?: EventActionDefinition[];
   triggers: TriggerDefinition[];
-  actions: ActionDefinition[];
   scriptTemplates: ScriptTemplateDefinition[];
   flows: {
+    nodes?: FlowNodeDefinition[];
     links: FlowLink[];
     nodePositions?: Record<string, NodePosition>;
   };

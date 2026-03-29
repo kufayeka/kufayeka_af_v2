@@ -503,9 +503,7 @@ export interface EventStore {
 export interface ProgramDefinition {
   assets?: unknown;
   scriptTemplates?: unknown[];
-  actions?: unknown[];
-  eventActions?: unknown[];
-  flows?: { links?: unknown[] };
+  flows?: { nodes?: unknown[]; links?: unknown[]; nodePositions?: unknown };
   triggers?: unknown[];
   eventTemplates?: unknown[];
 }

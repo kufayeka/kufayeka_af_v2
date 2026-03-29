@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Autocomplete,
   Box,
@@ -29,12 +29,12 @@ import { scrollBothOverflowSx } from "../common/scrollSx";
 import type {
   AssetFrameworkDefinition,
   EventActionBindingDefinition,
-  EventActionDefinition,
+  EventNodeSummary,
   EventTemplateDefinition
 } from "../../types/program";
 
 interface EventDesignerManagerProps {
-  eventActions: EventActionDefinition[];
+  eventActions: EventNodeSummary[];
   eventTemplates: EventTemplateDefinition[];
   assets: AssetFrameworkDefinition;
   selectedEventActionId: string;
@@ -44,13 +44,14 @@ interface EventDesignerManagerProps {
   onAddEventAction: () => void;
   onAddEventActionFromTemplate: (templateId: string) => void;
   onDuplicateEventAction: (id: string) => void;
-  onUpdateEventAction: (id: string, patch: Partial<EventActionDefinition>) => void;
+  onUpdateEventAction: (id: string, patch: Partial<EventNodeSummary>) => void;
   onRenameEventAction: (oldId: string, newId: string) => void;
   onRemoveEventAction: (id: string) => void;
   onAddEventTemplate: () => void;
   onDuplicateEventTemplate: (id: string) => void;
   onRemoveEventTemplate: (id: string) => void;
   onUpdateEventTemplate: (id: string, patch: Partial<EventTemplateDefinition>) => void;
+  templateOnly?: boolean;
 }
 
 interface AssetPathOption {
@@ -59,14 +60,14 @@ interface AssetPathOption {
   templateIds: string[];
 }
 
-function buildEventHierarchyTree(eventActions: EventActionDefinition[], search: string): DataNode[] {
+function buildEventHierarchyTree(eventActions: EventNodeSummary[], search: string): DataNode[] {
   const keyword = search.trim().toLowerCase();
   const filtered = keyword
     ? eventActions.filter((item) => `${item.id} ${item.label ?? ""} ${item.description ?? ""}`.toLowerCase().includes(keyword))
     : eventActions;
 
   const folderChildren = new Map<string, Set<string>>();
-  const eventChildren = new Map<string, EventActionDefinition[]>();
+  const eventChildren = new Map<string, EventNodeSummary[]>();
   const ensureFolder = (path: string) => {
     if (!folderChildren.has(path)) folderChildren.set(path, new Set<string>());
     if (!eventChildren.has(path)) eventChildren.set(path, []);
@@ -261,9 +262,10 @@ export default function EventDesignerManager({
   onAddEventTemplate,
   onDuplicateEventTemplate,
   onRemoveEventTemplate,
-  onUpdateEventTemplate
+  onUpdateEventTemplate,
+  templateOnly = false
 }: EventDesignerManagerProps) {
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState(templateOnly ? 1 : 0);
   const [search, setSearch] = useState("");
   const [selectedTreeKey, setSelectedTreeKey] = useState("");
   const hierarchyTree = useMemo(() => buildEventHierarchyTree(eventActions, search), [eventActions, search]);
@@ -276,14 +278,20 @@ export default function EventDesignerManager({
   const templateVariables = useMemo(() => collectTemplateVariables(selectedTemplate || undefined), [selectedTemplate]);
   const variableTemplateMap = useMemo(() => getVariableAssetTemplateMap(selectedTemplate), [selectedTemplate]);
 
+  useEffect(() => {
+    if (templateOnly && tab !== 1) setTab(1);
+  }, [templateOnly, tab]);
+
   return (
     <Box sx={{ display: "grid", gap: 1 }}>
-      <Paper variant="outlined" sx={{ px: 1, pt: 1 }}>
-        <Tabs value={tab} onChange={(_, value: number) => setTab(value)}>
-          <Tab label="Event Actions" />
-          <Tab label="Event Templates" />
-        </Tabs>
-      </Paper>
+      {!templateOnly && (
+        <Paper variant="outlined" sx={{ px: 1, pt: 1 }}>
+          <Tabs value={tab} onChange={(_, value: number) => setTab(value)}>
+            <Tab label="Event Actions" />
+            <Tab label="Event Templates" />
+          </Tabs>
+        </Paper>
+      )}
 
       {tab === 0 && (
         <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
