@@ -117,6 +117,13 @@ class Runtime {
       const list = normalizeEventTemplates(this.getGlobal("eventTemplates", []));
       return new Map(list.map((item) => [item.id, item]));
     };
+    const nodeConfigById = this.getGlobal<Record<string, Record<string, unknown>>>("flowNodeConfigById", {});
+    const currentNodeConfig = nodeConfigById?.[nodeId] || {};
+    const flowId = String(currentNodeConfig.__flowId || "").trim();
+    const flowDefinitionsById = this.getGlobal<Record<string, { id?: string; name?: string }>>("flowDefinitionsById", {});
+    const resolveFlowVariables = this.getGlobal<
+      ((flowId: string, context: RuntimeNodeContext) => Record<string, unknown>) | undefined
+    >("resolveFlowVariables", undefined);
     const resolveEventRange = async (
       pattern?: string,
       from?: string,
@@ -165,7 +172,7 @@ class Runtime {
       };
     };
 
-    return {
+    const context = {
       nodeId,
       global: {
         get: <T = unknown>(key: string, defaultValue?: T): T => this.getGlobal<T>(key, defaultValue),
@@ -322,7 +329,17 @@ class Runtime {
           return await manager.testConnection();
         }
       },
+    } as RuntimeNodeContext;
+
+    context.flow = {
+      id: flowId,
+      name: String(flowDefinitionsById?.[flowId]?.name || flowId),
+      variables: flowId && typeof resolveFlowVariables === "function"
+        ? (resolveFlowVariables(flowId, context) || {})
+        : {}
     };
+
+    return context;
   }
 
   private getNodeState(nodeId: string): NodeExecutionState {

@@ -732,7 +732,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       </Paper>
 
       {mainTab === 0 && (
-        <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: "500px 1fr", gap: 1.25 }}>
           <Paper sx={{ p: 1.25, maxHeight: "74vh", ...scrollBothOverflowSx }}>
             <Box sx={{ display: "flex", gap: 0.75, mb: 1 }}>
               <Button

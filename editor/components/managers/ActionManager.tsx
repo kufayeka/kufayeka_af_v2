@@ -42,6 +42,7 @@ interface ActionManagerProps {
   actions: ScriptNodeSummary[];
   scriptTemplates: ScriptTemplateDefinition[];
   assets: AssetFrameworkDefinition;
+  flowVariableNames?: string[];
   selectedActionId: string;
   onSelectAction: (id: string) => void;
   onAddAction: (parentPath?: string) => void;
@@ -303,6 +304,7 @@ export default function ActionManager({
   actions,
   scriptTemplates,
   assets,
+  flowVariableNames = [],
   selectedActionId,
   onSelectAction,
   onAddAction,
@@ -341,17 +343,31 @@ export default function ActionManager({
   const isSelectedActionDuplicationBlocked = isTemplateDuplicationBlocked;
   const selectedActionBindingNames = useMemo(
     () =>
-      (selectedActionTemplate?.variableBindings || [])
-        .map((binding) => String(binding.name || "").trim())
-        .filter((name) => name.length > 0),
-    [selectedActionTemplate?.variableBindings]
+      Array.from(
+        new Set(
+          [
+            ...(selectedActionTemplate?.variableBindings || [])
+              .map((binding) => String(binding.name || "").trim())
+              .filter((name) => name.length > 0),
+            ...flowVariableNames
+          ]
+        )
+      ),
+    [selectedActionTemplate?.variableBindings, flowVariableNames]
   );
   const selectedTemplateBindingNames = useMemo(
     () =>
-      (selectedTemplate?.variableBindings || [])
-        .map((binding) => String(binding.name || "").trim())
-        .filter((name) => name.length > 0),
-    [selectedTemplate?.variableBindings]
+      Array.from(
+        new Set(
+          [
+            ...(selectedTemplate?.variableBindings || [])
+              .map((binding) => String(binding.name || "").trim())
+              .filter((name) => name.length > 0),
+            ...flowVariableNames
+          ]
+        )
+      ),
+    [selectedTemplate?.variableBindings, flowVariableNames]
   );
   const hierarchyTree = useMemo(() => buildHierarchyTree(actions, search), [actions, search]);
   const assetPaths = useMemo(() => getAssetPathOptions(assets), [assets]);
@@ -1131,14 +1147,15 @@ export default function ActionManager({
                                   <MenuItem value="static_object">static_object</MenuItem>
                                   <MenuItem value="asset">asset</MenuItem>
                                   <MenuItem value="attribute">attribute</MenuItem>
+                                  <MenuItem value="flow_variable">flow_variable</MenuItem>
                                 </Select>
                               </FormControl>
                             </TableCell>
                             <TableCell>
-                              {(binding.source === "attribute" || binding.source === "asset") && (
+                              {(binding.source === "attribute" || binding.source === "asset" || binding.source === "flow_variable") && (
                                 <Autocomplete
                                   freeSolo
-                                  options={binding.source === "asset" ? assetPaths : assetAttributePaths}
+                                  options={binding.source === "asset" ? assetPaths : binding.source === "attribute" ? assetAttributePaths : flowVariableNames}
                                   value={binding.attributePath ?? ""}
                                   onInputChange={(_e, value) =>
                                     onUpdateScriptTemplate(selectedTemplate.id, {

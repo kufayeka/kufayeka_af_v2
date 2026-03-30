@@ -33,6 +33,22 @@ interface ProgramFlowNode {
   config?: Record<string, unknown>;
 }
 
+interface ProgramFlowDefinition {
+  id: string;
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  variables?: Array<{
+    name?: string;
+    source?: string;
+    staticValue?: unknown;
+    attributePath?: string;
+  }>;
+  nodes?: ProgramFlowNode[];
+  links?: ProgramLink[];
+  nodePositions?: Record<string, unknown>;
+}
+
 interface ProgramLink {
   from: string;
   to: string;
@@ -67,6 +83,55 @@ function createActionHandler(action: ProgramAction, context: Record<string, unkn
   throw new Error(`Unsupported action type "${action.type}"`);
 }
 
+function resolveFlowVariableValue(
+  variable: { source?: string; staticValue?: unknown; attributePath?: string },
+  runtimeContext: Parameters<RuntimeNodeHandler>[2]
+): unknown {
+  const source = String(variable?.source || "static_string");
+  const path = String(variable?.attributePath || "").trim();
+  if (source === "asset") {
+    if (!path) return null;
+    const matches = runtimeContext.asset.query(path).filter((item) => item.kind === "asset");
+    if (matches.length === 0) return null;
+    if (matches.length === 1) return matches[0];
+    return matches;
+  }
+  if (source === "attribute") {
+    if (!path) return null;
+    const matches = runtimeContext.asset.query(path).filter((item) => item.kind === "attribute");
+    if (matches.length === 0) return null;
+    if (matches.length === 1) return matches[0];
+    return matches;
+  }
+  if (source === "static_number") return Number(variable?.staticValue || 0);
+  if (source === "static_boolean") return variable?.staticValue === true || String(variable?.staticValue).toLowerCase() === "true";
+  if (source === "static_array") return Array.isArray(variable?.staticValue) ? variable?.staticValue : [];
+  if (source === "static_object") return variable?.staticValue && typeof variable.staticValue === "object" ? variable.staticValue : {};
+  return variable?.staticValue ?? "";
+}
+
+function buildProgramFlows(program: ProgramDefinition): ProgramFlowDefinition[] {
+  if (Array.isArray(program.flowDefinitions) && program.flowDefinitions.length > 0) {
+    return program.flowDefinitions as ProgramFlowDefinition[];
+  }
+  return [
+    {
+      id: String((program.flows as { id?: unknown } | undefined)?.id || "flow_main"),
+      name: String((program.flows as { name?: unknown } | undefined)?.name || "Main Flow"),
+      enabled: (program.flows as { enabled?: unknown } | undefined)?.enabled !== false,
+      variables: Array.isArray((program.flows as { variables?: unknown } | undefined)?.variables)
+        ? ((program.flows as { variables?: unknown[] }).variables as ProgramFlowDefinition["variables"])
+        : [],
+      nodes: Array.isArray(program.flows?.nodes) ? (program.flows?.nodes as ProgramFlowNode[]) : [],
+      links: Array.isArray(program.flows?.links) ? (program.flows?.links as ProgramLink[]) : [],
+      nodePositions:
+        program.flows?.nodePositions && typeof program.flows.nodePositions === "object"
+          ? (program.flows.nodePositions as Record<string, unknown>)
+          : {}
+    }
+  ];
+}
+
 function registerFlowNodes(runtime: Runtime, nodes: unknown[] = []): void {
   const scriptTemplates = runtime.getGlobal("scriptTemplates", []);
   const templateById = new Map(
@@ -78,6 +143,9 @@ function registerFlowNodes(runtime: Runtime, nodes: unknown[] = []): void {
       String((template as { id?: unknown }).id || ""),
       template as any
     ])
+  );
+  const flowDefinitionsById = new Map(
+    Object.entries(runtime.getGlobal<Record<string, ProgramFlowDefinition>>("flowDefinitionsById", {}))
   );
 
   const nodeConfigById: Record<string, Record<string, unknown>> = {};
@@ -119,7 +187,7 @@ function registerFlowNodes(runtime: Runtime, nodes: unknown[] = []): void {
               ? (node.config.templateBindingOverrides as Record<string, unknown>)
               : {}
         },
-        { templateById }
+        { templateById, flowById: flowDefinitionsById as any }
       );
       runtime.addNode(node.id, handler);
       continue;
@@ -398,8 +466,37 @@ export function startProgram(runtime: Runtime, program: ProgramDefinition): () =
   assetStorage.replace(assets);
   runtime.setGlobal("eventTemplates", normalizeEventTemplates(program.eventTemplates || []));
   runtime.setGlobal("scriptTemplates", Array.isArray(program.scriptTemplates) ? program.scriptTemplates : []);
-  registerFlowNodes(runtime, (program.flows && program.flows.nodes) || []);
-  registerLinks(runtime, (program.flows && program.flows.links) || []);
+  const programFlows = buildProgramFlows(program).filter((flow) => flow.enabled !== false);
+  const flatNodes = programFlows.flatMap((flow) =>
+    ((flow.nodes || []) as ProgramFlowNode[]).map((node) => ({
+      ...node,
+      config: {
+        ...((node.config && typeof node.config === "object") ? node.config : {}),
+        __flowId: flow.id
+      }
+    }))
+  );
+  const flatLinks = programFlows.flatMap((flow) => (flow.links || []) as ProgramLink[]);
+  runtime.setGlobal(
+    "flowDefinitionsById",
+    Object.fromEntries(programFlows.map((flow) => [flow.id, flow]))
+  );
+  runtime.setGlobal(
+    "resolveFlowVariables",
+    (flowId: string, context: Parameters<RuntimeNodeHandler>[2]) => {
+      const flow = programFlows.find((item) => item.id === flowId);
+      if (!flow) return {};
+      const resolved: Record<string, unknown> = {};
+      for (const [index, variable] of (flow.variables || []).entries()) {
+        const key = String(variable?.name || "").trim();
+        if (!key) continue;
+        resolved[key] = resolveFlowVariableValue((flow.variables || [])[index] || {}, context);
+      }
+      return resolved;
+    }
+  );
+  registerFlowNodes(runtime, flatNodes);
+  registerLinks(runtime, flatLinks);
   const stops = startTriggers(runtime, program.triggers || []);
 
   return () => {

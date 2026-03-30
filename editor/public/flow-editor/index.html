@@ -10,10 +10,33 @@
     <div id="app" class="flow-shell">
       <aside class="palette">
         <div class="palette-header">
-          <div class="palette-title">Available Nodes</div>
-          <input id="palette-search" class="palette-search" type="search" placeholder="Search node" />
+          <div class="palette-topbar">
+            <div class="palette-tabs">
+              <button id="tab-available" class="palette-tab active" type="button">Available Nodes</button>
+              <button id="tab-flows" class="palette-tab" type="button">Flows</button>
+            </div>
+            <button id="palette-collapse" class="palette-collapse" type="button" title="Collapse sidebar">Collapse</button>
+          </div>
+          <div id="available-panel" class="palette-panel active">
+            <div class="palette-title">Available Nodes</div>
+            <input id="palette-search" class="palette-search" type="search" placeholder="Search node" />
+          </div>
+          <div id="flows-panel" class="palette-panel">
+            <div class="palette-title">Flows</div>
+          </div>
         </div>
-        <div id="palette-list" class="palette-list"></div>
+        <div id="available-list" class="palette-panel-content active">
+          <div id="palette-list" class="palette-list"></div>
+        </div>
+        <div id="flows-content" class="palette-panel-content">
+          <div class="flows-shell">
+            <div class="flows-toolbar">
+              <button id="flow-add" type="button">New Flow</button>
+            </div>
+            <div id="flow-list" class="flow-list"></div>
+            <div id="flow-config" class="flow-config"></div>
+          </div>
+        </div>
       </aside>
       <main class="editor">
         <div class="toolbar">

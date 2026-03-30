@@ -46,6 +46,7 @@ interface FlowNodeInspectorDrawerProps {
   scriptTemplates: ScriptTemplateDefinition[];
   eventTemplates: EventTemplateDefinition[];
   assets: AssetFrameworkDefinition;
+  flowVariableNames?: string[];
   onClose: () => void;
   onRenameNode: (oldId: string, newId: string) => void;
   onUpdateNode: (id: string, patch: Partial<FlowNodeDefinition>) => void;
@@ -166,12 +167,14 @@ function ScriptNodeInspector({
   node,
   scriptTemplates,
   assets,
+  flowVariableNames = [],
   onRenameNode,
   onUpdateNode
 }: {
   node: FlowNodeDefinition;
   scriptTemplates: ScriptTemplateDefinition[];
   assets: AssetFrameworkDefinition;
+  flowVariableNames?: string[];
   onRenameNode: (oldId: string, newId: string) => void;
   onUpdateNode: (id: string, patch: Partial<FlowNodeDefinition>) => void;
 }) {
@@ -201,10 +204,17 @@ function ScriptNodeInspector({
 
   const bindingNames = useMemo(
     () =>
-      (selectedTemplate?.variableBindings || [])
-        .map((binding) => String(binding.name || "").trim())
-        .filter(Boolean),
-    [selectedTemplate?.variableBindings]
+      Array.from(
+        new Set(
+          [
+            ...(selectedTemplate?.variableBindings || [])
+              .map((binding) => String(binding.name || "").trim())
+              .filter(Boolean),
+            ...flowVariableNames
+          ].filter(Boolean)
+        )
+      ),
+    [selectedTemplate?.variableBindings, flowVariableNames]
   );
 
   const scheduleSaveScript = (next: string) => {
@@ -317,10 +327,10 @@ function ScriptNodeInspector({
                       <TableCell>{binding.name}</TableCell>
                       <TableCell>{binding.source}</TableCell>
                       <TableCell>
-                        {effective.source === "attribute" || effective.source === "asset" ? (
+                        {effective.source === "attribute" || effective.source === "asset" || effective.source === "flow_variable" ? (
                           <Autocomplete
                             freeSolo
-                            options={effective.source === "asset" ? assetPaths : assetAttributePaths}
+                            options={effective.source === "asset" ? assetPaths : effective.source === "attribute" ? assetAttributePaths : flowVariableNames}
                             value={effective.attributePath ?? ""}
                             disabled={!canOverride}
                             onInputChange={(_e, value) => {
@@ -452,6 +462,7 @@ function EventNodeInspector({
   closeNode,
   eventTemplates,
   assets,
+  flowVariableNames = [],
   onRenameNode,
   onUpdateNode
 }: {
@@ -459,6 +470,7 @@ function EventNodeInspector({
   closeNode: FlowNodeDefinition | null;
   eventTemplates: EventTemplateDefinition[];
   assets: AssetFrameworkDefinition;
+  flowVariableNames?: string[];
   onRenameNode: (oldId: string, newId: string) => void;
   onUpdateNode: (id: string, patch: Partial<FlowNodeDefinition>) => void;
 }) {
@@ -607,6 +619,7 @@ function EventNodeInspector({
                         >
                           <MenuItem value="asset">asset</MenuItem>
                           <MenuItem value="attribute">attribute</MenuItem>
+                          <MenuItem value="flow_variable">flow_variable</MenuItem>
                           <MenuItem value="msg_path">msg_path</MenuItem>
                           <MenuItem value="static_string">static_string</MenuItem>
                           <MenuItem value="static_number">static_number</MenuItem>
@@ -614,10 +627,10 @@ function EventNodeInspector({
                         </Select>
                       </TableCell>
                       <TableCell>
-                        {effectiveSource === "asset" || effectiveSource === "attribute" ? (
+                        {effectiveSource === "asset" || effectiveSource === "attribute" || effectiveSource === "flow_variable" ? (
                           <Autocomplete
                             freeSolo
-                            options={effectiveSource === "asset" ? assetPaths : assetAttributePaths}
+                            options={effectiveSource === "asset" ? assetPaths : effectiveSource === "attribute" ? assetAttributePaths : flowVariableNames}
                             value={binding.attributePath ?? ""}
                             onInputChange={(_e, value) => commitBinding({ attributePath: value })}
                             renderInput={(params) => <TextField {...params} size="small" />}
@@ -675,6 +688,7 @@ export default function FlowNodeInspectorDrawer(props: FlowNodeInspectorDrawerPr
     scriptTemplates,
     eventTemplates,
     assets,
+    flowVariableNames = [],
     onClose,
     onRenameNode,
     onUpdateNode
@@ -716,6 +730,7 @@ export default function FlowNodeInspectorDrawer(props: FlowNodeInspectorDrawerPr
             node={actionNode}
             scriptTemplates={scriptTemplates}
             assets={assets}
+            flowVariableNames={flowVariableNames}
             onRenameNode={onRenameNode}
             onUpdateNode={onUpdateNode}
           />
@@ -726,6 +741,7 @@ export default function FlowNodeInspectorDrawer(props: FlowNodeInspectorDrawerPr
             closeNode={closeNode}
             eventTemplates={eventTemplates}
             assets={assets}
+            flowVariableNames={flowVariableNames}
             onRenameNode={onRenameNode}
             onUpdateNode={onUpdateNode}
           />

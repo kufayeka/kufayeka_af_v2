@@ -304,7 +304,7 @@ export interface EventTemplateDefinition {
 }
 
 export interface EventActionBinding {
-  source: "asset" | "attribute" | "msg_path" | "static_number" | "static_string" | "static_boolean" | "static_array" | "static_object";
+  source: "asset" | "attribute" | "flow_variable" | "msg_path" | "static_number" | "static_string" | "static_boolean" | "static_array" | "static_object";
   staticValue?: unknown;
   attributePath?: string;
 }
@@ -428,6 +428,11 @@ export interface RuntimeNodeContext {
   asset: RuntimeAssetApi;
   eventSys: RuntimeEventApi;
   db: RuntimeDbApi;
+  flow?: {
+    id: string;
+    name: string;
+    variables: Record<string, unknown>;
+  };
 }
 
 export type RuntimeNodeHandler = (
@@ -503,7 +508,9 @@ export interface EventStore {
 export interface ProgramDefinition {
   assets?: unknown;
   scriptTemplates?: unknown[];
-  flows?: { nodes?: unknown[]; links?: unknown[]; nodePositions?: unknown };
+  activeFlowId?: unknown;
+  flowDefinitions?: unknown[];
+  flows?: { id?: unknown; name?: unknown; enabled?: unknown; variables?: unknown; nodes?: unknown[]; links?: unknown[]; nodePositions?: unknown };
   triggers?: unknown[];
   eventTemplates?: unknown[];
 }

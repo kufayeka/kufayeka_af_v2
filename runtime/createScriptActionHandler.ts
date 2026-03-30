@@ -19,6 +19,12 @@ interface ScriptTemplate {
   variableBindings?: VariableBinding[];
 }
 
+interface FlowDefinition {
+  id: string;
+  name?: string;
+  variables?: VariableBinding[];
+}
+
 interface ScriptAction {
   id: string;
   templateId?: string;
@@ -159,10 +165,26 @@ async function resolveBindingValue(binding: VariableBinding, context: RuntimeNod
   return coerceStaticValue(staticType, binding?.staticValue);
 }
 
+async function resolveFlowVariableMap(
+  flowId: string,
+  context: RuntimeNodeContext,
+  options: { flowById?: Map<string, FlowDefinition> } = {}
+): Promise<Record<string, unknown>> {
+  const flow = flowId ? options.flowById?.get(flowId) : null;
+  if (!flow || !Array.isArray(flow.variables)) return {};
+  const resolved: Record<string, unknown> = {};
+  for (const variable of flow.variables) {
+    const key = String(variable?.name || "").trim();
+    if (!key) continue;
+    resolved[key] = await resolveBindingValue(variable, context);
+  }
+  return resolved;
+}
+
 async function buildResolvedBindings(
   action: ScriptAction,
   context: RuntimeNodeContext,
-  options: { templateById?: Map<string, ScriptTemplate> } = {}
+  options: { templateById?: Map<string, ScriptTemplate>; flowById?: Map<string, FlowDefinition> } = {}
 ): Promise<Record<string, unknown>> {
   const templateById = options.templateById || new Map<string, ScriptTemplate>();
   const template = action.templateId ? templateById.get(action.templateId) : null;
@@ -182,14 +204,20 @@ async function buildResolvedBindings(
       canOverride && overrideCandidate && typeof overrideCandidate === "object"
         ? { ...binding, ...overrideCandidate, name: key }
         : binding;
-    resolved[key] = await resolveBindingValue(effectiveBinding, context);
+    if (effectiveBinding.source === "flow_variable") {
+      const flowId = String((action.config && action.config.__flowId) || "").trim();
+      const flowVars = await resolveFlowVariableMap(flowId, context, options);
+      resolved[key] = flowVars[String(effectiveBinding.attributePath || "").trim()] ?? null;
+    } else {
+      resolved[key] = await resolveBindingValue(effectiveBinding, context);
+    }
   }
   return resolved;
 }
 
 export default function createScriptActionHandler(
   action: ScriptAction,
-  options: { templateById?: Map<string, ScriptTemplate> } = {}
+  options: { templateById?: Map<string, ScriptTemplate>; flowById?: Map<string, FlowDefinition> } = {}
 ): RuntimeNodeHandler {
   const templateById = options.templateById || new Map<string, ScriptTemplate>();
   const template = action.templateId ? templateById.get(action.templateId) : null;
@@ -201,6 +229,8 @@ export default function createScriptActionHandler(
     .replace(/(?<!\bawait\s)helpers\.http\s*\(/g, "await helpers.http(");
 const scriptWithBindings = `
 const __bindings = bindings && typeof bindings === "object" ? bindings : {};
+const flow = __flow && typeof __flow === "object" ? __flow : { id: "", name: "", variables: {} };
+const flowVars = flow && flow.variables && typeof flow.variables === "object" ? flow.variables : {};
 const global = context && context.global ? context.global : null;
 const asset = context && context.asset ? context.asset : null;
 const __eventSysRaw = context && context.eventSys ? context.eventSys : null;
@@ -236,8 +266,10 @@ const eventSys = __eventSysRaw
       }
     }
   : null;
+with (flowVars) {
 with (__bindings) {
 ${script}
+}
 }
 `;
   const compiled = new AsyncFunction(
@@ -247,6 +279,7 @@ ${script}
     "helpers",
     "config",
     "bindings",
+    "__flow",
     scriptWithBindings
   );
 
@@ -260,6 +293,8 @@ ${script}
       now: () => new Date().toISOString(),
     };
 
+    const flowId = String((action.config && action.config.__flowId) || "").trim();
+    const flowVars = await resolveFlowVariableMap(flowId, context, options);
     const bindings = await buildResolvedBindings(action, context, options);
     const timeoutMs = Math.max(
       0,
@@ -278,7 +313,12 @@ ${script}
             ? action.eventTemplateOverrides
             : undefined
         },
-        bindings
+        bindings,
+        {
+          id: flowId,
+          name: String(context.flow?.name || flowId),
+          variables: flowVars
+        }
       )
     ) as Promise<unknown>;
     if (timeoutMs > 0) {

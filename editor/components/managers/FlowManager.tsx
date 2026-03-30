@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, CircularProgress } from "@mui/material";
-import type { EventTemplateDefinition, FlowLink, NodePosition, ScriptTemplateDefinition } from "../../types/program";
+import type { EventTemplateDefinition, FlowDefinition, FlowLink, FlowVariableDefinition, NodePosition, ScriptTemplateDefinition } from "../../types/program";
 
 export type FlowPaletteItem =
   | { type: "existing-node"; nodeId: string }
@@ -9,6 +9,9 @@ export type FlowPaletteItem =
   | { type: "event-template-close"; templateId: string; label: string };
 
 interface FlowManagerProps {
+  flows?: FlowDefinition[];
+  selectedFlowId?: string;
+  activeFlowVariables?: FlowVariableDefinition[];
   triggerIds: string[];
   actionIds: string[];
   eventNodeIds?: string[];
@@ -34,6 +37,11 @@ interface FlowManagerProps {
   onNodePositionChange?: (nodeId: string, position: NodePosition) => void;
   onConnectNodes?: (fromId: string, toId: string, fromPort: string) => void;
   onDropPaletteItem?: (item: FlowPaletteItem, position: NodePosition) => void;
+  onSelectFlow?: (flowId: string) => void;
+  onAddFlow?: () => void;
+  onDuplicateFlow?: (flowId: string) => void;
+  onRemoveFlow?: (flowId: string) => void;
+  onUpdateFlow?: (flowId: string, patch: Partial<FlowDefinition>) => void;
 }
 
 type FlowNodeKind = "trigger" | "action" | "event";
@@ -121,7 +129,15 @@ export default function FlowManager({
   onNodePositionDragStart,
   onNodePositionChange,
   onConnectNodes,
-  onDropPaletteItem
+  onDropPaletteItem,
+  flows = [],
+  selectedFlowId = "",
+  activeFlowVariables = [],
+  onSelectFlow,
+  onAddFlow,
+  onDuplicateFlow,
+  onRemoveFlow,
+  onUpdateFlow
 }: FlowManagerProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
@@ -211,7 +227,21 @@ export default function FlowManager({
           links,
           nodePositions,
           paletteItems,
-          zoom: zoom ?? 0.5
+          zoom: zoom ?? 0.5,
+          flows: flows.map((flow) => ({
+            id: flow.id,
+            name: flow.name,
+            description: flow.description || "",
+            enabled: flow.enabled !== false,
+            nodeCount: (flow.nodes || []).length,
+            variableCount: (flow.variables || []).length
+          })),
+          selectedFlowId,
+          activeFlowConfig: {
+            id: selectedFlowId,
+            variables: activeFlowVariables,
+            ...(flows.find((flow) => flow.id === selectedFlowId) || {})
+          }
         }
       },
       "*"
@@ -307,6 +337,36 @@ export default function FlowManager({
         if (kind === "trigger") onTriggerNodeDoubleClick?.(nodeId);
         else if (kind === "action") onActionNodeDoubleClick?.(nodeId);
         else onEventNodeDoubleClick?.(nodeId);
+        return;
+      }
+
+      if (data.type === "select-flow") {
+        const flowId = String(data.payload?.flowId || "");
+        if (flowId) onSelectFlow?.(flowId);
+        return;
+      }
+
+      if (data.type === "add-flow") {
+        onAddFlow?.();
+        return;
+      }
+
+      if (data.type === "duplicate-flow") {
+        const flowId = String(data.payload?.flowId || selectedFlowId);
+        if (flowId) onDuplicateFlow?.(flowId);
+        return;
+      }
+
+      if (data.type === "remove-flow") {
+        const flowId = String(data.payload?.flowId || selectedFlowId);
+        if (flowId) onRemoveFlow?.(flowId);
+        return;
+      }
+
+      if (data.type === "update-flow") {
+        const flowId = String(data.payload?.flowId || selectedFlowId);
+        const patch = (data.payload?.patch as Partial<FlowDefinition> | undefined) || undefined;
+        if (flowId && patch) onUpdateFlow?.(flowId, patch);
       }
     };
 
@@ -318,13 +378,19 @@ export default function FlowManager({
     onConnectNodes,
     onDeleteNodes,
     onDropPaletteItem,
+    onAddFlow,
+    onDuplicateFlow,
     onDuplicateNodes,
     onEventNodeDoubleClick,
     onNodePositionChange,
     onNodePositionDragStart,
+    onRemoveFlow,
     onRemoveLink,
+    onSelectFlow,
     onTriggerNodeDoubleClick,
+    onUpdateFlow,
     onZoomChange,
+    selectedFlowId,
     zoom
   ]);
 

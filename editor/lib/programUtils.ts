@@ -7,6 +7,8 @@ import type {
   EventTemplateDefinition,
   EventTemplatePathSegmentDefinition,
   FlowLink,
+  FlowDefinition,
+  FlowVariableDefinition,
   FlowNodeDefinition,
   NodePosition,
   Program,
@@ -41,6 +43,45 @@ function normalizeScriptOutputs(raw: unknown): ScriptOutputDefinition[] {
   return normalized.length > 0 ? normalized : [{ name: "out", order: 1, description: "" }];
 }
 
+function normalizeFlowVariable(raw: unknown, index: number): FlowVariableDefinition | null {
+  if (!raw || typeof raw !== "object") return null;
+  const typed = raw as {
+    name?: unknown;
+    order?: unknown;
+    description?: unknown;
+    source?: unknown;
+    staticValue?: unknown;
+    attributePath?: unknown;
+  };
+  const name = String(typed.name || "").trim();
+  if (!name) return null;
+  const source = String(typed.source || "static_string");
+  return {
+    name,
+    order: Math.max(1, Number(typed.order || index + 1) || index + 1),
+    description: String(typed.description || ""),
+    source:
+      source === "asset" ||
+      source === "attribute" ||
+      source === "static_number" ||
+      source === "static_boolean" ||
+      source === "static_array" ||
+      source === "static_object"
+        ? (source as FlowVariableDefinition["source"])
+        : "static_string",
+    staticValue: typed.staticValue ?? "",
+    attributePath: String(typed.attributePath ?? "")
+  };
+}
+
+function normalizeFlowVariables(raw: unknown): FlowVariableDefinition[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => normalizeFlowVariable(item, index))
+    .filter((item): item is FlowVariableDefinition => Boolean(item))
+    .sort((a, b) => a.order - b.order);
+}
+
 export function getEventActionOpenNodeId(id: string): string {
   return `event.open.${id}`;
 }
@@ -50,13 +91,37 @@ export function getEventActionCloseNodeId(id: string): string {
 }
 
 export function sanitizeProgramStructure(program: Program): Program {
+  const flowDefinitions = Array.isArray(program.flowDefinitions) ? program.flowDefinitions : [];
+  const preferredActiveFlowId =
+    String(program.activeFlowId ?? program.flows?.activeFlowId ?? "").trim() ||
+    String(flowDefinitions[0]?.id ?? "").trim() ||
+    "flow_main";
+  const activeFlow =
+    flowDefinitions.find((flow) => String(flow.id || "").trim() === preferredActiveFlowId) ||
+    flowDefinitions[0] || {
+      id: preferredActiveFlowId,
+      name: "Main Flow",
+      description: "",
+      enabled: true,
+      variables: [],
+      nodes: [],
+      links: [],
+      nodePositions: {}
+    };
   return {
     ...program,
+    activeFlowId: activeFlow.id,
     flows: {
       ...(program.flows || { links: [] }),
-      nodes: (Array.isArray(program.flows?.nodes) ? program.flows.nodes : []).map((node) => ({ ...node })),
-      links: ((program.flows && program.flows.links) || []).map((link) => ({ ...link })),
-      nodePositions: { ...((program.flows && program.flows.nodePositions) || {}) }
+      id: activeFlow.id,
+      name: activeFlow.name,
+      description: activeFlow.description || "",
+      enabled: activeFlow.enabled !== false,
+      variables: Array.isArray(activeFlow.variables) ? activeFlow.variables.map((item) => ({ ...item })) : [],
+      activeFlowId: activeFlow.id,
+      nodes: (Array.isArray(activeFlow.nodes) ? activeFlow.nodes : []).map((node) => ({ ...node })),
+      links: (activeFlow.links || []).map((link) => ({ ...link })),
+      nodePositions: { ...(activeFlow.nodePositions || {}) }
     }
   };
 }
@@ -262,6 +327,8 @@ export function normalizeProgram(program: Program): Program {
         ? "asset"
         : rawSource === "attribute" || rawSource === "assetAttribute"
         ? "attribute"
+        : rawSource === "flow_variable"
+          ? "flow_variable"
         : rawSource === "msg_path"
           ? "msg_path"
         : rawSource === "static_number" ||
@@ -564,8 +631,153 @@ export function normalizeProgram(program: Program): Program {
         .filter((item) => item.id.length > 0)
     : [];
 
+  const normalizeFlowNode = (node: unknown): FlowNodeDefinition | null => {
+    if (!node || typeof node !== "object") return null;
+    const rawNode = node as Record<string, unknown>;
+    const rawConfig =
+      rawNode.config && typeof rawNode.config === "object"
+        ? (rawNode.config as Record<string, unknown>)
+        : {};
+    const rawKind = String(rawNode.kind || "");
+    const normalizedKind =
+      rawKind === "trigger"
+        ? ("trigger" as const)
+        : rawKind === "event_open"
+          ? ("event_open" as const)
+          : rawKind === "event_close"
+            ? ("event_close" as const)
+            : ("action" as const);
+    const normalizedConfig =
+      normalizedKind === "action"
+        ? {
+            ...rawConfig,
+            description: String(rawConfig.description ?? ""),
+            script: String(rawConfig.script ?? "send(msg);"),
+            eventTemplateId: String(rawConfig.eventTemplateId ?? ""),
+            eventTemplateOverrides:
+              rawConfig.eventTemplateOverrides && typeof rawConfig.eventTemplateOverrides === "object"
+                ? rawConfig.eventTemplateOverrides
+                : {},
+            templateBindingOverrides:
+              rawConfig.templateBindingOverrides && typeof rawConfig.templateBindingOverrides === "object"
+                ? Object.fromEntries(
+                    Object.entries(rawConfig.templateBindingOverrides).map(([key, value]) => {
+                      if (!value || typeof value !== "object") return [key, normalizeBinding({ name: key })];
+                      return [key, normalizeBinding({ ...(value as ScriptVariableBindingDefinition), name: key })];
+                    })
+                  )
+                : {}
+          }
+        : normalizedKind === "event_open" || normalizedKind === "event_close"
+          ? {
+              ...rawConfig,
+              description: String(rawConfig.description ?? ""),
+              templateOverrides:
+                rawConfig.templateOverrides && typeof rawConfig.templateOverrides === "object"
+                  ? rawConfig.templateOverrides
+                  : {},
+              bindings:
+                rawConfig.bindings && typeof rawConfig.bindings === "object"
+                  ? Object.fromEntries(
+                      Object.entries(rawConfig.bindings).map(([key, value]) => {
+                        if (!value || typeof value !== "object") return [key, normalizeEventActionBinding({})];
+                        return [key, normalizeEventActionBinding(value as EventActionBindingDefinition)];
+                      })
+                    )
+                  : {},
+              openNotes: String(rawConfig.openNotes ?? ""),
+              closeNotes: String(rawConfig.closeNotes ?? "")
+            }
+          : {
+              ...rawConfig,
+              type: String(rawConfig.type ?? "interval"),
+              watchPath: String(rawConfig.watchPath ?? ""),
+              intervalMs: Math.max(1, Number(rawConfig.intervalMs) || 1000),
+              cronExpression: String(rawConfig.cronExpression ?? ""),
+              timezone: String(rawConfig.timezone ?? ""),
+              activeFrom: String(rawConfig.activeFrom ?? ""),
+              activeTo: String(rawConfig.activeTo ?? "")
+            };
+    const id = String(rawNode.id || "").trim();
+    if (!id) return null;
+    return {
+      id,
+      kind: normalizedKind,
+      refId: String(rawNode.refId || "").trim(),
+      label: String(rawNode.label || "").trim(),
+      enabled: rawNode.enabled !== false,
+      templateId: String(rawNode.templateId || "").trim(),
+      config: normalizedConfig
+    };
+  };
+
+  const normalizeFlowDefinition = (flow: unknown, index: number): FlowDefinition | null => {
+    if (!flow || typeof flow !== "object") return null;
+    const typed = flow as Record<string, unknown>;
+    const id = String(typed.id || "").trim() || `flow_${index + 1}`;
+    const nodes = Array.isArray(typed.nodes)
+      ? typed.nodes.map((node) => normalizeFlowNode(node)).filter((node): node is FlowNodeDefinition => Boolean(node))
+      : [];
+    const links = Array.isArray(typed.links)
+      ? typed.links.map((link) => ({ ...(link as FlowLink), enabled: (link as FlowLink).enabled !== false }))
+      : [];
+    const nodePositions =
+      typed.nodePositions && typeof typed.nodePositions === "object"
+        ? ({ ...(typed.nodePositions as Record<string, NodePosition>) })
+        : {};
+    return {
+      id,
+      name: String(typed.name || "").trim() || `Flow ${index + 1}`,
+      description: String(typed.description || ""),
+      enabled: typed.enabled !== false,
+      variables: normalizeFlowVariables(typed.variables),
+      nodes,
+      links,
+      nodePositions
+    };
+  };
+
+  const normalizedFlowDefinitions =
+    Array.isArray(program.flowDefinitions) && program.flowDefinitions.length > 0
+      ? program.flowDefinitions
+          .map((flow, index) => normalizeFlowDefinition(flow, index))
+          .filter((flow): flow is FlowDefinition => Boolean(flow))
+      : [
+          {
+            id: String((program.flows as { id?: unknown } | undefined)?.id || "flow_main").trim() || "flow_main",
+            name: String((program.flows as { name?: unknown } | undefined)?.name || "Main Flow").trim() || "Main Flow",
+            description: String((program.flows as { description?: unknown } | undefined)?.description || ""),
+            enabled: (program.flows as { enabled?: unknown } | undefined)?.enabled !== false,
+            variables: normalizeFlowVariables((program.flows as { variables?: unknown } | undefined)?.variables),
+            nodes: Array.isArray(program.flows?.nodes)
+              ? (program.flows?.nodes || []).map((node) => normalizeFlowNode(node)).filter((node): node is FlowNodeDefinition => Boolean(node))
+              : [],
+            links: ((program.flows && program.flows.links) || []).map((link) => ({ ...link, enabled: link.enabled !== false })),
+            nodePositions: { ...((program.flows && program.flows.nodePositions) || {}) }
+          }
+        ];
+
+  const activeFlowId =
+    String(program.activeFlowId ?? (program.flows as { activeFlowId?: unknown } | undefined)?.activeFlowId ?? "").trim() ||
+    normalizedFlowDefinitions[0]?.id ||
+    "flow_main";
+  const activeFlow =
+    normalizedFlowDefinitions.find((flow) => flow.id === activeFlowId) ||
+    normalizedFlowDefinitions[0] || {
+      id: "flow_main",
+      name: "Main Flow",
+      description: "",
+      enabled: true,
+      variables: [],
+      nodes: [],
+      links: [],
+      nodePositions: {}
+    };
+
   return sanitizeProgramStructure({
     ...program,
+    activeFlowId: activeFlow.id,
+    flowDefinitions: normalizedFlowDefinitions,
     eventTemplates: normalizedEventTemplates,
     triggers: (program.triggers || []).map(
       (trigger): TriggerDefinition => {
@@ -615,90 +827,15 @@ export function normalizeProgram(program: Program): Program {
       })
     ),
     flows: {
-      ...program.flows,
-      nodes: Array.isArray(program.flows?.nodes)
-        ? (program.flows?.nodes || [])
-            .map((node) => {
-              const rawConfig =
-                (node as { config?: unknown }).config && typeof (node as { config?: unknown }).config === "object"
-                  ? ((node as { config?: Record<string, unknown> }).config || {})
-                  : {};
-              const rawKind = String((node as { kind?: unknown }).kind || "");
-              const normalizedKind =
-                rawKind === "trigger"
-                  ? ("trigger" as const)
-                  : rawKind === "event_open"
-                    ? ("event_open" as const)
-                    : rawKind === "event_close"
-                      ? ("event_close" as const)
-                      : ("action" as const);
-              const normalizedConfig =
-                normalizedKind === "action"
-                  ? {
-                      ...rawConfig,
-                      description: String(rawConfig.description ?? ""),
-                      script: String(rawConfig.script ?? "send(msg);"),
-                      eventTemplateId: String(rawConfig.eventTemplateId ?? ""),
-                      eventTemplateOverrides:
-                        rawConfig.eventTemplateOverrides && typeof rawConfig.eventTemplateOverrides === "object"
-                          ? rawConfig.eventTemplateOverrides
-                          : {},
-                      templateBindingOverrides:
-                        rawConfig.templateBindingOverrides && typeof rawConfig.templateBindingOverrides === "object"
-                          ? Object.fromEntries(
-                              Object.entries(rawConfig.templateBindingOverrides).map(([key, value]) => {
-                                if (!value || typeof value !== "object") return [key, normalizeBinding({ name: key })];
-                                return [key, normalizeBinding({ ...(value as ScriptVariableBindingDefinition), name: key })];
-                              })
-                            )
-                          : {}
-                    }
-                  : normalizedKind === "event_open" || normalizedKind === "event_close"
-                    ? {
-                        ...rawConfig,
-                        description: String(rawConfig.description ?? ""),
-                        templateOverrides:
-                          rawConfig.templateOverrides && typeof rawConfig.templateOverrides === "object"
-                            ? rawConfig.templateOverrides
-                            : {},
-                        bindings:
-                          rawConfig.bindings && typeof rawConfig.bindings === "object"
-                            ? Object.fromEntries(
-                                Object.entries(rawConfig.bindings).map(([key, value]) => {
-                                  if (!value || typeof value !== "object") return [key, normalizeEventActionBinding({})];
-                                  return [key, normalizeEventActionBinding(value as EventActionBindingDefinition)];
-                                })
-                              )
-                            : {},
-                        openNotes: String(rawConfig.openNotes ?? ""),
-                        closeNotes: String(rawConfig.closeNotes ?? "")
-                      }
-                    : {
-                        ...rawConfig,
-                        type: String(rawConfig.type ?? "interval"),
-                        watchPath: String(rawConfig.watchPath ?? ""),
-                        intervalMs: Math.max(1, Number(rawConfig.intervalMs) || 1000),
-                        cronExpression: String(rawConfig.cronExpression ?? ""),
-                        timezone: String(rawConfig.timezone ?? ""),
-                        activeFrom: String(rawConfig.activeFrom ?? ""),
-                        activeTo: String(rawConfig.activeTo ?? "")
-                      };
-              return {
-              id: String((node as { id?: unknown }).id || "").trim(),
-              kind: normalizedKind,
-              refId: String((node as { refId?: unknown }).refId || "").trim(),
-              label: String((node as { label?: unknown }).label || "").trim(),
-              enabled: (node as { enabled?: unknown }).enabled !== false,
-              templateId: String((node as { templateId?: unknown }).templateId || "").trim(),
-              config: normalizedConfig
-            };
-            })
-            .filter((node) => node.id.length > 0)
-        : [],
-      links: ((program.flows && program.flows.links) || []).map((link) => ({
-        ...link,
-        enabled: link.enabled !== false
-      }))
+      id: activeFlow.id,
+      name: activeFlow.name,
+      description: activeFlow.description || "",
+      enabled: activeFlow.enabled !== false,
+      variables: activeFlow.variables || [],
+      activeFlowId: activeFlow.id,
+      nodes: activeFlow.nodes || [],
+      links: activeFlow.links || [],
+      nodePositions: activeFlow.nodePositions || {}
     },
     assets: normalizedAssets
   });

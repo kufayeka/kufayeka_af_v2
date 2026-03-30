@@ -34,8 +34,10 @@ import {
 import type {
   AssetFrameworkDefinition,
   EventTemplateDefinition,
+  FlowDefinition,
   FlowNodeDefinition,
   FlowLink,
+  FlowVariableDefinition,
   Program,
   ScriptNodeSummary,
   ScriptTemplateDefinition,
@@ -48,10 +50,23 @@ import type { FlowPaletteItem } from "../components/managers/FlowManager";
 
 const EMPTY_PROGRAM: Program = {
   meta: { name: "Kufayeka AF Program", version: 1 },
+  activeFlowId: "flow_main",
+  flowDefinitions: [
+    {
+      id: "flow_main",
+      name: "Main Flow",
+      description: "",
+      enabled: true,
+      variables: [],
+      nodes: [],
+      links: [],
+      nodePositions: {}
+    }
+  ],
   eventTemplates: [],
   triggers: [],
   scriptTemplates: [],
-  flows: { nodes: [], links: [] },
+  flows: { id: "flow_main", name: "Main Flow", enabled: true, variables: [], activeFlowId: "flow_main", nodes: [], links: [], nodePositions: {} },
   assets: { assets: [], attributeTemplates: [] }
 };
 
@@ -87,6 +102,79 @@ const getTriggerBaseLabel = (type: TriggerDefinition["type"]): string => {
   return "Watcher Event Falling";
 };
 
+const getActiveFlow = (program: Program): FlowDefinition => {
+  const flowDefinitions = Array.isArray(program.flowDefinitions) ? program.flowDefinitions : [];
+  const activeFlowId = String(program.activeFlowId ?? program.flows?.activeFlowId ?? "").trim();
+  return (
+    flowDefinitions.find((flow) => flow.id === activeFlowId) ||
+    flowDefinitions[0] || {
+      id: "flow_main",
+      name: "Main Flow",
+      description: "",
+      enabled: true,
+      variables: [],
+      nodes: [],
+      links: [],
+      nodePositions: {}
+    }
+  );
+};
+
+const hydrateActiveFlow = (program: Program, requestedFlowId?: string): Program => {
+  const flowDefinitions = Array.isArray(program.flowDefinitions) ? program.flowDefinitions : [];
+  const activeFlow =
+    flowDefinitions.find((flow) => flow.id === requestedFlowId) ||
+    flowDefinitions.find((flow) => flow.id === program.activeFlowId) ||
+    flowDefinitions[0] ||
+    {
+      id: "flow_main",
+      name: "Main Flow",
+      description: "",
+      enabled: true,
+      variables: [],
+      nodes: [],
+      links: [],
+      nodePositions: {}
+    };
+  return {
+    ...program,
+    activeFlowId: activeFlow.id,
+    flows: {
+      id: activeFlow.id,
+      name: activeFlow.name,
+      description: activeFlow.description || "",
+      enabled: activeFlow.enabled !== false,
+      variables: Array.isArray(activeFlow.variables) ? structuredClone(activeFlow.variables) : [],
+      activeFlowId: activeFlow.id,
+      nodes: Array.isArray(activeFlow.nodes) ? structuredClone(activeFlow.nodes) : [],
+      links: Array.isArray(activeFlow.links) ? structuredClone(activeFlow.links) : [],
+      nodePositions: structuredClone(activeFlow.nodePositions || {})
+    }
+  };
+};
+
+const updateActiveFlowInProgram = (program: Program, updater: (flow: FlowDefinition) => FlowDefinition): Program => {
+  const activeFlow = getActiveFlow(program);
+  const nextFlow = updater(structuredClone(activeFlow));
+  const nextFlowDefinitions = (program.flowDefinitions || []).map((flow) => (flow.id === activeFlow.id ? nextFlow : flow));
+  return hydrateActiveFlow(
+    {
+      ...program,
+      flowDefinitions: nextFlowDefinitions
+    },
+    nextFlow.id
+  );
+};
+
+const defaultFlowVariable = (order: number): FlowVariableDefinition => ({
+  name: `flowVar${order}`,
+  order,
+  description: "",
+  source: "static_string",
+  staticValue: "",
+  attributePath: ""
+});
+
 const isShortGeneratedId = (value: string, prefix: string): boolean =>
   new RegExp(`^${prefix}_[a-z0-9]{8}$`, "i").test(String(value || ""));
 
@@ -99,21 +187,12 @@ const remapNodeIdInLinks = (links: FlowLink[], fromId: string, toId: string): Fl
 
 const migrateProgramIdentity = (program: Program): Program => {
   let next = structuredClone(program);
-  let nextLinks = [...(next.flows.links || [])];
-  const nextPositions = { ...(next.flows.nodePositions || {}) };
   const triggerIdMap = new Map<string, { nextId: string; label: string }>();
 
   next.triggers = next.triggers.map((trigger, index) => {
     const nextId = isShortGeneratedId(trigger.id, "trg") ? trigger.id : makeRandomToken("trg");
     const nextLabel = trigger.label?.trim() || `${getTriggerBaseLabel(trigger.type)} - ${index + 1}`;
     triggerIdMap.set(trigger.id, { nextId, label: nextLabel });
-    if (nextId !== trigger.id) {
-      nextLinks = remapNodeIdInLinks(nextLinks, trigger.id, nextId);
-      if (nextPositions[trigger.id]) {
-        nextPositions[nextId] = nextPositions[trigger.id];
-        delete nextPositions[trigger.id];
-      }
-    }
     return {
       ...trigger,
       id: nextId,
@@ -122,64 +201,72 @@ const migrateProgramIdentity = (program: Program): Program => {
   });
 
   const eventRefMap = new Map<string, string>();
-  next.flows.nodes = (next.flows.nodes || []).map((node, index) => {
-    if (node.kind === "trigger") {
-      const mapped = triggerIdMap.get(node.id);
-      if (!mapped) return node;
-      nextLinks = remapNodeIdInLinks(nextLinks, node.id, mapped.nextId);
-      if (nextPositions[node.id] && node.id !== mapped.nextId) {
-        nextPositions[mapped.nextId] = nextPositions[node.id];
-        delete nextPositions[node.id];
-      }
-      return { ...node, id: mapped.nextId, refId: mapped.nextId, label: node.label?.trim() || mapped.label || "" };
-    }
-    if (node.kind === "action") {
-      const nextId = isShortGeneratedId(node.id, "act") ? node.id : makeRandomToken("act");
-      if (nextId !== node.id) {
-        nextLinks = remapNodeIdInLinks(nextLinks, node.id, nextId);
-        if (nextPositions[node.id]) {
-          nextPositions[nextId] = nextPositions[node.id];
+  next.flowDefinitions = (next.flowDefinitions || []).map((flow) => {
+    let nextLinks = [...(flow.links || [])];
+    const nextPositions = { ...(flow.nodePositions || {}) };
+    const nextNodes = (flow.nodes || []).map((node, index) => {
+      if (node.kind === "trigger") {
+        const mapped = triggerIdMap.get(node.id);
+        if (!mapped) return node;
+        nextLinks = remapNodeIdInLinks(nextLinks, node.id, mapped.nextId);
+        if (nextPositions[node.id] && node.id !== mapped.nextId) {
+          nextPositions[mapped.nextId] = nextPositions[node.id];
           delete nextPositions[node.id];
         }
+        return { ...node, id: mapped.nextId, refId: mapped.nextId, label: node.label?.trim() || mapped.label || "" };
       }
-      return {
-        ...node,
-        id: nextId,
-        refId: nextId,
-        label: node.label?.trim() || `Action - ${index + 1}`,
-        config: {
-          ...(node.config || {}),
-          outputs: Array.isArray((node.config as Record<string, unknown> | undefined)?.outputs)
-            ? (node.config as Record<string, unknown>).outputs
-            : ["out"]
+      if (node.kind === "action") {
+        const nextId = isShortGeneratedId(node.id, "act") ? node.id : makeRandomToken("act");
+        if (nextId !== node.id) {
+          nextLinks = remapNodeIdInLinks(nextLinks, node.id, nextId);
+          if (nextPositions[node.id]) {
+            nextPositions[nextId] = nextPositions[node.id];
+            delete nextPositions[node.id];
+          }
         }
-      };
-    }
-    if (node.kind === "event_open" || node.kind === "event_close") {
-      const currentRef = node.refId || node.id;
-      const nextRef = eventRefMap.get(currentRef) || makeRandomToken("evt");
-      eventRefMap.set(currentRef, nextRef);
-      const nextId = node.kind === "event_open" ? getEventActionOpenNodeId(nextRef) : getEventActionCloseNodeId(nextRef);
-      if (nextId !== node.id) {
-        nextLinks = remapNodeIdInLinks(nextLinks, node.id, nextId);
-        if (nextPositions[node.id]) {
-          nextPositions[nextId] = nextPositions[node.id];
-          delete nextPositions[node.id];
-        }
+        return {
+          ...node,
+          id: nextId,
+          refId: nextId,
+          label: node.label?.trim() || `Action - ${index + 1}`,
+          config: {
+            ...(node.config || {}),
+            outputs: Array.isArray((node.config as Record<string, unknown> | undefined)?.outputs)
+              ? (node.config as Record<string, unknown>).outputs
+              : ["out"]
+          }
+        };
       }
-      return {
-        ...node,
-        id: nextId,
-        refId: nextRef,
-        label: node.label?.trim() || `${node.kind === "event_open" ? "OPEN" : "CLOSE"} Event - ${index + 1}`
-      };
-    }
-    return node;
+      if (node.kind === "event_open" || node.kind === "event_close") {
+        const currentRef = node.refId || node.id;
+        const nextRef = eventRefMap.get(currentRef) || makeRandomToken("evt");
+        eventRefMap.set(currentRef, nextRef);
+        const nextId = node.kind === "event_open" ? getEventActionOpenNodeId(nextRef) : getEventActionCloseNodeId(nextRef);
+        if (nextId !== node.id) {
+          nextLinks = remapNodeIdInLinks(nextLinks, node.id, nextId);
+          if (nextPositions[node.id]) {
+            nextPositions[nextId] = nextPositions[node.id];
+            delete nextPositions[node.id];
+          }
+        }
+        return {
+          ...node,
+          id: nextId,
+          refId: nextRef,
+          label: node.label?.trim() || `${node.kind === "event_open" ? "OPEN" : "CLOSE"} Event - ${index + 1}`
+        };
+      }
+      return node;
+    });
+    return {
+      ...flow,
+      nodes: nextNodes,
+      links: nextLinks,
+      nodePositions: nextPositions
+    };
   });
 
-  next.flows.links = nextLinks;
-  next.flows.nodePositions = nextPositions;
-  return next;
+  return hydrateActiveFlow(next, next.activeFlowId);
 };
 
 const deriveScriptNodeSummaries = (nodes: FlowNodeDefinition[]): ScriptNodeSummary[] =>
@@ -375,6 +462,7 @@ export default function HomePage() {
   const [selectedActionId, setSelectedActionId] = useState("");
   const [selectedEventActionId, setSelectedEventActionId] = useState("");
   const [selectedEventTemplateId, setSelectedEventTemplateId] = useState("");
+  const [selectedFlowId, setSelectedFlowId] = useState("flow_main");
   const [inspectorTarget, setInspectorTarget] = useState<{ kind: "action" | "event"; id: string } | null>(null);
   const [flowZoom, setFlowZoom] = useState(0.5);
   const [, setStatusText] = useState("Loading...");
@@ -387,6 +475,7 @@ export default function HomePage() {
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const program = history.present;
+  const activeFlow = getActiveFlow(program);
   const flowNodes = program.flows.nodes || [];
   const derivedActions = useMemo(() => deriveScriptNodeSummaries(flowNodes), [flowNodes]);
   const derivedEventActions = useMemo(() => deriveEventNodeSummaries(flowNodes), [flowNodes]);
@@ -420,14 +509,16 @@ export default function HomePage() {
   };
 
   const loadProgramIntoEditor = (next: Program, toastMessage?: string) => {
+    const hydrated = hydrateActiveFlow(next, next.activeFlowId);
     latestActionScriptsRef.current = Object.fromEntries(
-      deriveScriptNodeSummaries(next.flows.nodes || []).map((action) => [action.id, action.script || ""])
+      deriveScriptNodeSummaries(hydrated.flows.nodes || []).map((action) => [action.id, action.script || ""])
     );
-    dispatch({ type: "INIT", program: next });
-    setSelectedTriggerId(next.triggers[0]?.id ?? "");
-    setSelectedActionId((next.flows.nodes || []).find((node) => node.kind === "action")?.id ?? "");
-    setSelectedEventActionId((next.flows.nodes || []).find((node) => node.kind === "event_open")?.refId ?? "");
-    setSelectedEventTemplateId(next.eventTemplates?.[0]?.id ?? "");
+    dispatch({ type: "INIT", program: hydrated });
+    setSelectedFlowId(hydrated.activeFlowId || "flow_main");
+    setSelectedTriggerId(hydrated.triggers[0]?.id ?? "");
+    setSelectedActionId((hydrated.flows.nodes || []).find((node) => node.kind === "action")?.id ?? "");
+    setSelectedEventActionId((hydrated.flows.nodes || []).find((node) => node.kind === "event_open")?.refId ?? "");
+    setSelectedEventTemplateId(hydrated.eventTemplates?.[0]?.id ?? "");
     setInspectorTarget(null);
     if (toastMessage) setStatus(toastMessage);
     else setStatusText("Program loaded");
@@ -447,6 +538,19 @@ export default function HomePage() {
     });
   };
 
+  const applyActiveFlowUpdate = (updater: (flow: FlowDefinition) => FlowDefinition) => {
+    applyProgramUpdate((prev) => updateActiveFlowInProgram(prev, updater));
+  };
+
+  const switchActiveFlow = (flowId: string) => {
+    const nextFlow = (program.flowDefinitions || []).find((flow) => flow.id === flowId);
+    setSelectedFlowId(flowId);
+    applyProgramNoHistory((prev) => hydrateActiveFlow(prev, flowId));
+    setInspectorTarget(null);
+    setSelectedActionId((nextFlow?.nodes || []).find((node) => node.kind === "action")?.id ?? "");
+    setSelectedEventActionId((nextFlow?.nodes || []).find((node) => node.kind === "event_open")?.refId ?? "");
+  };
+
   useEffect(() => {
     fetch("/api/program")
       .then((res) => res.json())
@@ -458,6 +562,122 @@ export default function HomePage() {
         setStatus(`Load error: ${error.message}`);
       });
   }, []);
+
+  const addFlowDefinition = (): void => {
+    const nextId = makeRandomToken("flow");
+    applyProgramUpdate((prev) => {
+      const nextFlow: FlowDefinition = {
+        id: nextId,
+        name: getNextIncrementalLabel("Flow", (prev.flowDefinitions || []).map((item) => item.name || "")),
+        description: "",
+        enabled: true,
+        variables: [],
+        nodes: [],
+        links: [],
+        nodePositions: {}
+      };
+      return hydrateActiveFlow(
+        {
+          ...prev,
+          activeFlowId: nextId,
+          flowDefinitions: [...(prev.flowDefinitions || []), nextFlow]
+        },
+        nextId
+      );
+    });
+    setSelectedFlowId(nextId);
+  };
+
+  const duplicateFlowDefinition = (flowId: string): void => {
+    const nextId = makeRandomToken("flow");
+    applyProgramUpdate((prev) => {
+      const source = (prev.flowDefinitions || []).find((item) => item.id === flowId);
+      if (!source) return prev;
+      const remap = new Map<string, string>();
+      const nextNodes = (source.nodes || []).map((node) => {
+        if (node.kind === "trigger") {
+          remap.set(node.id, node.id);
+          return structuredClone(node);
+        }
+        if (node.kind === "action") {
+          const nextNodeId = makeRandomToken("act");
+          remap.set(node.id, nextNodeId);
+          latestActionScriptsRef.current[nextNodeId] = String(((node.config || {}) as Record<string, unknown>).script || "");
+          return { ...structuredClone(node), id: nextNodeId, refId: nextNodeId, label: getNextIncrementalLabel(node.label || "Action", (source.nodes || []).map((item) => item.label || "")) };
+        }
+        const nextRef = makeRandomToken("evt");
+        const nextNodeId = node.kind === "event_open" ? getEventActionOpenNodeId(nextRef) : getEventActionCloseNodeId(nextRef);
+        remap.set(node.id, nextNodeId);
+        return { ...structuredClone(node), id: nextNodeId, refId: nextRef };
+      });
+      const nextPositions = Object.fromEntries(
+        Object.entries(source.nodePositions || {}).map(([nodeId, pos]) => [
+          remap.get(nodeId) || nodeId,
+          { x: pos.x + 80, y: pos.y + 80 }
+        ])
+      );
+      const nextLinks = (source.links || []).map((link) => ({
+        ...structuredClone(link),
+        from: remap.get(link.from) || link.from,
+        to: remap.get(link.to) || link.to
+      }));
+      const nextFlow: FlowDefinition = {
+        ...structuredClone(source),
+        id: nextId,
+        name: getNextIncrementalLabel(source.name || "Flow", (prev.flowDefinitions || []).map((item) => item.name || "")),
+        nodes: nextNodes,
+        links: nextLinks,
+        nodePositions: nextPositions
+      };
+      return hydrateActiveFlow(
+        {
+          ...prev,
+          activeFlowId: nextId,
+          flowDefinitions: [...(prev.flowDefinitions || []), nextFlow]
+        },
+        nextId
+      );
+    });
+    setSelectedFlowId(nextId);
+  };
+
+  const removeFlowDefinition = (flowId: string): void => {
+    applyProgramUpdate((prev) => {
+      const allFlows = prev.flowDefinitions || [];
+      if (allFlows.length <= 1) return prev;
+      const remaining = allFlows.filter((flow) => flow.id !== flowId);
+      const nextActiveId = prev.activeFlowId === flowId ? remaining[0]?.id || "flow_main" : prev.activeFlowId;
+      return hydrateActiveFlow(
+        {
+          ...prev,
+          activeFlowId: nextActiveId,
+          flowDefinitions: remaining
+        },
+        nextActiveId
+      );
+    });
+  };
+
+  const updateFlowDefinition = (flowId: string, patch: Partial<FlowDefinition>): void => {
+    applyProgramUpdate((prev) => {
+      const nextFlowDefinitions = (prev.flowDefinitions || []).map((flow) =>
+        flow.id === flowId
+          ? {
+              ...flow,
+              ...patch,
+              variables: Array.isArray(patch.variables) ? patch.variables : flow.variables
+            }
+          : flow
+      );
+      return hydrateActiveFlow(
+        {
+          ...prev,
+          flowDefinitions: nextFlowDefinitions
+        },
+        flowId
+      );
+    });
+  };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -494,8 +714,31 @@ export default function HomePage() {
   }, []);
 
   const saveProgram = async () => {
-    const programForSave: Program = {
+    const activeFlowIdForSave = program.activeFlowId || program.flows.activeFlowId || selectedFlowId;
+    const syncedFlowDefinitions = (program.flowDefinitions || []).map((flow) =>
+      flow.id === activeFlowIdForSave
+        ? {
+            ...flow,
+            nodes: ((flow.nodes || []) as FlowNodeDefinition[]).map((node) =>
+              node.kind === "action"
+                ? {
+                    ...node,
+                    config: {
+                      ...(node.config || {}),
+                      script:
+                        latestActionScriptsRef.current[node.id] !== undefined
+                          ? latestActionScriptsRef.current[node.id]
+                          : String((node.config as Record<string, unknown> | undefined)?.script ?? "")
+                    }
+                  }
+                : node
+            )
+          }
+        : flow
+    );
+    const programForSave: Program = hydrateActiveFlow({
       ...program,
+      flowDefinitions: syncedFlowDefinitions,
       assets: {
         ...program.assets,
         assets: (program.assets?.assets || []).map((asset) => ({
@@ -503,25 +746,8 @@ export default function HomePage() {
           // Workspace save must not persist runtime attribute values.
           attributes: {}
         }))
-      },
-      flows: {
-        ...(program.flows || { links: [] }),
-        nodes: ((program.flows?.nodes || []) as FlowNodeDefinition[]).map((node) =>
-          node.kind === "action"
-            ? {
-                ...node,
-                config: {
-                  ...(node.config || {}),
-                  script:
-                    latestActionScriptsRef.current[node.id] !== undefined
-                      ? latestActionScriptsRef.current[node.id]
-                      : String((node.config as Record<string, unknown> | undefined)?.script ?? "")
-                }
-              }
-            : node
-        )
       }
-    };
+    }, activeFlowIdForSave);
 
     try {
       const res = await fetch("/api/program", {
@@ -553,26 +779,34 @@ export default function HomePage() {
     }
   };
 
-  const buildProgramForExport = (): Program => ({
-    ...program,
-    flows: {
-      ...(program.flows || { links: [] }),
-      nodes: ((program.flows?.nodes || []) as FlowNodeDefinition[]).map((node) =>
-        node.kind === "action"
-          ? {
-              ...node,
-              config: {
-                ...(node.config || {}),
-                script:
-                  latestActionScriptsRef.current[node.id] !== undefined
-                    ? latestActionScriptsRef.current[node.id]
-                    : String((node.config as Record<string, unknown> | undefined)?.script ?? "")
-              }
-            }
-          : node
-      )
-    }
-  });
+  const buildProgramForExport = (): Program => {
+    const activeFlowIdForExport = program.activeFlowId || program.flows.activeFlowId || selectedFlowId;
+    const syncedFlowDefinitions = (program.flowDefinitions || []).map((flow) =>
+      flow.id === activeFlowIdForExport
+        ? {
+            ...flow,
+            nodes: ((flow.nodes || []) as FlowNodeDefinition[]).map((node) =>
+              node.kind === "action"
+                ? {
+                    ...node,
+                    config: {
+                      ...(node.config || {}),
+                      script:
+                        latestActionScriptsRef.current[node.id] !== undefined
+                          ? latestActionScriptsRef.current[node.id]
+                          : String((node.config as Record<string, unknown> | undefined)?.script ?? "")
+                    }
+                  }
+                : node
+            )
+          }
+        : flow
+    );
+    return hydrateActiveFlow({
+      ...program,
+      flowDefinitions: syncedFlowDefinitions
+    }, activeFlowIdForExport);
+  };
 
   const downloadProgramJson = (): void => {
     try {
@@ -622,12 +856,10 @@ export default function HomePage() {
       message: { payload: 0 }
     };
     applyProgramUpdate((prev) => ({
-      ...prev,
-      triggers: [...prev.triggers, next],
-      flows: {
-        ...prev.flows,
+      ...updateActiveFlowInProgram(prev, (flow) => ({
+        ...flow,
         nodes: [
-          ...(prev.flows.nodes || []),
+          ...(flow.nodes || []),
           {
             id,
             kind: "trigger",
@@ -645,7 +877,8 @@ export default function HomePage() {
             }
           }
         ]
-      }
+      })),
+      triggers: [...prev.triggers, next]
     }));
     setSelectedTriggerId(id);
   };
@@ -686,9 +919,9 @@ export default function HomePage() {
       }
     };
     latestActionScriptsRef.current[id] = "send(msg);";
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: { ...prev.flows, nodes: [...(prev.flows.nodes || []), nextNode] }
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      nodes: [...(flow.nodes || []), nextNode]
     }));
     setSelectedActionId(id);
   };
@@ -723,13 +956,10 @@ export default function HomePage() {
       }
     };
     latestActionScriptsRef.current[id] = String((nextNode.config as Record<string, unknown>).script || "");
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodes: [...(prev.flows.nodes || []), nextNode],
-        nodePositions: { ...(prev.flows.nodePositions || {}), [id]: position }
-      }
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      nodes: [...(flow.nodes || []), nextNode],
+      nodePositions: { ...(flow.nodePositions || {}), [id]: position }
     }));
     setSelectedActionId(id);
     setInspectorTarget({ kind: "action", id });
@@ -748,12 +978,10 @@ export default function HomePage() {
       "Close Event",
       flowNodes.filter((item) => item.kind === "event_close").map((item) => item.label || "")
     );
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodes: [
-          ...(prev.flows.nodes || []),
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      nodes: [
+          ...(flow.nodes || []),
           {
             id: openNodeId,
             label: openLabel,
@@ -773,7 +1001,6 @@ export default function HomePage() {
             config: { description: "", bindings: {}, templateOverrides: {}, closeNotes: "" }
           }
         ]
-      }
     }));
     setSelectedEventActionId(id);
   };
@@ -794,12 +1021,10 @@ export default function HomePage() {
       seq += 1;
     }
 
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodes: [
-          ...(prev.flows.nodes || []),
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      nodes: [
+          ...(flow.nodes || []),
           {
             ...structuredClone(sourceOpen),
             id: getEventActionOpenNodeId(candidateId),
@@ -813,7 +1038,6 @@ export default function HomePage() {
             label: sourceClose.label ? `${sourceClose.label} (Copy)` : ""
           }
         ]
-      }
     }));
     setSelectedEventActionId(candidateId);
     setStatus(`Event action duplicated: ${candidateId}`);
@@ -828,12 +1052,10 @@ export default function HomePage() {
     );
     const openNodeId = getEventActionOpenNodeId(id);
     const closeNodeId = getEventActionCloseNodeId(id);
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodes: [
-          ...(prev.flows.nodes || []),
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      nodes: [
+          ...(flow.nodes || []),
           {
             id: openNodeId,
             label: getNextIncrementalLabel(`OPEN ${template.id}`, flowNodes.map((item) => item.label || "")),
@@ -865,7 +1087,6 @@ export default function HomePage() {
             }
           }
         ]
-      }
     }));
     setSelectedEventActionId(id);
   };
@@ -900,15 +1121,12 @@ export default function HomePage() {
         ...(eventKind === "event_open" ? { openNotes: "" } : { closeNotes: "" })
       }
     };
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodes: [...(prev.flows.nodes || []), nextNode],
-        nodePositions: {
-          ...(prev.flows.nodePositions || {}),
-          [nodeId]: position
-        }
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      nodes: [...(flow.nodes || []), nextNode],
+      nodePositions: {
+        ...(flow.nodePositions || {}),
+        [nodeId]: position
       }
     }));
     setSelectedEventActionId(id);
@@ -947,12 +1165,9 @@ export default function HomePage() {
     };
     latestActionScriptsRef.current[candidateId] = String(((next.config || {}) as Record<string, unknown>).script || "");
 
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodes: [...(prev.flows.nodes || []), next]
-      }
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      nodes: [...(flow.nodes || []), next]
     }));
     setSelectedActionId(candidateId);
     setStatus(`Action duplicated: ${candidateId}`);
@@ -960,37 +1175,33 @@ export default function HomePage() {
 
   const removeTrigger = (id: string): void => {
     applyProgramUpdate((prev) => ({
-      ...prev,
-      triggers: prev.triggers.filter((item) => item.id !== id),
-      flows: {
-        ...prev.flows,
-        nodes: (prev.flows.nodes || []).filter((item) => item.id !== id),
-        links: removeNodeFromLinks(prev.flows.links, id),
+      ...updateActiveFlowInProgram(prev, (flow) => ({
+        ...flow,
+        nodes: (flow.nodes || []).filter((item) => item.id !== id),
+        links: removeNodeFromLinks(flow.links, id),
         nodePositions: (() => {
-          const next = { ...(prev.flows.nodePositions || {}) };
+          const next = { ...(flow.nodePositions || {}) };
           delete next[id];
           return next;
         })()
-      }
+      })),
+      triggers: prev.triggers.filter((item) => item.id !== id)
     }));
     if (selectedTriggerId === id) setSelectedTriggerId("");
   };
 
   const removeAction = (id: string): void => {
     delete latestActionScriptsRef.current[id];
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodes: (prev.flows.nodes || []).filter((item) => item.id !== id),
-        links: removeNodeFromLinks(prev.flows.links, id),
+    applyActiveFlowUpdate((flow) => ({
+        ...flow,
+        nodes: (flow.nodes || []).filter((item) => item.id !== id),
+        links: removeNodeFromLinks(flow.links, id),
         nodePositions: (() => {
-          const next = { ...(prev.flows.nodePositions || {}) };
+          const next = { ...(flow.nodePositions || {}) };
           delete next[id];
           return next;
         })()
-      }
-    }));
+      }));
     if (selectedActionId === id) setSelectedActionId("");
     if (inspectorTarget?.kind === "action" && inspectorTarget.id === id) setInspectorTarget(null);
   };
@@ -998,20 +1209,17 @@ export default function HomePage() {
   const removeEventAction = (id: string): void => {
     const openNodeId = getEventActionOpenNodeId(id);
     const closeNodeId = getEventActionCloseNodeId(id);
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodes: (prev.flows.nodes || []).filter((item) => item.refId !== id),
-        links: removeNodeFromLinks(removeNodeFromLinks(prev.flows.links, openNodeId), closeNodeId),
+    applyActiveFlowUpdate((flow) => ({
+        ...flow,
+        nodes: (flow.nodes || []).filter((item) => item.refId !== id),
+        links: removeNodeFromLinks(removeNodeFromLinks(flow.links, openNodeId), closeNodeId),
         nodePositions: (() => {
-          const next = { ...(prev.flows.nodePositions || {}) };
+          const next = { ...(flow.nodePositions || {}) };
           delete next[openNodeId];
           delete next[closeNodeId];
           return next;
         })()
-      }
-    }));
+      }));
     if (selectedEventActionId === id) setSelectedEventActionId("");
     if (inspectorTarget?.kind === "event" && inspectorTarget.id === id) setInspectorTarget(null);
   };
@@ -1019,13 +1227,17 @@ export default function HomePage() {
   const renameTrigger = (oldId: string, newId: string): void => {
     setSelectedTriggerId(newId);
     applyProgramUpdate((prev) => ({
-      ...prev,
-      triggers: upsertById(prev.triggers, oldId, { id: newId }),
-      flows: {
-        ...prev.flows,
-        links: renameNodeInLinks(prev.flows.links, oldId, newId),
-        nodePositions: renameNodePositionKey(prev.flows.nodePositions, oldId, newId)
-      }
+      ...updateActiveFlowInProgram(
+        {
+          ...prev,
+          triggers: upsertById(prev.triggers, oldId, { id: newId })
+        },
+        (flow) => ({
+          ...flow,
+          links: renameNodeInLinks(flow.links, oldId, newId),
+          nodePositions: renameNodePositionKey(flow.nodePositions, oldId, newId)
+        })
+      )
     }));
   };
 
@@ -1039,17 +1251,14 @@ export default function HomePage() {
     if (inspectorTarget?.kind === "action" && inspectorTarget.id === oldId) {
       setInspectorTarget({ kind: "action", id: newId });
     }
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodes: (prev.flows.nodes || []).map((node) =>
+    applyActiveFlowUpdate((flow) => ({
+        ...flow,
+        nodes: (flow.nodes || []).map((node) =>
           node.id === oldId ? { ...node, id: newId, refId: newId } : node
         ),
-        links: renameNodeInLinks(prev.flows.links, oldId, newId),
-        nodePositions: renameNodePositionKey(prev.flows.nodePositions, oldId, newId)
-      }
-    }));
+        links: renameNodeInLinks(flow.links, oldId, newId),
+        nodePositions: renameNodePositionKey(flow.nodePositions, oldId, newId)
+      }));
   };
 
   const renameEventAction = (oldId: string, newId: string): void => {
@@ -1072,11 +1281,9 @@ export default function HomePage() {
     if (inspectorTarget?.kind === "event" && inspectorTarget.id === oldId) {
       setInspectorTarget({ kind: "event", id: normalizedNewId });
     }
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodes: (prev.flows.nodes || []).map((node) => {
+    applyActiveFlowUpdate((flow) => ({
+        ...flow,
+        nodes: (flow.nodes || []).map((node) => {
           if (node.refId !== oldId) return node;
           return {
             ...node,
@@ -1085,17 +1292,16 @@ export default function HomePage() {
           };
         }),
         links: renameNodeInLinks(
-          renameNodeInLinks(prev.flows.links, oldOpen, nextOpen),
+          renameNodeInLinks(flow.links, oldOpen, nextOpen),
           oldClose,
           nextClose
         ),
         nodePositions: renameNodePositionKey(
-          renameNodePositionKey(prev.flows.nodePositions, oldOpen, nextOpen),
+          renameNodePositionKey(flow.nodePositions, oldOpen, nextOpen),
           oldClose,
           nextClose
         )
-      }
-    }));
+      }));
   };
 
   const flowNodeLabels = useMemo(
@@ -1163,6 +1369,16 @@ export default function HomePage() {
     [program.flows?.nodes]
   );
 
+  const activeFlowVariableNames = useMemo(
+    () =>
+      (activeFlow.variables || [])
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map((item) => item.name)
+        .filter(Boolean),
+    [activeFlow.variables]
+  );
+
   const watchPathOptions = useMemo(() => {
     const byId = new Map(program.assets.assets.map((asset) => [asset.id, asset]));
     const templateById = new Map(
@@ -1222,11 +1438,14 @@ export default function HomePage() {
 
   const updateTrigger = (id: string, patch: Partial<TriggerDefinition>): void => {
     applyProgramUpdate((prev) => ({
-      ...prev,
-      triggers: upsertById(prev.triggers, id, patch),
-      flows: {
-        ...prev.flows,
-        nodes: (prev.flows.nodes || []).map((node) =>
+      ...updateActiveFlowInProgram(
+        {
+          ...prev,
+          triggers: upsertById(prev.triggers, id, patch)
+        },
+        (flow) => ({
+          ...flow,
+          nodes: (flow.nodes || []).map((node) =>
           node.id === id && node.kind === "trigger"
             ? {
                 ...node,
@@ -1245,7 +1464,8 @@ export default function HomePage() {
               }
             : node
         )
-      }
+        })
+      )
     }));
   };
 
@@ -1291,11 +1511,9 @@ export default function HomePage() {
           ? (((currentConfig.eventTemplateOverrides as Record<string, unknown>) || {}) as any)
           : {};
     }
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodes: (prev.flows.nodes || []).map((node) =>
+    applyActiveFlowUpdate((flow) => ({
+        ...flow,
+        nodes: (flow.nodes || []).map((node) =>
           node.id === id && node.kind === "action"
             ? {
                 ...node,
@@ -1330,8 +1548,7 @@ export default function HomePage() {
               }
             : node
         )
-      }
-    }));
+      }));
   };
 
   const updateEventAction = (id: string, patch: Partial<EventNodeSummary>): void => {
@@ -1343,11 +1560,9 @@ export default function HomePage() {
       const currentConfig = ((currentOpen?.config || currentClose?.config || {}) as Record<string, unknown>);
       resolvedPatch.bindings = patch.templateId ? (((currentConfig.bindings as Record<string, unknown>) || {}) as any) : {};
     }
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodes: (prev.flows.nodes || []).map((node) => {
+    applyActiveFlowUpdate((flow) => ({
+        ...flow,
+        nodes: (flow.nodes || []).map((node) => {
           if (node.refId !== id || (node.kind !== "event_open" && node.kind !== "event_close")) return node;
           const isOpen = node.kind === "event_open";
           return {
@@ -1380,8 +1595,7 @@ export default function HomePage() {
             }
           };
         })
-      }
-    }));
+      }));
   };
 
   const addScriptTemplate = (): void => {
@@ -1508,27 +1722,27 @@ export default function HomePage() {
     }));
     if (Object.prototype.hasOwnProperty.call(normalizedPatch, "id")) {
       setSelectedEventTemplateId(String(normalizedPatch.id || ""));
-      applyProgramUpdate((prev) => ({
+      applyProgramUpdate((prev) => hydrateActiveFlow({
         ...prev,
-        flows: {
-          ...prev.flows,
-          nodes: (prev.flows.nodes || []).map((node) =>
+        flowDefinitions: (prev.flowDefinitions || []).map((flow) => ({
+          ...flow,
+          nodes: (flow.nodes || []).map((node) =>
             (node.kind === "event_open" || node.kind === "event_close") && node.templateId === id
               ? { ...node, templateId: String(normalizedPatch.id || "") }
               : node
           )
-        }
-      }));
+        }))
+      }, prev.activeFlowId));
     }
   };
 
   const removeEventTemplate = (id: string): void => {
-    applyProgramUpdate((prev) => ({
+    applyProgramUpdate((prev) => hydrateActiveFlow({
       ...prev,
       eventTemplates: (prev.eventTemplates || []).filter((item) => item.id !== id),
-      flows: {
-        ...prev.flows,
-        nodes: (prev.flows.nodes || []).map((node) =>
+      flowDefinitions: (prev.flowDefinitions || []).map((flow) => ({
+        ...flow,
+        nodes: (flow.nodes || []).map((node) =>
           node.kind === "action"
             ? {
                 ...node,
@@ -1543,8 +1757,8 @@ export default function HomePage() {
               }
             : node
         )
-      }
-    }));
+      }))
+    }, prev.activeFlowId));
     if (selectedEventTemplateId === id) setSelectedEventTemplateId("");
   };
 
@@ -1560,7 +1774,10 @@ export default function HomePage() {
     patch: Partial<ScriptTemplateDefinition>
   ): void => {
     if (patch.allowTemplateReuse === false) {
-      const usageCount = flowNodes.filter((node) => node.kind === "action" && node.templateId === id).length;
+      const usageCount = (program.flowDefinitions || []).reduce(
+        (sum, flow) => sum + (flow.nodes || []).filter((node) => node.kind === "action" && node.templateId === id).length,
+        0
+      );
       if (usageCount > 1) {
         const templateName = program.scriptTemplates.find((item) => item.id === id)?.name || id;
         setStatus(`Cannot disable template reuse: template "${templateName}" is used by ${usageCount} actions`);
@@ -1583,28 +1800,33 @@ export default function HomePage() {
           scriptTemplates: nextScriptTemplates
         };
       }
-      const nextNodes = (prev.flows.nodes || []).map((node) =>
-        node.kind === "action" && node.templateId === id
-          ? {
-              ...node,
-              config: {
-                ...(node.config || {}),
-                script: updatedTemplate.script
+      const nextFlowDefinitions = (prev.flowDefinitions || []).map((flow) => ({
+        ...flow,
+        nodes: (flow.nodes || []).map((node) =>
+          node.kind === "action" && node.templateId === id
+            ? {
+                ...node,
+                config: {
+                  ...(node.config || {}),
+                  script: updatedTemplate.script
+                }
               }
-            }
-          : node
-      );
+            : node
+        )
+      }));
+      const hydrated = hydrateActiveFlow({
+        ...prev,
+        scriptTemplates: nextScriptTemplates,
+        flowDefinitions: nextFlowDefinitions
+      }, prev.activeFlowId);
+      const nextNodes = hydrated.flows.nodes || [];
       for (const node of nextNodes) {
         if (node.kind !== "action" || node.templateId !== id) continue;
         latestActionScriptsRef.current[node.id] = String(((node.config || {}) as Record<string, unknown>).script || "");
       }
       return {
-        ...prev,
-        scriptTemplates: nextScriptTemplates,
-        flows: {
-          ...prev.flows,
-          nodes: nextNodes
-        }
+        ...hydrated,
+        scriptTemplates: nextScriptTemplates
       };
     });
   };
@@ -1622,9 +1844,9 @@ export default function HomePage() {
       (item) => item.from === link.from && item.to === link.to
     );
     if (exists) return;
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: { ...prev.flows, links: [...prev.flows.links, { ...link, enabled: link.enabled !== false }] }
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      links: [...flow.links, { ...link, enabled: link.enabled !== false }]
     }));
   };
 
@@ -1638,30 +1860,26 @@ export default function HomePage() {
   };
 
   const updateLink = (index: number, patch: Partial<FlowLink>): void => {
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        links: prev.flows.links.map((link, idx) => (idx === index ? { ...link, ...patch } : link))
-      }
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      links: flow.links.map((link, idx) => (idx === index ? { ...link, ...patch } : link))
     }));
   };
 
   const removeLink = (index: number): void => {
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      flows: { ...prev.flows, links: prev.flows.links.filter((_link, idx) => idx !== index) }
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      links: flow.links.filter((_link, idx) => idx !== index)
     }));
   };
 
   const updateNodePosition = (nodeId: string, position: { x: number; y: number }): void => {
-    applyProgramNoHistory((prev) => ({
-      ...prev,
-      flows: {
-        ...prev.flows,
-        nodePositions: { ...(prev.flows.nodePositions || {}), [nodeId]: position }
-      }
-    }));
+    applyProgramNoHistory((prev) =>
+      updateActiveFlowInProgram(prev, (flow) => ({
+        ...flow,
+        nodePositions: { ...(flow.nodePositions || {}), [nodeId]: position }
+      }))
+    );
   };
 
   const removeNodeFromFlow = (nodeId: string): void => {
@@ -1669,19 +1887,21 @@ export default function HomePage() {
       const nextPositions = { ...(prev.flows.nodePositions || {}) };
       delete nextPositions[nodeId];
       const node = (prev.flows.nodes || []).find((item) => item.id === nodeId);
-      return {
-        ...prev,
-        triggers:
-          node?.kind === "trigger"
-            ? prev.triggers.filter((item) => item.id !== nodeId)
-            : prev.triggers,
-        flows: {
-          ...prev.flows,
-          nodes: (prev.flows.nodes || []).filter((item) => item.id !== nodeId),
-          links: prev.flows.links.filter((link) => link.from !== nodeId && link.to !== nodeId),
+      return updateActiveFlowInProgram(
+        {
+          ...prev,
+          triggers:
+            node?.kind === "trigger"
+              ? prev.triggers.filter((item) => item.id !== nodeId)
+              : prev.triggers
+        },
+        (flow) => ({
+          ...flow,
+          nodes: (flow.nodes || []).filter((item) => item.id !== nodeId),
+          links: flow.links.filter((link) => link.from !== nodeId && link.to !== nodeId),
           nodePositions: nextPositions
-        }
-      };
+        })
+      );
     });
   };
 
@@ -1714,19 +1934,21 @@ export default function HomePage() {
       remainingNodes.forEach((node) => {
         if (!nextPositions[node.id]) return;
       });
-      return {
-        ...prev,
-        triggers: prev.triggers.filter((item) => !triggerIds.includes(item.id)),
-        flows: {
-          ...prev.flows,
+      return updateActiveFlowInProgram(
+        {
+          ...prev,
+          triggers: prev.triggers.filter((item) => !triggerIds.includes(item.id))
+        },
+        (flow) => ({
+          ...flow,
           nodes: remainingNodes,
-          links: prev.flows.links.filter((link) => {
+          links: flow.links.filter((link) => {
             if (uniqueIds.includes(link.from) || uniqueIds.includes(link.to)) return false;
             return true;
           }),
           nodePositions: nextPositions
-        }
-      };
+        })
+      );
     });
 
     if (inspectorTarget?.kind === "action" && actionIds.includes(inspectorTarget.id)) setInspectorTarget(null);
@@ -1741,7 +1963,6 @@ export default function HomePage() {
   const duplicateNodesInFlow = (nodeIds: string[], basePosition?: NodePosition): void => {
     const uniqueIds = Array.from(new Set(nodeIds));
     if (uniqueIds.length === 0) return;
-    const timestamp = Date.now();
     const nextNodes: FlowNodeDefinition[] = [];
     const nextPositions: Record<string, NodePosition> = {};
     const duplicatedNodeMap = new Map<string, string>();
@@ -1817,28 +2038,32 @@ export default function HomePage() {
       return;
     }
 
-    applyProgramUpdate((prev) => ({
-      ...prev,
-      triggers: [...prev.triggers, ...nextTriggers],
-      flows: {
-        ...prev.flows,
-        nodes: [...(prev.flows.nodes || []), ...nextNodes],
-        links: [
-          ...prev.flows.links,
-          ...prev.flows.links
-            .filter((link) => duplicatedNodeMap.has(link.from) && duplicatedNodeMap.has(link.to))
-            .map((link) => ({
-              ...link,
-              from: duplicatedNodeMap.get(link.from) || link.from,
-              to: duplicatedNodeMap.get(link.to) || link.to
-            }))
-        ],
-        nodePositions: {
-          ...(prev.flows.nodePositions || {}),
-          ...nextPositions
-        }
-      }
-    }));
+    applyProgramUpdate((prev) =>
+      updateActiveFlowInProgram(
+        {
+          ...prev,
+          triggers: [...prev.triggers, ...nextTriggers]
+        },
+        (flow) => ({
+          ...flow,
+          nodes: [...(flow.nodes || []), ...nextNodes],
+          links: [
+            ...flow.links,
+            ...flow.links
+              .filter((link) => duplicatedNodeMap.has(link.from) && duplicatedNodeMap.has(link.to))
+              .map((link) => ({
+                ...link,
+                from: duplicatedNodeMap.get(link.from) || link.from,
+                to: duplicatedNodeMap.get(link.to) || link.to
+              }))
+          ],
+          nodePositions: {
+            ...(flow.nodePositions || {}),
+            ...nextPositions
+          }
+        })
+      )
+    );
     setStatus(`Pasted ${triggerCount} trigger node(s), ${actionCount} script node(s), and ${eventCount} event node(s)`);
   };
 
@@ -1950,6 +2175,9 @@ export default function HomePage() {
         )}
         {tab === 2 && (
           <FlowManager
+            flows={program.flowDefinitions || []}
+            selectedFlowId={program.activeFlowId || selectedFlowId}
+            activeFlowVariables={activeFlow.variables || []}
             triggerIds={flowTriggerIds}
             actionIds={flowActionIds}
             eventNodeIds={flowEventNodeIds}
@@ -1986,6 +2214,11 @@ export default function HomePage() {
             onNodePositionChange={updateNodePosition}
             onConnectNodes={(fromId, toId, fromPort) => addLink({ from: fromId, to: toId, fromPort, enabled: true })}
             onDropPaletteItem={handleDropPaletteItem}
+            onSelectFlow={switchActiveFlow}
+            onAddFlow={addFlowDefinition}
+            onDuplicateFlow={duplicateFlowDefinition}
+            onRemoveFlow={removeFlowDefinition}
+            onUpdateFlow={updateFlowDefinition}
           />
         )}
         {tab === 3 && (
@@ -1993,6 +2226,7 @@ export default function HomePage() {
             actions={derivedActions}
             scriptTemplates={program.scriptTemplates}
             assets={program.assets}
+            flowVariableNames={activeFlowVariableNames}
             selectedActionId={selectedActionId}
             onSelectAction={setSelectedActionId}
             onAddAction={addAction}
@@ -2011,6 +2245,7 @@ export default function HomePage() {
             eventActions={derivedEventActions}
             eventTemplates={program.eventTemplates || []}
             assets={program.assets}
+            flowVariableNames={activeFlowVariableNames}
             selectedEventActionId={selectedEventActionId}
             selectedEventTemplateId={selectedEventTemplateId}
             onSelectEventAction={setSelectedEventActionId}
@@ -2041,6 +2276,7 @@ export default function HomePage() {
         scriptTemplates={program.scriptTemplates}
         eventTemplates={program.eventTemplates || []}
         assets={program.assets}
+        flowVariableNames={activeFlowVariableNames}
         onClose={() => setInspectorTarget(null)}
         onRenameNode={(oldId, newId) => {
           const targetNode = (program.flows.nodes || []).find((node) => node.id === oldId);

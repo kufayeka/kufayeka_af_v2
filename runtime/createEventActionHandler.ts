@@ -72,6 +72,11 @@ async function resolveEventBindingValue(
     return context.asset.get(path, null);
   }
 
+  if (source === "flow_variable") {
+    if (!path) return null;
+    return context.flow?.variables?.[path] ?? null;
+  }
+
   if (source === "msg_path") {
     if (!path) return null;
     return getAtPath(msg, path);

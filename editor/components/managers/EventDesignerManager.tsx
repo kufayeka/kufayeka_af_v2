@@ -37,6 +37,7 @@ interface EventDesignerManagerProps {
   eventActions: EventNodeSummary[];
   eventTemplates: EventTemplateDefinition[];
   assets: AssetFrameworkDefinition;
+  flowVariableNames?: string[];
   selectedEventActionId: string;
   selectedEventTemplateId: string;
   onSelectEventAction: (id: string) => void;
@@ -249,6 +250,7 @@ export default function EventDesignerManager({
   eventActions,
   eventTemplates,
   assets,
+  flowVariableNames = [],
   selectedEventActionId,
   selectedEventTemplateId,
   onSelectEventAction,
@@ -408,7 +410,29 @@ export default function EventDesignerManager({
                                   <TextField size="small" fullWidth value={name} disabled />
                                 </TableCell>
                                 <TableCell>
-                                  <TextField size="small" fullWidth value={effectiveSource} disabled />
+                                  <FormControl size="small" fullWidth>
+                                    <Select
+                                      value={effectiveSource}
+                                      onChange={(e) =>
+                                        onUpdateEventAction(selectedEventAction.id, {
+                                          bindings: {
+                                            ...(selectedEventAction.bindings || {}),
+                                            [name]: { ...binding, source: e.target.value as EventActionBindingDefinition["source"] }
+                                          }
+                                        })
+                                      }
+                                    >
+                                      <MenuItem value="asset">asset</MenuItem>
+                                      <MenuItem value="attribute">attribute</MenuItem>
+                                      <MenuItem value="flow_variable">flow_variable</MenuItem>
+                                      <MenuItem value="msg_path">msg_path</MenuItem>
+                                      <MenuItem value="static_string">static_string</MenuItem>
+                                      <MenuItem value="static_number">static_number</MenuItem>
+                                      <MenuItem value="static_boolean">static_boolean</MenuItem>
+                                      <MenuItem value="static_array">static_array</MenuItem>
+                                      <MenuItem value="static_object">static_object</MenuItem>
+                                    </Select>
+                                  </FormControl>
                                 </TableCell>
                                 <TableCell>
                                   {effectiveSource === "asset" && (
@@ -439,6 +463,21 @@ export default function EventDesignerManager({
                                         })
                                       }
                                       renderInput={(params) => <TextField {...params} size="small" placeholder="Select attribute path" />}
+                                    />
+                                  )}
+                                  {effectiveSource === "flow_variable" && (
+                                    <Autocomplete
+                                      options={flowVariableNames}
+                                      value={binding.attributePath ?? ""}
+                                      onChange={(_e, value) =>
+                                        onUpdateEventAction(selectedEventAction.id, {
+                                          bindings: {
+                                            ...(selectedEventAction.bindings || {}),
+                                            [name]: { ...binding, source: effectiveSource, attributePath: String(value || "") }
+                                          }
+                                        })
+                                      }
+                                      renderInput={(params) => <TextField {...params} size="small" placeholder="Select flow variable" />}
                                     />
                                   )}
                                   {effectiveSource === "msg_path" && (

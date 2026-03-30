@@ -20,6 +20,7 @@ export type AssetAttributeType =
 export type ScriptBindingSource =
   | "asset"
   | "attribute"
+  | "flow_variable"
   | "msg_path"
   | "static_number"
   | "static_string"
@@ -240,6 +241,17 @@ export interface NodePosition {
   y: number;
 }
 
+export type FlowVariableSource = "static_string" | "static_number" | "static_boolean" | "static_array" | "static_object" | "asset" | "attribute";
+
+export interface FlowVariableDefinition {
+  name: string;
+  order: number;
+  description?: string;
+  source: FlowVariableSource;
+  staticValue?: unknown;
+  attributePath?: string;
+}
+
 export type FlowNodeKind = "trigger" | "action" | "event_open" | "event_close";
 
 export interface FlowNodeDefinition {
@@ -253,15 +265,34 @@ export interface FlowNodeDefinition {
   config?: Record<string, unknown>;
 }
 
+export interface FlowDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  variables?: FlowVariableDefinition[];
+  nodes?: FlowNodeDefinition[];
+  links: FlowLink[];
+  nodePositions?: Record<string, NodePosition>;
+}
+
 export interface Program {
   meta: {
     name: string;
     version: number;
   };
+  activeFlowId?: string;
+  flowDefinitions?: FlowDefinition[];
   eventTemplates?: EventTemplateDefinition[];
   triggers: TriggerDefinition[];
   scriptTemplates: ScriptTemplateDefinition[];
   flows: {
+    id?: string;
+    name?: string;
+    description?: string;
+    enabled?: boolean;
+    variables?: FlowVariableDefinition[];
+    activeFlowId?: string;
     nodes?: FlowNodeDefinition[];
     links: FlowLink[];
     nodePositions?: Record<string, NodePosition>;
