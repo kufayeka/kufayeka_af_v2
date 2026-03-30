@@ -94,7 +94,7 @@ async function bootstrap(): Promise<void> {
     host: process.env.RUNTIME_API_HOST || "0.0.0.0",
     port: Number(process.env.RUNTIME_API_PORT || 4000),
   });
-  apiServer.start();
+  await apiServer.start();
 
   let isShuttingDown = false;
   const shutdown = async (signal: string, exitCode = 0): Promise<void> => {

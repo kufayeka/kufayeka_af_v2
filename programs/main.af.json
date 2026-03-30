@@ -93,6 +93,51 @@
       "timezone": "",
       "activeFrom": "",
       "activeTo": ""
+    },
+    {
+      "id": "trg_t1prc001",
+      "label": "Jasuindo.OffsetPrinter.Taiyo1.Product Reject Count",
+      "type": "watcher_set",
+      "enabled": true,
+      "intervalMs": 1000,
+      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Product Reject Count",
+      "message": {
+        "payload": 0
+      },
+      "cronExpression": "",
+      "timezone": "",
+      "activeFrom": "",
+      "activeTo": ""
+    },
+    {
+      "id": "trg_t1pgc001",
+      "label": "Jasuindo.OffsetPrinter.Taiyo1.Product Good Count",
+      "type": "watcher_set",
+      "enabled": true,
+      "intervalMs": 1000,
+      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Product Good Count",
+      "message": {
+        "payload": 0
+      },
+      "cronExpression": "",
+      "timezone": "",
+      "activeFrom": "",
+      "activeTo": ""
+    },
+    {
+      "id": "trg_t1pct001",
+      "label": "Jasuindo.OffsetPrinter.Taiyo1.Product Count Target",
+      "type": "watcher_set",
+      "enabled": true,
+      "intervalMs": 1000,
+      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count Target",
+      "message": {
+        "payload": 0
+      },
+      "cronExpression": "",
+      "timezone": "",
+      "activeFrom": "",
+      "activeTo": ""
     }
   ],
   "flows": {
@@ -175,39 +220,18 @@
         "id": "act_wznj2p9u",
         "kind": "action",
         "refId": "act_wznj2p9u",
-        "label": "Count Product Output",
+        "label": "Calculate Job Progress",
         "enabled": true,
-        "templateId": "template.script_1772274570343",
+        "templateId": "template.taiyo.job.progress.from.good",
         "config": {
           "description": "",
-          "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / (productFoldLength/100)) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(0));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nmsg.payload = { productTotalCount, paperConsumedProduction, productFoldLength, productPerFold };\r\n\r\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst goodCount = Number(asset.get(`${assetPath}.Product Good Count`, 0) ?? 0);\nconst progressPath = `${assetPath}.Job Progress`;\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeGoodCount = Number.isFinite(goodCount) ? Math.max(0, Math.round(goodCount)) : 0;\nconst progress = Math.max(0, Math.round((safeGoodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nmsg.jobProgress = progress;\nmsg.productGoodCount = safeGoodCount;\n\nsend(msg);",
           "templateBindingOverrides": {
-            "PaperConsumedProduction": {
-              "name": "PaperConsumedProduction",
-              "source": "attribute",
+            "AssetPath": {
+              "name": "AssetPath",
+              "source": "asset",
               "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production",
-              "allowOverride": true
-            },
-            "ProductFoldLength": {
-              "name": "ProductFoldLength",
-              "source": "attribute",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper/Fold Size",
-              "allowOverride": true
-            },
-            "ProductPerFold": {
-              "name": "ProductPerFold",
-              "source": "attribute",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count Per Fold",
-              "allowOverride": true
-            },
-            "ProductTotalCount": {
-              "name": "ProductTotalCount",
-              "source": "attribute",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Total Count",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
               "allowOverride": true
             }
           },
@@ -345,12 +369,12 @@
         "id": "act_uc1u4e3v",
         "kind": "action",
         "refId": "act_uc1u4e3v",
-        "label": "Calculate Job Progress & Job Output",
+        "label": "Calculate Product Counts",
         "enabled": true,
         "templateId": "template.taiyo.production.count.and.progress",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\n\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst rejectCount = Number(asset.get(`${assetPath}.Product Reject Count`, 0) ?? 0);\nconst prodConsumed = Number(asset.get(`${assetPath}.Paper Consumed Production`, 0) ?? 0);\nconst paperFoldSizeRaw = String(asset.get(`${assetPath}.Paper/Fold Size`, ``) ?? ``).trim();\nconst countPerFoldRaw = String(asset.get(`${assetPath}.Product Count Per Fold`, ``) ?? ``).trim();\n\nconst progressPath = `${assetPath}.Job Progress`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst totalCountPath = `${assetPath}.Product Total Count`;\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / paperFoldSize) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? rejectCount : 0;\nconst goodCount = Math.max(0, Math.round(totalCount - safeRejectCount));\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst progress = Math.max(0, Math.round((goodCount / targetEa) * 100));\nawait asset.set(progressPath, progress);\n\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\nconst prodConsumed = Number(asset.get(`${assetPath}.Paper Consumed Production`, 0) ?? 0);\nconst rejectCount = Number(asset.get(rejectCountPath, 0) ?? 0);\nconst paperFoldSizeRaw = String(asset.get(`${assetPath}.Paper/Fold Size`, ``) ?? ``).trim();\nconst countPerFoldRaw = String(asset.get(`${assetPath}.Product Count Per Fold`, ``) ?? ``).trim();\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / paperFoldSize) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? Math.max(0, Math.round(rejectCount)) : 0;\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -720,6 +744,57 @@
           "activeFrom": "",
           "activeTo": ""
         }
+      },
+      {
+        "id": "trg_t1prc001",
+        "kind": "trigger",
+        "refId": "trg_t1prc001",
+        "label": "Jasuindo.OffsetPrinter.Taiyo1.Product Reject Count",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Product Reject Count",
+          "intervalMs": 1000,
+          "cronExpression": "",
+          "timezone": "",
+          "activeFrom": "",
+          "activeTo": ""
+        }
+      },
+      {
+        "id": "trg_t1pgc001",
+        "kind": "trigger",
+        "refId": "trg_t1pgc001",
+        "label": "Jasuindo.OffsetPrinter.Taiyo1.Product Good Count",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Product Good Count",
+          "intervalMs": 1000,
+          "cronExpression": "",
+          "timezone": "",
+          "activeFrom": "",
+          "activeTo": ""
+        }
+      },
+      {
+        "id": "trg_t1pct001",
+        "kind": "trigger",
+        "refId": "trg_t1pct001",
+        "label": "Jasuindo.OffsetPrinter.Taiyo1.Product Count Target",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count Target",
+          "intervalMs": 1000,
+          "cronExpression": "",
+          "timezone": "",
+          "activeFrom": "",
+          "activeTo": ""
+        }
       }
     ],
     "links": [
@@ -826,12 +901,6 @@
         "enabled": true
       },
       {
-        "from": "act_t1pac001",
-        "to": "act_wznj2p9u",
-        "fromPort": "out",
-        "enabled": true
-      },
-      {
         "from": "event.open.evt_uwgrrrj5",
         "to": "act_xi9ttxqd",
         "fromPort": "onFail",
@@ -847,6 +916,24 @@
         "from": "event.open.evt_b2g7asve",
         "to": "act_xi9ttxqd",
         "fromPort": "onFail",
+        "enabled": true
+      },
+      {
+        "from": "trg_t1prc001",
+        "to": "act_uc1u4e3v",
+        "fromPort": "default",
+        "enabled": true
+      },
+      {
+        "from": "trg_t1pgc001",
+        "to": "act_wznj2p9u",
+        "fromPort": "default",
+        "enabled": true
+      },
+      {
+        "from": "trg_t1pct001",
+        "to": "act_wznj2p9u",
+        "fromPort": "default",
         "enabled": true
       }
     ],
@@ -986,6 +1073,18 @@
       "event.open.evt_b2g7asve": {
         "x": 1300,
         "y": 1260
+      },
+      "trg_t1prc001": {
+        "x": 300,
+        "y": 700
+      },
+      "trg_t1pgc001": {
+        "x": 300,
+        "y": 840
+      },
+      "trg_t1pct001": {
+        "x": 300,
+        "y": 980
       }
     }
   },
@@ -3850,50 +3949,6 @@
       ]
     },
     {
-      "id": "template.script_1772274570343",
-      "name": "TaiyoProductCounter",
-      "description": "",
-      "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / (productFoldLength/100)) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(0));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nmsg.payload = { productTotalCount, paperConsumedProduction, productFoldLength, productPerFold };\r\n\r\nsend(msg);",
-      "allowTemplateReuse": true,
-      "variableBindings": [
-        {
-          "name": "PaperConsumedProduction",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "",
-          "allowOverride": true
-        },
-        {
-          "name": "ProductFoldLength",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "",
-          "allowOverride": true
-        },
-        {
-          "name": "ProductPerFold",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "",
-          "allowOverride": true
-        },
-        {
-          "name": "ProductTotalCount",
-          "source": "attribute",
-          "staticValue": "",
-          "attributePath": "",
-          "allowOverride": true
-        }
-      ],
-      "outputs": [
-        {
-          "name": "out",
-          "order": 1,
-          "description": ""
-        }
-      ]
-    },
-    {
       "id": "template.script_1772300414929",
       "name": "TaiyoResolveActivityCategory",
       "description": "",
@@ -4079,9 +4134,32 @@
     },
     {
       "id": "template.taiyo.production.count.and.progress",
-      "name": "TaiyoProductionCountAndProgress",
-      "description": "Calculate product total/good count and job progress from paper consumed production.",
-      "script": "const assetPath = AssetPath.path || \"-\";\n\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst rejectCount = Number(asset.get(`${assetPath}.Product Reject Count`, 0) ?? 0);\nconst prodConsumed = Number(asset.get(`${assetPath}.Paper Consumed Production`, 0) ?? 0);\nconst paperFoldSizeRaw = String(asset.get(`${assetPath}.Paper/Fold Size`, ``) ?? ``).trim();\nconst countPerFoldRaw = String(asset.get(`${assetPath}.Product Count Per Fold`, ``) ?? ``).trim();\n\nconst progressPath = `${assetPath}.Job Progress`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst totalCountPath = `${assetPath}.Product Total Count`;\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / paperFoldSize) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? rejectCount : 0;\nconst goodCount = Math.max(0, Math.round(totalCount - safeRejectCount));\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst progress = Math.max(0, Math.round((goodCount / targetEa) * 100));\nawait asset.set(progressPath, progress);\n\nsend(msg);",
+      "name": "TaiyoProductCounts",
+      "description": "Calculate product total count and good count from paper consumed production and reject count.",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\nconst prodConsumed = Number(asset.get(`${assetPath}.Paper Consumed Production`, 0) ?? 0);\nconst rejectCount = Number(asset.get(rejectCountPath, 0) ?? 0);\nconst paperFoldSizeRaw = String(asset.get(`${assetPath}.Paper/Fold Size`, ``) ?? ``).trim();\nconst countPerFoldRaw = String(asset.get(`${assetPath}.Product Count Per Fold`, ``) ?? ``).trim();\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / paperFoldSize) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? Math.max(0, Math.round(rejectCount)) : 0;\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
+      "allowTemplateReuse": true,
+      "variableBindings": [
+        {
+          "name": "AssetPath",
+          "source": "asset",
+          "staticValue": "",
+          "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
+          "allowOverride": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "order": 1,
+          "description": ""
+        }
+      ]
+    },
+    {
+      "id": "template.taiyo.job.progress.from.good",
+      "name": "TaiyoJobProgressFromGoodCount",
+      "description": "Calculate job progress from product good count against product count target.",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst goodCount = Number(asset.get(`${assetPath}.Product Good Count`, 0) ?? 0);\nconst progressPath = `${assetPath}.Job Progress`;\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeGoodCount = Number.isFinite(goodCount) ? Math.max(0, Math.round(goodCount)) : 0;\nconst progress = Math.max(0, Math.round((safeGoodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nmsg.jobProgress = progress;\nmsg.productGoodCount = safeGoodCount;\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -4182,39 +4260,18 @@
           "id": "act_wznj2p9u",
           "kind": "action",
           "refId": "act_wznj2p9u",
-          "label": "Count Product Output",
+          "label": "Calculate Job Progress",
           "enabled": true,
-          "templateId": "template.script_1772274570343",
+          "templateId": "template.taiyo.job.progress.from.good",
           "config": {
             "description": "",
-            "script": "const paperConsumedProduction = Number(PaperConsumedProduction?.value ?? 0);\r\nconst productFoldLength = Number(ProductFoldLength?.value ?? 0);\r\nconst productPerFold = Number(ProductPerFold?.value ?? 0);\r\nconst productTotalCountPath = ProductTotalCount?.path ?? \"\";\r\n\r\nif (!productTotalCountPath) {\r\n  send(msg);\r\n  return;\r\n}\r\n\r\nlet productTotalCount = 0;\r\nif (productFoldLength > 0 && productPerFold > 0) {\r\n  productTotalCount = (paperConsumedProduction / (productFoldLength/100)) * productPerFold;\r\n}\r\n\r\nproductTotalCount = Number(productTotalCount.toFixed(0));\r\n\r\nawait asset.set(productTotalCountPath, productTotalCount);\r\n\r\nmsg.payload = { productTotalCount, paperConsumedProduction, productFoldLength, productPerFold };\r\n\r\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst goodCount = Number(asset.get(`${assetPath}.Product Good Count`, 0) ?? 0);\nconst progressPath = `${assetPath}.Job Progress`;\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeGoodCount = Number.isFinite(goodCount) ? Math.max(0, Math.round(goodCount)) : 0;\nconst progress = Math.max(0, Math.round((safeGoodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nmsg.jobProgress = progress;\nmsg.productGoodCount = safeGoodCount;\n\nsend(msg);",
             "templateBindingOverrides": {
-              "PaperConsumedProduction": {
-                "name": "PaperConsumedProduction",
-                "source": "attribute",
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
                 "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper Consumed Production",
-                "allowOverride": true
-              },
-              "ProductFoldLength": {
-                "name": "ProductFoldLength",
-                "source": "attribute",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Paper/Fold Size",
-                "allowOverride": true
-              },
-              "ProductPerFold": {
-                "name": "ProductPerFold",
-                "source": "attribute",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count Per Fold",
-                "allowOverride": true
-              },
-              "ProductTotalCount": {
-                "name": "ProductTotalCount",
-                "source": "attribute",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Product Total Count",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1",
                 "allowOverride": true
               }
             },
@@ -4352,12 +4409,12 @@
           "id": "act_uc1u4e3v",
           "kind": "action",
           "refId": "act_uc1u4e3v",
-          "label": "Calculate Job Progress & Job Output",
+          "label": "Calculate Product Counts",
           "enabled": true,
           "templateId": "template.taiyo.production.count.and.progress",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\n\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst rejectCount = Number(asset.get(`${assetPath}.Product Reject Count`, 0) ?? 0);\nconst prodConsumed = Number(asset.get(`${assetPath}.Paper Consumed Production`, 0) ?? 0);\nconst paperFoldSizeRaw = String(asset.get(`${assetPath}.Paper/Fold Size`, ``) ?? ``).trim();\nconst countPerFoldRaw = String(asset.get(`${assetPath}.Product Count Per Fold`, ``) ?? ``).trim();\n\nconst progressPath = `${assetPath}.Job Progress`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst totalCountPath = `${assetPath}.Product Total Count`;\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / paperFoldSize) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? rejectCount : 0;\nconst goodCount = Math.max(0, Math.round(totalCount - safeRejectCount));\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst progress = Math.max(0, Math.round((goodCount / targetEa) * 100));\nawait asset.set(progressPath, progress);\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\nconst prodConsumed = Number(asset.get(`${assetPath}.Paper Consumed Production`, 0) ?? 0);\nconst rejectCount = Number(asset.get(rejectCountPath, 0) ?? 0);\nconst paperFoldSizeRaw = String(asset.get(`${assetPath}.Paper/Fold Size`, ``) ?? ``).trim();\nconst countPerFoldRaw = String(asset.get(`${assetPath}.Product Count Per Fold`, ``) ?? ``).trim();\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / paperFoldSize) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? Math.max(0, Math.round(rejectCount)) : 0;\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -4727,6 +4784,57 @@
             "activeFrom": "",
             "activeTo": ""
           }
+        },
+        {
+          "id": "trg_t1prc001",
+          "kind": "trigger",
+          "refId": "trg_t1prc001",
+          "label": "Jasuindo.OffsetPrinter.Taiyo1.Product Reject Count",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Product Reject Count",
+            "intervalMs": 1000,
+            "cronExpression": "",
+            "timezone": "",
+            "activeFrom": "",
+            "activeTo": ""
+          }
+        },
+        {
+          "id": "trg_t1pgc001",
+          "kind": "trigger",
+          "refId": "trg_t1pgc001",
+          "label": "Jasuindo.OffsetPrinter.Taiyo1.Product Good Count",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Product Good Count",
+            "intervalMs": 1000,
+            "cronExpression": "",
+            "timezone": "",
+            "activeFrom": "",
+            "activeTo": ""
+          }
+        },
+        {
+          "id": "trg_t1pct001",
+          "kind": "trigger",
+          "refId": "trg_t1pct001",
+          "label": "Jasuindo.OffsetPrinter.Taiyo1.Product Count Target",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Product Count Target",
+            "intervalMs": 1000,
+            "cronExpression": "",
+            "timezone": "",
+            "activeFrom": "",
+            "activeTo": ""
+          }
         }
       ],
       "links": [
@@ -4833,12 +4941,6 @@
           "enabled": true
         },
         {
-          "from": "act_t1pac001",
-          "to": "act_wznj2p9u",
-          "fromPort": "out",
-          "enabled": true
-        },
-        {
           "from": "event.open.evt_uwgrrrj5",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
@@ -4854,6 +4956,24 @@
           "from": "event.open.evt_b2g7asve",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
+          "enabled": true
+        },
+        {
+          "from": "trg_t1prc001",
+          "to": "act_uc1u4e3v",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "trg_t1pgc001",
+          "to": "act_wznj2p9u",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "trg_t1pct001",
+          "to": "act_wznj2p9u",
+          "fromPort": "default",
           "enabled": true
         }
       ],
@@ -4993,6 +5113,18 @@
         "event.open.evt_b2g7asve": {
           "x": 1300,
           "y": 1260
+        },
+        "trg_t1prc001": {
+          "x": 300,
+          "y": 700
+        },
+        "trg_t1pgc001": {
+          "x": 300,
+          "y": 840
+        },
+        "trg_t1pct001": {
+          "x": 300,
+          "y": 980
         }
       }
     }

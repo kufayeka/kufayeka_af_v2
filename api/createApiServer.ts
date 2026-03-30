@@ -1,7 +1,12 @@
+import "reflect-metadata";
 import http from "node:http";
 import type { Socket } from "node:net";
-import express, { Request } from "express";
+import express, { NextFunction, Request, Response } from "express";
+import { NestFactory } from "@nestjs/core";
+import { ExpressAdapter } from "@nestjs/platform-express";
+import type { INestApplication } from "@nestjs/common";
 import Runtime from "../runtime/Runtime";
+import { AppModule } from "./app.module";
 import { ensureAssetStorage } from "../runtime/assetStorage";
 import { ensureEventStore } from "../runtime/eventStore";
 import {
@@ -165,7 +170,16 @@ async function getEventRangeFromStore(
 export default function createApiServer(runtime: Runtime, options: { port?: number; host?: string } = {}) {
   const port = options.port ?? 4000;
   const host = options.host ?? "0.0.0.0";
-  const preferredCorsOrigin = "http://192.168.68.99:3333";
+  const allowedCorsOrigins = [
+    "*",
+    "http://192.168.68.99:3333",
+    "http://192.168.68.99:3002",
+    "http://localhost:3333",
+    "http://localhost:3001",
+    "http://192.168.68.9:3002",
+    "http://192.168.68.9:3000",
+    "http://192.168.68.106:3001"
+  ];
   const assetStore = ensureAssetStorage(runtime, runtime.getGlobal("assetFramework", {}));
   const eventStore = ensureEventStore(runtime);
   const eventTemplateMap = new Map<string, EventTemplateDefinition>(
@@ -449,34 +463,6 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   //   }
   //   next();
   // });
-
-  app.use((req, res, next) => {
-    // Allow all origins by setting to the request origin or *
-    const requestOrigin = req.header("origin");
-    
-    // Always allow all origins by reflecting the origin or using *
-    res.setHeader("Access-Control-Allow-Origin", requestOrigin || "*");
-    
-    if (requestOrigin) {
-      res.setHeader("Vary", "Origin");
-    }
-    
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-    res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS,PATCH");
-    res.setHeader("Access-Control-Allow-Headers", "*");
-    res.setHeader("Access-Control-Expose-Headers", "*");
-    res.setHeader("Access-Control-Allow-Private-Network", "true");
-    res.setHeader("Access-Control-Max-Age", "86400");
-    
-    if (req.method === "OPTIONS") {
-      res.status(204).end();
-      return;
-    }
-
-    next();
-
-  });
-
 
   app.use(express.json({ limit: "10mb" }));
 
@@ -1333,24 +1319,50 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   });
 
   let server: http.Server | null = null;
+  let nestApp: INestApplication | null = null;
   const sockets = new Set<Socket>();
 
   return {
-    start() {
-      const activeServer = app.listen(port, host, () => {
-        console.log(`Global store API is running at http://${host}:${port}`);
+    async start() {
+      if (server) return server;
+      const adapter = new ExpressAdapter(app);
+      const activeNestApp = await NestFactory.create(AppModule, adapter, {
+        logger: ["log", "error", "warn", "debug"]
       });
+
+      activeNestApp.enableCors({
+        origin: allowedCorsOrigins,
+        methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
+        credentials: true
+      });
+      activeNestApp.enableShutdownHooks();
+      activeNestApp.use((req: Request, _res: Response, next: NextFunction) => {
+        console.log(`[${req.method}] ${req.originalUrl}`);
+        next();
+      });
+
+      await activeNestApp.init();
+      const activeServer = await activeNestApp.listen(port, host);
+      nestApp = activeNestApp;
       server = activeServer;
+      console.log(`Global store API is running at http://${host}:${port}`);
       activeServer.on("connection", (socket: Socket) => {
         sockets.add(socket);
         socket.on("close", () => sockets.delete(socket));
       });
       return activeServer;
     },
-    stop() {
+    async stop() {
+      if (!server && !nestApp) return;
+      const activeNestApp = nestApp;
       return new Promise<void>((resolve, reject) => {
         if (!server) {
-          resolve();
+          Promise.resolve(activeNestApp?.close())
+            .then(() => {
+              nestApp = null;
+              resolve();
+            })
+            .catch(reject);
           return;
         }
         const activeServer = server;
@@ -1371,7 +1383,12 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
           }
           sockets.clear();
           server = null;
-          resolve();
+          Promise.resolve(activeNestApp?.close())
+            .then(() => {
+              nestApp = null;
+              resolve();
+            })
+            .catch(reject);
         });
       });
     }
