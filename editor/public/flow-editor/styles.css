@@ -450,9 +450,41 @@ input {
   overflow: visible;
 }
 
+.node::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 6px;
+  border-radius: 999px;
+  background: transparent;
+  pointer-events: none;
+}
+
 .node.selected {
   border-color: #dc2626 !important;
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.22), var(--shadow);
+}
+
+.node.event-open {
+  border-color: #22d3ee !important;
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.28), var(--shadow);
+}
+
+.node.event-close {
+  border-color: #f97316 !important;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.28), var(--shadow);
+}
+
+.node.event-open::before {
+  width: 10px;
+  background: linear-gradient(180deg, #67e8f9 0%, #06b6d4 100%);
+}
+
+.node.event-close::before {
+  width: 10px;
+  background: linear-gradient(180deg, #fdba74 0%, #ea580c 100%);
 }
 
 .node-body {
@@ -460,6 +492,22 @@ input {
   grid-template-columns: 54px 1fr;
   grid-template-rows: auto auto;
   min-height: 76px;
+  position: relative;
+  border-radius: 18px;
+  overflow: visible;
+}
+
+.node-body::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.node-body > * {
+  position: relative;
+  z-index: 1;
 }
 
 .node-icon {
@@ -471,6 +519,24 @@ input {
   font-weight: 800;
   opacity: 0.9;
   border-right: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.node.event-open .node-icon {
+  background: rgba(34, 211, 238, 0.3);
+}
+
+.node.event-close .node-icon {
+  background: rgba(249, 115, 22, 0.28);
+}
+
+.node.event-open .node-body::before {
+  opacity: 1;
+  background: linear-gradient(180deg, rgba(103, 232, 249, 0.2) 0%, rgba(6, 182, 212, 0.1) 100%);
+}
+
+.node.event-close .node-body::before {
+  opacity: 1;
+  background: linear-gradient(180deg, rgba(253, 186, 116, 0.22) 0%, rgba(234, 88, 12, 0.12) 100%);
 }
 
 .node-content {
@@ -503,6 +569,30 @@ input {
   letter-spacing: 0.06em;
   opacity: 0.78;
   word-break: break-word;
+}
+
+.node.event-open .node-kind {
+  color: #dbeafe;
+  opacity: 0.98;
+  background: rgba(59, 130, 246, 0.24);
+  border: 1px solid rgba(191, 219, 254, 0.35);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 8px;
+}
+
+.node.event-close .node-kind {
+  color: #ffedd5;
+  opacity: 0.98;
+  background: rgba(249, 115, 22, 0.24);
+  border: 1px solid rgba(253, 186, 116, 0.35);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 8px;
 }
 
 .node-ports {

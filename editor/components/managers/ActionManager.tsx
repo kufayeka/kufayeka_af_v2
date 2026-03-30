@@ -44,7 +44,9 @@ interface ActionManagerProps {
   assets: AssetFrameworkDefinition;
   flowVariableNames?: string[];
   selectedActionId: string;
+  selectedScriptTemplateId?: string;
   onSelectAction: (id: string) => void;
+  onSelectScriptTemplate?: (id: string) => void;
   onAddAction: (parentPath?: string) => void;
   onDuplicateAction: (id: string) => void;
   onRemoveAction: (id: string) => void;
@@ -306,7 +308,9 @@ export default function ActionManager({
   assets,
   flowVariableNames = [],
   selectedActionId,
+  selectedScriptTemplateId = "",
   onSelectAction,
+  onSelectScriptTemplate,
   onAddAction,
   onDuplicateAction,
   onRemoveAction,
@@ -321,7 +325,7 @@ export default function ActionManager({
   const [search, setSearch] = useState("");
   const [selectedHierarchyKey, setSelectedHierarchyKey] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState(selectedScriptTemplateId);
   const [maxEditor, setMaxEditor] = useState(false); // action editor
   const [maxTemplateEditor, setMaxTemplateEditor] = useState(false); // template editor
   const [actionScriptDraft, setActionScriptDraft] = useState("");
@@ -481,6 +485,17 @@ export default function ActionManager({
   useEffect(() => {
     if (templateOnly) setMainTab(1);
   }, [templateOnly]);
+
+  useEffect(() => {
+    if (selectedScriptTemplateId && selectedScriptTemplateId !== selectedTemplateId) {
+      setSelectedTemplateId(selectedScriptTemplateId);
+    }
+  }, [selectedScriptTemplateId, selectedTemplateId]);
+
+  const selectScriptTemplate = (id: string) => {
+    setSelectedTemplateId(id);
+    onSelectScriptTemplate?.(id);
+  };
 
   return (
     <Box sx={{ p: 1.25, display: "grid", gap: 1.25 }}>
@@ -896,7 +911,7 @@ export default function ActionManager({
               {scriptTemplates.map((template) => (
                 <Box
                   key={template.id}
-                  onClick={() => setSelectedTemplateId(template.id)}
+                  onClick={() => selectScriptTemplate(template.id)}
                   sx={{
                     p: 0.75,
                     border: "1px solid #cbd5e1",

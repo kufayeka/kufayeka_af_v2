@@ -8,6 +8,7 @@ import {
   Drawer,
   FormControl,
   FormControlLabel,
+  InputLabel,
   IconButton,
   MenuItem,
   Select,
@@ -47,6 +48,8 @@ interface FlowNodeInspectorDrawerProps {
   eventTemplates: EventTemplateDefinition[];
   assets: AssetFrameworkDefinition;
   flowVariableNames?: string[];
+  onOpenScriptTemplateManager?: (templateId: string) => void;
+  onOpenEventTemplateManager?: (templateId: string) => void;
   onClose: () => void;
   onRenameNode: (oldId: string, newId: string) => void;
   onUpdateNode: (id: string, patch: Partial<FlowNodeDefinition>) => void;
@@ -168,6 +171,7 @@ function ScriptNodeInspector({
   scriptTemplates,
   assets,
   flowVariableNames = [],
+  onOpenScriptTemplateManager,
   onRenameNode,
   onUpdateNode
 }: {
@@ -175,6 +179,7 @@ function ScriptNodeInspector({
   scriptTemplates: ScriptTemplateDefinition[];
   assets: AssetFrameworkDefinition;
   flowVariableNames?: string[];
+  onOpenScriptTemplateManager?: (templateId: string) => void;
   onRenameNode: (oldId: string, newId: string) => void;
   onUpdateNode: (id: string, patch: Partial<FlowNodeDefinition>) => void;
 }) {
@@ -272,19 +277,33 @@ function ScriptNodeInspector({
             : 'Comma-separated output labels in order. Example: "out1, fail, success"'
         }
       />
-      <FormControl size="small" fullWidth>
-        <Select
-          value={node.templateId ?? ""}
-          onChange={(e: SelectChangeEvent<string>) => onUpdateNode(node.id, { templateId: e.target.value || undefined })}
+      <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 1, alignItems: "center" }}>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Action Template</InputLabel>
+          <Select
+            label="Action Template"
+            value={node.templateId ?? ""}
+            onChange={(e: SelectChangeEvent<string>) => onUpdateNode(node.id, { templateId: e.target.value || undefined })}
+          >
+            <MenuItem value="">(None)</MenuItem>
+            {scriptTemplates.map((template) => (
+              <MenuItem key={template.id} value={template.id}>
+                {template.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <Button
+          variant="outlined"
+          disabled={!selectedTemplate}
+          onClick={() => {
+            if (!selectedTemplate) return;
+            onOpenScriptTemplateManager?.(selectedTemplate.id);
+          }}
         >
-          <MenuItem value="">(None)</MenuItem>
-          {scriptTemplates.map((template) => (
-            <MenuItem key={template.id} value={template.id}>
-              {template.name}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+          Open Template
+        </Button>
+      </Box>
 
       {selectedTemplate && (
         <Box sx={{ display: "grid", gap: 0.75 }}>
@@ -463,6 +482,7 @@ function EventNodeInspector({
   eventTemplates,
   assets,
   flowVariableNames = [],
+  onOpenEventTemplateManager,
   onRenameNode,
   onUpdateNode
 }: {
@@ -471,6 +491,7 @@ function EventNodeInspector({
   eventTemplates: EventTemplateDefinition[];
   assets: AssetFrameworkDefinition;
   flowVariableNames?: string[];
+  onOpenEventTemplateManager?: (templateId: string) => void;
   onRenameNode: (oldId: string, newId: string) => void;
   onUpdateNode: (id: string, patch: Partial<FlowNodeDefinition>) => void;
 }) {
@@ -536,25 +557,39 @@ function EventNodeInspector({
         }} />}
         label="Event Action Enabled"
       />
-      <FormControl size="small" fullWidth>
-        <Select
-          value={primaryNode.templateId ?? ""}
-          onChange={(e) => {
-            if (openNode && closeNode) {
-              updateBoth({ templateId: e.target.value || undefined }, { templateId: e.target.value || undefined });
-            } else {
-              onUpdateNode(primaryNode.id, { templateId: e.target.value || undefined });
-            }
+      <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 1, alignItems: "center" }}>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Event Template</InputLabel>
+          <Select
+            label="Event Template"
+            value={primaryNode.templateId ?? ""}
+            onChange={(e) => {
+              if (openNode && closeNode) {
+                updateBoth({ templateId: e.target.value || undefined }, { templateId: e.target.value || undefined });
+              } else {
+                onUpdateNode(primaryNode.id, { templateId: e.target.value || undefined });
+              }
+            }}
+          >
+            <MenuItem value="">(Select Event Template)</MenuItem>
+            {eventTemplates.map((template) => (
+              <MenuItem key={template.id} value={template.id}>
+                {template.id}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <Button
+          variant="outlined"
+          disabled={!selectedTemplate}
+          onClick={() => {
+            if (!selectedTemplate) return;
+            onOpenEventTemplateManager?.(selectedTemplate.id);
           }}
         >
-          <MenuItem value="">(Select Event Template)</MenuItem>
-          {eventTemplates.map((template) => (
-            <MenuItem key={template.id} value={template.id}>
-              {template.id}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+          Open Template
+        </Button>
+      </Box>
       {openNode && (
         <TextField label="Open Notes" value={String(openConfig.openNotes ?? "")} onChange={(e) => onUpdateNode(openNode.id, { config: { ...openConfig, openNotes: e.target.value } })} />
       )}
@@ -689,6 +724,8 @@ export default function FlowNodeInspectorDrawer(props: FlowNodeInspectorDrawerPr
     eventTemplates,
     assets,
     flowVariableNames = [],
+    onOpenScriptTemplateManager,
+    onOpenEventTemplateManager,
     onClose,
     onRenameNode,
     onUpdateNode
@@ -731,6 +768,7 @@ export default function FlowNodeInspectorDrawer(props: FlowNodeInspectorDrawerPr
             scriptTemplates={scriptTemplates}
             assets={assets}
             flowVariableNames={flowVariableNames}
+            onOpenScriptTemplateManager={onOpenScriptTemplateManager}
             onRenameNode={onRenameNode}
             onUpdateNode={onUpdateNode}
           />
@@ -742,6 +780,7 @@ export default function FlowNodeInspectorDrawer(props: FlowNodeInspectorDrawerPr
             eventTemplates={eventTemplates}
             assets={assets}
             flowVariableNames={flowVariableNames}
+            onOpenEventTemplateManager={onOpenEventTemplateManager}
             onRenameNode={onRenameNode}
             onUpdateNode={onUpdateNode}
           />

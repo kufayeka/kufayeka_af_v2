@@ -97,43 +97,10 @@
   ],
   "flows": {
     "id": "flow_main",
-    "name": "Main Flow",
-    "description": "",
+    "name": "MES - OffsetPrinter - Taiyo 1",
+    "description": "-",
     "enabled": true,
-    "variables": [
-      {
-        "name": "flowVar1",
-        "order": 1,
-        "description": "",
-        "source": "static_string",
-        "staticValue": "",
-        "attributePath": ""
-      },
-      {
-        "name": "flowVar2",
-        "order": 2,
-        "description": "",
-        "source": "static_string",
-        "staticValue": "",
-        "attributePath": ""
-      },
-      {
-        "name": "flowVar3",
-        "order": 3,
-        "description": "",
-        "source": "static_string",
-        "staticValue": "",
-        "attributePath": ""
-      },
-      {
-        "name": "flowVar4",
-        "order": 4,
-        "description": "",
-        "source": "static_string",
-        "staticValue": "",
-        "attributePath": ""
-      }
-    ],
+    "variables": [],
     "activeFlowId": "flow_main",
     "nodes": [
       {
@@ -202,24 +169,6 @@
           "timezone": "",
           "activeFrom": "",
           "activeTo": ""
-        }
-      },
-      {
-        "id": "act_6zilm8v8",
-        "kind": "action",
-        "refId": "act_6zilm8v8",
-        "label": "Action - 9",
-        "enabled": true,
-        "templateId": "",
-        "config": {
-          "description": "",
-          "script": "helpers.log(\"msg:\", msg);",
-          "templateBindingOverrides": {},
-          "eventTemplateId": "",
-          "eventTemplateOverrides": {},
-          "outputs": [
-            "out"
-          ]
         }
       },
       {
@@ -466,7 +415,7 @@
         "id": "act_xi9ttxqd",
         "kind": "action",
         "refId": "act_xi9ttxqd",
-        "label": "Action - 28",
+        "label": "Debug",
         "enabled": true,
         "templateId": "",
         "config": {
@@ -481,9 +430,9 @@
         }
       },
       {
-        "id": "event.open.evt_zod4rv5g",
+        "id": "event.open.evt_uwgrrrj5",
         "kind": "event_open",
-        "refId": "evt_zod4rv5g",
+        "refId": "evt_uwgrrrj5",
         "label": "OPEN Taiyo1.JobLifecycle",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -517,9 +466,9 @@
         }
       },
       {
-        "id": "event.close.evt_zod4rv5g",
+        "id": "event.close.evt_uwgrrrj5",
         "kind": "event_close",
-        "refId": "evt_zod4rv5g",
+        "refId": "evt_uwgrrrj5",
         "label": "CLOSE Taiyo1.JobLifecycle",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -553,9 +502,9 @@
         }
       },
       {
-        "id": "event.open.evt_kff03zoo",
+        "id": "event.open.evt_b2g7asve",
         "kind": "event_open",
-        "refId": "evt_kff03zoo",
+        "refId": "evt_b2g7asve",
         "label": "OPEN Taiyo1.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -589,9 +538,9 @@
         }
       },
       {
-        "id": "event.close.evt_kff03zoo",
+        "id": "event.close.evt_b2g7asve",
         "kind": "event_close",
-        "refId": "evt_kff03zoo",
+        "refId": "evt_b2g7asve",
         "label": "CLOSE Taiyo1.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -625,9 +574,9 @@
         }
       },
       {
-        "id": "event.close.evt_aakmpv3t",
+        "id": "event.close.evt_1wzojtqg",
         "kind": "event_close",
-        "refId": "evt_aakmpv3t",
+        "refId": "evt_1wzojtqg",
         "label": "CLOSE Taiyo2.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -787,49 +736,31 @@
         "enabled": true
       },
       {
-        "from": "event.open.evt_zod4rv5g",
+        "from": "event.open.evt_uwgrrrj5",
         "to": "act_xi9ttxqd",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.close.evt_zod4rv5g",
+        "from": "event.close.evt_uwgrrrj5",
         "to": "act_xi9ttxqd",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_zod4rv5g",
+        "from": "event.open.evt_uwgrrrj5",
         "to": "act_o8dbxj0x",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.close.evt_zod4rv5g",
+        "from": "event.close.evt_uwgrrrj5",
         "to": "act_nad2xse9",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.close.evt_zod4rv5g",
-        "to": "act_6zilm8v8",
-        "fromPort": "onFail",
-        "enabled": true
-      },
-      {
-        "from": "event.open.evt_zod4rv5g",
-        "to": "act_6zilm8v8",
-        "fromPort": "onFail",
-        "enabled": true
-      },
-      {
-        "from": "event.open.evt_kff03zoo",
-        "to": "act_6zilm8v8",
-        "fromPort": "onFail",
-        "enabled": true
-      },
-      {
-        "from": "event.open.evt_kff03zoo",
+        "from": "event.open.evt_b2g7asve",
         "to": "act_xi9ttxqd",
         "fromPort": "onSuccess",
         "enabled": true
@@ -848,19 +779,19 @@
       },
       {
         "from": "act_o750buzm",
-        "to": "event.open.evt_zod4rv5g",
+        "to": "event.open.evt_uwgrrrj5",
         "fromPort": "open event",
         "enabled": true
       },
       {
         "from": "act_o750buzm",
-        "to": "event.close.evt_zod4rv5g",
+        "to": "event.close.evt_uwgrrrj5",
         "fromPort": "close event",
         "enabled": true
       },
       {
         "from": "act_pqgrrjup",
-        "to": "event.open.evt_kff03zoo",
+        "to": "event.open.evt_b2g7asve",
         "fromPort": "out",
         "enabled": true
       },
@@ -898,6 +829,24 @@
         "from": "act_t1pac001",
         "to": "act_wznj2p9u",
         "fromPort": "out",
+        "enabled": true
+      },
+      {
+        "from": "event.open.evt_uwgrrrj5",
+        "to": "act_xi9ttxqd",
+        "fromPort": "onFail",
+        "enabled": true
+      },
+      {
+        "from": "event.close.evt_uwgrrrj5",
+        "to": "act_xi9ttxqd",
+        "fromPort": "onFail",
+        "enabled": true
+      },
+      {
+        "from": "event.open.evt_b2g7asve",
+        "to": "act_xi9ttxqd",
+        "fromPort": "onFail",
         "enabled": true
       }
     ],
@@ -952,7 +901,7 @@
       },
       "trg_3cazbipi": {
         "x": 300,
-        "y": 1360
+        "y": 1280
       },
       "trg_i2jdu13y": {
         "x": 300,
@@ -960,47 +909,43 @@
       },
       "trg_y12o0byg": {
         "x": 300,
-        "y": 1000
+        "y": 800
       },
       "trg_yaqn0nzn": {
         "x": 300,
-        "y": 640
-      },
-      "act_6zilm8v8": {
-        "x": 1860,
-        "y": 1380
+        "y": 420
       },
       "act_wznj2p9u": {
-        "x": 2280,
-        "y": 560
+        "x": 2120,
+        "y": 420
       },
       "act_zxdzcreb": {
         "x": 760,
-        "y": 960
+        "y": 760
       },
       "act_bef4hk9d": {
         "x": 760,
-        "y": 640
+        "y": 400
       },
       "act_otya9inq": {
         "x": 1300,
-        "y": 820
+        "y": 740
       },
       "act_o750buzm": {
         "x": 760,
         "y": 1120
       },
       "act_pqgrrjup": {
-        "x": 780,
-        "y": 1340
+        "x": 760,
+        "y": 1260
       },
       "act_uc1u4e3v": {
         "x": 760,
-        "y": 460
+        "y": 580
       },
       "act_nad2xse9": {
         "x": 1860,
-        "y": 1080
+        "y": 1040
       },
       "act_o8dbxj0x": {
         "x": 1860,
@@ -1020,27 +965,27 @@
       },
       "act_t1msp001": {
         "x": 1220,
-        "y": 620
+        "y": 400
       },
       "act_t1pac001": {
-        "x": 1720,
-        "y": 600
+        "x": 1660,
+        "y": 400
       },
       "trg_t1ppc001": {
         "x": 300,
-        "y": 460
+        "y": 600
       },
-      "event.open.evt_zod4rv5g": {
+      "event.open.evt_uwgrrrj5": {
         "x": 1300,
         "y": 940
       },
-      "event.close.evt_zod4rv5g": {
+      "event.close.evt_uwgrrrj5": {
         "x": 1300,
         "y": 1100
       },
-      "event.open.evt_kff03zoo": {
+      "event.open.evt_b2g7asve": {
         "x": 1300,
-        "y": 1280
+        "y": 1260
       }
     }
   },
@@ -1055,8 +1000,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": "2026-03-30T02:06:39.946Z",
-            "ts": "2026-03-30T02:06:39.948Z"
+            "value": "2026-03-30T02:30:15.401Z",
+            "ts": "2026-03-30T02:30:15.403Z"
           }
         }
       },
@@ -1073,7 +1018,7 @@
         "attributes": {
           "Machine Speed": {
             "value": 0,
-            "ts": "2026-03-30T02:06:39.961Z"
+            "ts": "2026-03-30T02:30:15.408Z"
           },
           "Work Order": {
             "value": "WO-456",
@@ -1104,7 +1049,7 @@
           },
           "Job Activity Category": {
             "value": "-",
-            "ts": "2026-03-30T02:06:40.157Z"
+            "ts": "2026-03-30T02:30:15.545Z"
           },
           "Paper Consumed Production": {
             "value": 0,
@@ -1116,15 +1061,15 @@
           },
           "Total Production Time": {
             "value": 0,
-            "ts": "2026-03-30T02:06:40.164Z"
+            "ts": "2026-03-30T02:30:15.551Z"
           },
           "Total Setup Time": {
             "value": 0,
-            "ts": "2026-03-30T02:06:40.160Z"
+            "ts": "2026-03-30T02:30:15.548Z"
           },
           "Total Idle Time": {
             "value": 0,
-            "ts": "2026-03-30T02:06:40.162Z"
+            "ts": "2026-03-30T02:30:15.550Z"
           },
           "Material Barcode": {
             "value": "KertasG001",
@@ -1132,7 +1077,7 @@
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-03-30T02:06:40.159Z"
+            "ts": "2026-03-30T02:30:15.546Z"
           },
           "Total Paper Waste": {
             "value": 0,
@@ -1144,7 +1089,7 @@
           },
           "Running Hour": {
             "value": 18139,
-            "ts": "2026-03-30T02:06:40.166Z"
+            "ts": "2026-03-30T02:30:15.553Z"
           },
           "Product Good Count": {
             "value": 0,
@@ -1197,7 +1142,7 @@
           },
           "Product Total Count": {
             "value": 0,
-            "ts": "2026-03-30T02:06:39.966Z"
+            "ts": "2026-03-30T02:30:15.412Z"
           },
           "Job Loader": {
             "value": {},
@@ -1220,20 +1165,20 @@
             "ts": "2026-03-29T14:18:52.433Z"
           },
           "Total Paper Consumed Input": {
-            "value": 8.159999999999995,
-            "ts": "2026-03-30T02:03:14.241Z"
+            "value": 8.169999999999995,
+            "ts": "2026-03-30T02:14:34.470Z"
           },
           "Total Paper Consumed Output": {
             "value": 0,
             "ts": "2026-03-29T14:18:52.418Z"
           },
           "Encoder Input Raw Value": {
-            "value": 816,
-            "ts": "2026-03-30T02:06:39.957Z"
+            "value": 817,
+            "ts": "2026-03-30T02:30:15.406Z"
           },
           "Encoder Input Prev Value": {
-            "value": 816,
-            "ts": "2026-03-30T02:06:39.960Z"
+            "value": 817,
+            "ts": "2026-03-30T02:30:15.407Z"
           }
         }
       },
@@ -1393,8 +1338,8 @@
             "ts": "2026-03-26T01:47:02.365Z"
           },
           "Encoder Input Raw Value": {
-            "value": 337,
-            "ts": "2026-03-30T02:06:39.963Z"
+            "value": 339,
+            "ts": "2026-03-30T02:30:15.410Z"
           },
           "Total Paper Consumed Input": {
             "value": 3.3699999999999997,
@@ -4160,43 +4105,10 @@
   "flowDefinitions": [
     {
       "id": "flow_main",
-      "name": "Main Flow",
-      "description": "",
+      "name": "MES - OffsetPrinter - Taiyo 1",
+      "description": "-",
       "enabled": true,
-      "variables": [
-        {
-          "name": "flowVar1",
-          "order": 1,
-          "description": "",
-          "source": "static_string",
-          "staticValue": "",
-          "attributePath": ""
-        },
-        {
-          "name": "flowVar2",
-          "order": 2,
-          "description": "",
-          "source": "static_string",
-          "staticValue": "",
-          "attributePath": ""
-        },
-        {
-          "name": "flowVar3",
-          "order": 3,
-          "description": "",
-          "source": "static_string",
-          "staticValue": "",
-          "attributePath": ""
-        },
-        {
-          "name": "flowVar4",
-          "order": 4,
-          "description": "",
-          "source": "static_string",
-          "staticValue": "",
-          "attributePath": ""
-        }
-      ],
+      "variables": [],
       "nodes": [
         {
           "id": "trg_3cazbipi",
@@ -4264,24 +4176,6 @@
             "timezone": "",
             "activeFrom": "",
             "activeTo": ""
-          }
-        },
-        {
-          "id": "act_6zilm8v8",
-          "kind": "action",
-          "refId": "act_6zilm8v8",
-          "label": "Action - 9",
-          "enabled": true,
-          "templateId": "",
-          "config": {
-            "description": "",
-            "script": "helpers.log(\"msg:\", msg);",
-            "templateBindingOverrides": {},
-            "eventTemplateId": "",
-            "eventTemplateOverrides": {},
-            "outputs": [
-              "out"
-            ]
           }
         },
         {
@@ -4528,7 +4422,7 @@
           "id": "act_xi9ttxqd",
           "kind": "action",
           "refId": "act_xi9ttxqd",
-          "label": "Action - 28",
+          "label": "Debug",
           "enabled": true,
           "templateId": "",
           "config": {
@@ -4543,9 +4437,9 @@
           }
         },
         {
-          "id": "event.open.evt_zod4rv5g",
+          "id": "event.open.evt_uwgrrrj5",
           "kind": "event_open",
-          "refId": "evt_zod4rv5g",
+          "refId": "evt_uwgrrrj5",
           "label": "OPEN Taiyo1.JobLifecycle",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -4579,9 +4473,9 @@
           }
         },
         {
-          "id": "event.close.evt_zod4rv5g",
+          "id": "event.close.evt_uwgrrrj5",
           "kind": "event_close",
-          "refId": "evt_zod4rv5g",
+          "refId": "evt_uwgrrrj5",
           "label": "CLOSE Taiyo1.JobLifecycle",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -4615,9 +4509,9 @@
           }
         },
         {
-          "id": "event.open.evt_kff03zoo",
+          "id": "event.open.evt_b2g7asve",
           "kind": "event_open",
-          "refId": "evt_kff03zoo",
+          "refId": "evt_b2g7asve",
           "label": "OPEN Taiyo1.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4651,9 +4545,9 @@
           }
         },
         {
-          "id": "event.close.evt_kff03zoo",
+          "id": "event.close.evt_b2g7asve",
           "kind": "event_close",
-          "refId": "evt_kff03zoo",
+          "refId": "evt_b2g7asve",
           "label": "CLOSE Taiyo1.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4687,9 +4581,9 @@
           }
         },
         {
-          "id": "event.close.evt_aakmpv3t",
+          "id": "event.close.evt_1wzojtqg",
           "kind": "event_close",
-          "refId": "evt_aakmpv3t",
+          "refId": "evt_1wzojtqg",
           "label": "CLOSE Taiyo2.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4849,49 +4743,31 @@
           "enabled": true
         },
         {
-          "from": "event.open.evt_zod4rv5g",
+          "from": "event.open.evt_uwgrrrj5",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.close.evt_zod4rv5g",
+          "from": "event.close.evt_uwgrrrj5",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_zod4rv5g",
+          "from": "event.open.evt_uwgrrrj5",
           "to": "act_o8dbxj0x",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.close.evt_zod4rv5g",
+          "from": "event.close.evt_uwgrrrj5",
           "to": "act_nad2xse9",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.close.evt_zod4rv5g",
-          "to": "act_6zilm8v8",
-          "fromPort": "onFail",
-          "enabled": true
-        },
-        {
-          "from": "event.open.evt_zod4rv5g",
-          "to": "act_6zilm8v8",
-          "fromPort": "onFail",
-          "enabled": true
-        },
-        {
-          "from": "event.open.evt_kff03zoo",
-          "to": "act_6zilm8v8",
-          "fromPort": "onFail",
-          "enabled": true
-        },
-        {
-          "from": "event.open.evt_kff03zoo",
+          "from": "event.open.evt_b2g7asve",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
@@ -4910,19 +4786,19 @@
         },
         {
           "from": "act_o750buzm",
-          "to": "event.open.evt_zod4rv5g",
+          "to": "event.open.evt_uwgrrrj5",
           "fromPort": "open event",
           "enabled": true
         },
         {
           "from": "act_o750buzm",
-          "to": "event.close.evt_zod4rv5g",
+          "to": "event.close.evt_uwgrrrj5",
           "fromPort": "close event",
           "enabled": true
         },
         {
           "from": "act_pqgrrjup",
-          "to": "event.open.evt_kff03zoo",
+          "to": "event.open.evt_b2g7asve",
           "fromPort": "out",
           "enabled": true
         },
@@ -4960,6 +4836,24 @@
           "from": "act_t1pac001",
           "to": "act_wznj2p9u",
           "fromPort": "out",
+          "enabled": true
+        },
+        {
+          "from": "event.open.evt_uwgrrrj5",
+          "to": "act_xi9ttxqd",
+          "fromPort": "onFail",
+          "enabled": true
+        },
+        {
+          "from": "event.close.evt_uwgrrrj5",
+          "to": "act_xi9ttxqd",
+          "fromPort": "onFail",
+          "enabled": true
+        },
+        {
+          "from": "event.open.evt_b2g7asve",
+          "to": "act_xi9ttxqd",
+          "fromPort": "onFail",
           "enabled": true
         }
       ],
@@ -5014,7 +4908,7 @@
         },
         "trg_3cazbipi": {
           "x": 300,
-          "y": 1360
+          "y": 1280
         },
         "trg_i2jdu13y": {
           "x": 300,
@@ -5022,47 +4916,43 @@
         },
         "trg_y12o0byg": {
           "x": 300,
-          "y": 1000
+          "y": 800
         },
         "trg_yaqn0nzn": {
           "x": 300,
-          "y": 640
-        },
-        "act_6zilm8v8": {
-          "x": 1860,
-          "y": 1380
+          "y": 420
         },
         "act_wznj2p9u": {
-          "x": 2280,
-          "y": 560
+          "x": 2120,
+          "y": 420
         },
         "act_zxdzcreb": {
           "x": 760,
-          "y": 960
+          "y": 760
         },
         "act_bef4hk9d": {
           "x": 760,
-          "y": 640
+          "y": 400
         },
         "act_otya9inq": {
           "x": 1300,
-          "y": 820
+          "y": 740
         },
         "act_o750buzm": {
           "x": 760,
           "y": 1120
         },
         "act_pqgrrjup": {
-          "x": 780,
-          "y": 1340
+          "x": 760,
+          "y": 1260
         },
         "act_uc1u4e3v": {
           "x": 760,
-          "y": 460
+          "y": 580
         },
         "act_nad2xse9": {
           "x": 1860,
-          "y": 1080
+          "y": 1040
         },
         "act_o8dbxj0x": {
           "x": 1860,
@@ -5082,27 +4972,27 @@
         },
         "act_t1msp001": {
           "x": 1220,
-          "y": 620
+          "y": 400
         },
         "act_t1pac001": {
-          "x": 1720,
-          "y": 600
+          "x": 1660,
+          "y": 400
         },
         "trg_t1ppc001": {
           "x": 300,
-          "y": 460
+          "y": 600
         },
-        "event.open.evt_zod4rv5g": {
+        "event.open.evt_uwgrrrj5": {
           "x": 1300,
           "y": 940
         },
-        "event.close.evt_zod4rv5g": {
+        "event.close.evt_uwgrrrj5": {
           "x": 1300,
           "y": 1100
         },
-        "event.open.evt_kff03zoo": {
+        "event.open.evt_b2g7asve": {
           "x": 1300,
-          "y": 1280
+          "y": 1260
         }
       }
     }

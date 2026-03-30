@@ -253,7 +253,7 @@ const migrateProgramIdentity = (program: Program): Program => {
           ...node,
           id: nextId,
           refId: nextRef,
-          label: node.label?.trim() || `${node.kind === "event_open" ? "OPEN" : "CLOSE"} Event - ${index + 1}`
+          label: node.label?.trim() || `Event - ${index + 1}`
         };
       }
       return node;
@@ -460,6 +460,7 @@ export default function HomePage() {
   });
   const [selectedTriggerId, setSelectedTriggerId] = useState("");
   const [selectedActionId, setSelectedActionId] = useState("");
+  const [selectedScriptTemplateId, setSelectedScriptTemplateId] = useState("");
   const [selectedEventActionId, setSelectedEventActionId] = useState("");
   const [selectedEventTemplateId, setSelectedEventTemplateId] = useState("");
   const [selectedFlowId, setSelectedFlowId] = useState("flow_main");
@@ -517,6 +518,7 @@ export default function HomePage() {
     setSelectedFlowId(hydrated.activeFlowId || "flow_main");
     setSelectedTriggerId(hydrated.triggers[0]?.id ?? "");
     setSelectedActionId((hydrated.flows.nodes || []).find((node) => node.kind === "action")?.id ?? "");
+    setSelectedScriptTemplateId(hydrated.scriptTemplates?.[0]?.id ?? "");
     setSelectedEventActionId((hydrated.flows.nodes || []).find((node) => node.kind === "event_open")?.refId ?? "");
     setSelectedEventTemplateId(hydrated.eventTemplates?.[0]?.id ?? "");
     setInspectorTarget(null);
@@ -1058,7 +1060,7 @@ export default function HomePage() {
           ...(flow.nodes || []),
           {
             id: openNodeId,
-            label: getNextIncrementalLabel(`OPEN ${template.id}`, flowNodes.map((item) => item.label || "")),
+            label: getNextIncrementalLabel(template.id, flowNodes.map((item) => item.label || "")),
             subtitle: template.id,
             kind: "event_open",
             refId: id,
@@ -1073,7 +1075,7 @@ export default function HomePage() {
           },
           {
             id: closeNodeId,
-            label: getNextIncrementalLabel(`CLOSE ${template.id}`, flowNodes.map((item) => item.label || "")),
+            label: getNextIncrementalLabel(template.id, flowNodes.map((item) => item.label || "")),
             subtitle: template.id,
             kind: "event_close",
             refId: id,
@@ -1107,10 +1109,7 @@ export default function HomePage() {
       id: nodeId,
       kind: eventKind,
       refId: id,
-      label: getNextIncrementalLabel(
-        `${eventKind === "event_open" ? "OPEN" : "CLOSE"} ${template.id}`,
-        flowNodes.map((item) => item.label || "")
-      ),
+      label: getNextIncrementalLabel(template.id, flowNodes.map((item) => item.label || "")),
       subtitle: template.id,
       enabled: true,
       templateId: template.id,
@@ -1568,7 +1567,7 @@ export default function HomePage() {
           return {
             ...node,
             label: Object.prototype.hasOwnProperty.call(resolvedPatch, "label")
-              ? `${isOpen ? "OPEN" : "CLOSE"} ${resolvedPatch.label || id}`
+              ? String(resolvedPatch.label ?? "")
               : node.label,
             enabled: Object.prototype.hasOwnProperty.call(resolvedPatch, "enabled") ? resolvedPatch.enabled !== false : node.enabled,
             templateId:
@@ -1841,7 +1840,10 @@ export default function HomePage() {
 
   const addLink = (link: FlowLink): void => {
     const exists = program.flows.links.some(
-      (item) => item.from === link.from && item.to === link.to
+      (item) =>
+        item.from === link.from &&
+        item.to === link.to &&
+        String(item.fromPort || "default") === String(link.fromPort || "default")
     );
     if (exists) return;
     applyActiveFlowUpdate((flow) => ({
@@ -2228,7 +2230,9 @@ export default function HomePage() {
             assets={program.assets}
             flowVariableNames={activeFlowVariableNames}
             selectedActionId={selectedActionId}
+            selectedScriptTemplateId={selectedScriptTemplateId}
             onSelectAction={setSelectedActionId}
+            onSelectScriptTemplate={setSelectedScriptTemplateId}
             onAddAction={addAction}
             onDuplicateAction={duplicateAction}
             onRemoveAction={removeAction}
@@ -2277,6 +2281,16 @@ export default function HomePage() {
         eventTemplates={program.eventTemplates || []}
         assets={program.assets}
         flowVariableNames={activeFlowVariableNames}
+        onOpenScriptTemplateManager={(templateId) => {
+          setSelectedScriptTemplateId(templateId);
+          setInspectorTarget(null);
+          setTab(3);
+        }}
+        onOpenEventTemplateManager={(templateId) => {
+          setSelectedEventTemplateId(templateId);
+          setInspectorTarget(null);
+          setTab(4);
+        }}
         onClose={() => setInspectorTarget(null)}
         onRenameNode={(oldId, newId) => {
           const targetNode = (program.flows.nodes || []).find((node) => node.id === oldId);
@@ -2316,7 +2330,7 @@ export default function HomePage() {
             const config = (patch.config || {}) as Record<string, unknown>;
             updateEventAction(targetNode.refId, {
               ...(Object.prototype.hasOwnProperty.call(patch, "label")
-                ? { label: String(patch.label ?? "").replace(/^OPEN\s+|^CLOSE\s+/i, "") }
+                ? { label: String(patch.label ?? "") }
                 : {}),
               ...(Object.prototype.hasOwnProperty.call(patch, "enabled") ? { enabled: patch.enabled } : {}),
               ...(Object.prototype.hasOwnProperty.call(patch, "templateId") ? { templateId: patch.templateId } : {}),
