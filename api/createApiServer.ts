@@ -32,11 +32,9 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   const sockets = new Set<Socket>();
 
   const buildSwaggerDocument = (): OpenAPIObject => {
-    const originHost = host === "0.0.0.0" ? "localhost" : host;
-    const originUrl = `http://${originHost}:${port}`;
     return JSON.parse(JSON.stringify({
       ...structuredClone(OPENAPI_RUNTIME_SPEC),
-      servers: [{ url: originUrl }]
+      servers: [{ url: "/" }]
     })) as OpenAPIObject;
   };
 
