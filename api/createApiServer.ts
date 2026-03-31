@@ -16,10 +16,14 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     "http://192.168.68.99:3333",
     "http://192.168.68.99:3002",
     "http://192.168.68.99:3003",
+    "http://192.168.68.99:4000",
+
     "http://localhost:3333",
     "http://localhost:3001",
     "http://localhost:3002",
     "http://localhost:3003",
+    "http://localhost:4000",
+
     "http://192.168.68.9:3000",
     "http://192.168.68.9:4000",
     "http://192.168.68.9:3002",
