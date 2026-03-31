@@ -41,6 +41,83 @@ function normalizeValueType(rawType: unknown): ValueType {
   return "string";
 }
 
+function defaultValueForType(valueType: ValueType): unknown {
+  if (
+    valueType === "int8" ||
+    valueType === "uint8" ||
+    valueType === "int16" ||
+    valueType === "uint16" ||
+    valueType === "int32" ||
+    valueType === "uint32" ||
+    valueType === "float32" ||
+    valueType === "float64"
+  ) {
+    return 0;
+  }
+  if (valueType === "boolean") return false;
+  if (valueType === "array") return [];
+  if (valueType === "object") return {};
+  return "";
+}
+
+function coerceAttributeValue(
+  valueType: ValueType,
+  value: unknown,
+  options: { defaultValue?: unknown; nullable?: boolean } = {}
+): unknown {
+  const nullable = options.nullable === true;
+  const fallback =
+    options.defaultValue !== undefined
+      ? options.defaultValue
+      : defaultValueForType(valueType);
+  const source = value == null ? (nullable ? null : fallback) : value;
+
+  if (source == null) return null;
+
+  if (
+    valueType === "int8" ||
+    valueType === "uint8" ||
+    valueType === "int16" ||
+    valueType === "uint16" ||
+    valueType === "int32" ||
+    valueType === "uint32"
+  ) {
+    const parsed = Number(source);
+    if (!Number.isFinite(parsed)) return Number(fallback || 0);
+    const rounded = Math.trunc(parsed);
+    return valueType.startsWith("u") ? Math.max(0, rounded) : rounded;
+  }
+
+  if (valueType === "float32" || valueType === "float64") {
+    const parsed = Number(source);
+    return Number.isFinite(parsed) ? parsed : Number(fallback || 0);
+  }
+
+  if (valueType === "boolean") {
+    if (typeof source === "boolean") return source;
+    if (typeof source === "number") return source !== 0;
+    const normalized = String(source).trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "off", ""].includes(normalized)) return false;
+    return Boolean(fallback);
+  }
+
+  if (valueType === "array") {
+    if (Array.isArray(source)) return source;
+    return Array.isArray(fallback) ? fallback : [];
+  }
+
+  if (valueType === "object") {
+    return source && typeof source === "object" && !Array.isArray(source)
+      ? source
+      : fallback && typeof fallback === "object" && !Array.isArray(fallback)
+        ? fallback
+        : {};
+  }
+
+  return String(source);
+}
+
 function toObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -191,6 +268,8 @@ function buildEffectiveAttributeMap(asset: AssetDefinition, templateById: Map<st
     {
       value: unknown;
       valueType?: string;
+      defaultValue?: unknown;
+      nullable?: boolean;
       unit?: string;
       ts?: string;
       historianEnabled?: boolean;
@@ -206,8 +285,13 @@ function buildEffectiveAttributeMap(asset: AssetDefinition, templateById: Map<st
       if (attribute.enabled === false) continue;
       if (!map.has(attribute.name)) {
         map.set(attribute.name, {
-          value: attribute.default,
+          value: coerceAttributeValue(attribute.valueType, attribute.default, {
+            defaultValue: attribute.default,
+            nullable: attribute.nullable === true
+          }),
           valueType: attribute.valueType,
+          defaultValue: attribute.default,
+          nullable: attribute.nullable === true,
           unit: attribute.unit ?? "",
           historianEnabled: attribute.historianEnabled === true,
           historianTimeSourcePath: String(attribute.historianTimeSourcePath ?? ""),
@@ -221,7 +305,24 @@ function buildEffectiveAttributeMap(asset: AssetDefinition, templateById: Map<st
     const item = val && typeof val === "object" ? (val as Record<string, unknown>) : null;
     map.set(name, {
       ...(map.get(name) || {}),
-      value: item && Object.prototype.hasOwnProperty.call(item, "value") ? item.value : val,
+      value:
+        item && Object.prototype.hasOwnProperty.call(item, "value")
+          ? coerceAttributeValue(
+              normalizeValueType(map.get(name)?.valueType ?? "string"),
+              item.value,
+              {
+                defaultValue: map.get(name)?.defaultValue,
+                nullable: map.get(name)?.nullable === true
+              }
+            )
+          : coerceAttributeValue(
+              normalizeValueType(map.get(name)?.valueType ?? "string"),
+              val,
+              {
+                defaultValue: map.get(name)?.defaultValue,
+                nullable: map.get(name)?.nullable === true
+              }
+            ),
       ts: item && Object.prototype.hasOwnProperty.call(item, "ts") ? String(item.ts) : undefined,
     });
   }
@@ -520,6 +621,12 @@ export function createAssetFrameworkStore(initialSection: unknown = {}): AssetSt
       return resolve(pathValue);
     },
     getAttribute(pathValue, defaultValue = undefined) {
+      const matches = resolve(pathValue).filter((item): item is AttributeQueryMatch => item.kind === "attribute");
+      if (matches.length === 0) return defaultValue;
+      if (matches.length === 1) return matches[0].value;
+      return matches.map((item) => item.value);
+    },
+    getValue(pathValue, defaultValue = undefined) {
       const matches = resolve(pathValue).filter((item): item is AttributeQueryMatch => item.kind === "attribute");
       if (matches.length === 0) return defaultValue;
       if (matches.length === 1) return matches[0].value;

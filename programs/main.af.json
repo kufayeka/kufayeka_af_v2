@@ -225,7 +225,7 @@
         "templateId": "template.taiyo.job.progress.from.good",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst goodCount = Number(asset.get(`${assetPath}.Product Good Count`, 0) ?? 0);\nconst progressPath = `${assetPath}.Job Progress`;\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeGoodCount = Number.isFinite(goodCount) ? Math.max(0, Math.round(goodCount)) : 0;\nconst progress = Math.max(0, Math.round((safeGoodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nmsg.jobProgress = progress;\nmsg.productGoodCount = safeGoodCount;\n\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\nconst lifecycle = asset.getValue(`${assetPath}.Job Lifecycle`).trim().toLowerCase();\nconst targetRaw = asset.getValue(`${assetPath}.Product Count Target`);\nconst goodCount = asset.getValue(`${assetPath}.Product Good Count`);\nconst progressPath = `${assetPath}.Job Progress`;\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeGoodCount = Number.isFinite(goodCount) ? Math.max(0, Math.round(goodCount)) : 0;\nconst progress = Math.max(0, Math.round((safeGoodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nmsg.jobProgress = progress;\nmsg.productGoodCount = safeGoodCount;\n\nsend(msg);",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -251,7 +251,7 @@
         "templateId": "template.script_1772300414929",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst categoryPath = `${assetPath}.Job Activity Category`;\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, \"\") ?? \"\").trim();\n\nlet activeCategory = \"-\";\nconst activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nmsg.activityCategory = activeCategory;\nmsg.activeCategories = activeCategories;\n\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst categoryPath = `${assetPath}.Job Activity Category`;\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\n\nlet activeCategory = \"-\";\nconst activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nmsg.activityCategory = activeCategory;\nmsg.activeCategories = activeCategories;\n\nsend(msg);",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -277,7 +277,7 @@
         "templateId": "template.taiyo.paper.input.capture",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Input Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Input Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\n\nconst raw = Number(asset.get(rawPath, 0) ?? 0);\nconst prevRaw = Number(asset.get(prevRawPath, 0) ?? 0);\nconst totalPrev = Number(asset.get(totalConsumedPath, 0) ?? 0);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  msg.encoderDeltaRaw = 0;\n  msg.paperConsumedDelta = 0;\n  msg.paperConsumedSource = \"input\";\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.encoderDeltaRaw = deltaRaw;\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"input\";\n\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Input Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Input Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\n\nconst raw = asset.getValue(rawPath);\nconst prevRaw = asset.getValue(prevRawPath);\nconst totalPrev = asset.getValue(totalConsumedPath);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  msg.encoderDeltaRaw = 0;\n  msg.paperConsumedDelta = 0;\n  msg.paperConsumedSource = \"input\";\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.encoderDeltaRaw = deltaRaw;\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"input\";\n\nsend(msg);",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -303,7 +303,7 @@
         "templateId": "template.script_1772340546636",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst activeCategory = String(msg.activityCategory ?? asset.get(`${assetPath}.Job Activity Category`, \"-\") ?? \"-\").trim();\n\nlet setupTime = Number(asset.get(`${assetPath}.Total Setup Time`, 0));\nlet idleTime = Number(asset.get(`${assetPath}.Total Idle Time`, 0));\nlet prodTime = Number(asset.get(`${assetPath}.Total Production Time`, 0));\nlet runningHour = Number(asset.get(`${assetPath}.Running Hour`, 0));\n\nif (activeCategory === \"Setup\") setupTime += 0.5;\nelse if (activeCategory === \"Idle\") idleTime += 0.5;\nelse if (activeCategory === \"Production\") prodTime += 0.5;\n\nif ([\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  runningHour += 0.5;\n}\n\nawait asset.set(`${assetPath}.Total Setup Time`, setupTime);\nawait asset.set(`${assetPath}.Total Idle Time`, idleTime);\nawait asset.set(`${assetPath}.Total Production Time`, prodTime);\nawait asset.set(`${assetPath}.Running Hour`, runningHour);\n\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst activeCategory = String(msg.activityCategory ?? asset.getValue(`${assetPath}.Job Activity Category`)).trim();\n\nlet setupTime = asset.getValue(`${assetPath}.Total Setup Time`);\nlet idleTime = asset.getValue(`${assetPath}.Total Idle Time`);\nlet prodTime = asset.getValue(`${assetPath}.Total Production Time`);\nlet runningHour = asset.getValue(`${assetPath}.Running Hour`);\n\nif (activeCategory === \"Setup\") setupTime += 0.5;\nelse if (activeCategory === \"Idle\") idleTime += 0.5;\nelse if (activeCategory === \"Production\") prodTime += 0.5;\n\nif ([\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  runningHour += 0.5;\n}\n\nawait asset.set(`${assetPath}.Total Setup Time`, setupTime);\nawait asset.set(`${assetPath}.Total Idle Time`, idleTime);\nawait asset.set(`${assetPath}.Total Production Time`, prodTime);\nawait asset.set(`${assetPath}.Running Hour`, runningHour);\n\nsend(msg);",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -329,7 +329,7 @@
         "templateId": "template.script_1771898442157",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n\n  return;\n\n}\n\nif (!workOrder || workOrder === \"-\") {\n\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n\n  return;\n\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = { mode: \"open\", notes: `${workOrder} loaded` };\n\n  console.log(\"load job\");\n\n  send([\"open event\"], msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} cancelled` };\n\n  console.log(\"cancel job\");\n\n  send([\"close event\"], msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} completed` };\n\n  console.log(\"complete job\");\n\n  send([\"close event\"], msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nif (lifecycle === \"load\") {\n  await asset.set(alarmPath, \"-\");\n  msg.eventRequest = { mode: \"open\", notes: `${workOrder} loaded` };\n  send([\"open event\"], msg);\n  return;\n}\n\nif (lifecycle === \"cancel\") {\n  await asset.set(alarmPath, \"-\");\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} cancelled` };\n  send([\"close event\"], msg);\n  return;\n}\n\nif (lifecycle === \"complete\") {\n  await asset.set(alarmPath, \"-\");\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} completed` };\n  send([\"close event\"], msg);\n}\n",
           "templateBindingOverrides": {},
           "eventTemplateId": "",
           "eventTemplateOverrides": {},
@@ -348,7 +348,7 @@
         "templateId": "template.script_1772002036179",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst rawActivity = String(msg.payload?.value ?? \"\").trim();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\n\nif (!rawActivity || rawActivity === \"-\") {\n  await asset.set(alarmPath, \"-\");\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nconst parts = rawActivity.split(\"/\").map((item) => item.trim()).filter(Boolean);\nconst categoryToken = String(parts[0] || \"\").toLowerCase();\nconst activityDetail = parts.slice(1).join(\"/\").trim() || \"Run\";\n\nlet templateId = \"\";\n\nswitch (categoryToken) {\n  case \"production\":\n    templateId = \"template.taiyo.job.activity.production\";\n    break;\n  case \"setup\":\n    templateId = \"template.taiyo.job.activity.setup\";\n    break;\n  case \"idle\":\n    templateId = \"template.taiyo.job.activity.idle\";\n    break;\n  default:\n    await asset.set(alarmPath, `!!!Unknown activity category: ${rawActivity}!!!`);\n    return;\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: \"open\",\n  templateId,\n  vars: { activityDetail },\n  notes: `${workOrder} ${categoryToken}/${activityDetail} opened`\n};\n\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst rawActivity = String(msg.payload?.value ?? \"\").trim();\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\n\nif (!rawActivity || rawActivity === \"-\") {\n  await asset.set(alarmPath, \"-\");\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nconst parts = rawActivity.split(\"/\").map((item) => item.trim()).filter(Boolean);\nconst categoryToken = String(parts[0] || \"\").toLowerCase();\nconst activityDetail = parts.slice(1).join(\"/\").trim() || \"Run\";\n\nlet templateId = \"\";\n\nswitch (categoryToken) {\n  case \"production\":\n    templateId = \"template.taiyo.job.activity.production\";\n    break;\n  case \"setup\":\n    templateId = \"template.taiyo.job.activity.setup\";\n    break;\n  case \"idle\":\n    templateId = \"template.taiyo.job.activity.idle\";\n    break;\n  default:\n    await asset.set(alarmPath, `!!!Unknown activity category: ${rawActivity}!!!`);\n    return;\n}\n\nawait asset.set(alarmPath, \"-\");\nmsg.eventRequest = {\n  mode: \"open\",\n  templateId,\n  vars: { activityDetail },\n  notes: `${workOrder} ${categoryToken}/${activityDetail} opened`\n};\n\nsend(msg);",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -374,7 +374,7 @@
         "templateId": "template.taiyo.production.count.and.progress",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\nconst prodConsumed = Number(asset.get(`${assetPath}.Paper Consumed Production`, 0) ?? 0);\nconst rejectCount = Number(asset.get(rejectCountPath, 0) ?? 0);\nconst paperFoldSizeRaw = String(asset.get(`${assetPath}.Paper/Fold Size`, ``) ?? ``).trim();\nconst countPerFoldRaw = String(asset.get(`${assetPath}.Product Count Per Fold`, ``) ?? ``).trim();\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / paperFoldSize) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? Math.max(0, Math.round(rejectCount)) : 0;\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\nconst prodConsumed = asset.getValue(`${assetPath}.Paper Consumed Production`);\nconst rejectCount = asset.getValue(rejectCountPath);\nconst paperFoldSizeRaw = asset.getValue(`${assetPath}.Paper/Fold Size`);\nconst countPerFoldRaw = asset.getValue(`${assetPath}.Product Count Per Fold`);\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / paperFoldSize) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? Math.max(0, Math.round(rejectCount)) : 0;\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -454,9 +454,9 @@
         }
       },
       {
-        "id": "event.open.evt_uwgrrrj5",
+        "id": "event.open.evt_l7sqmied",
         "kind": "event_open",
-        "refId": "evt_uwgrrrj5",
+        "refId": "evt_l7sqmied",
         "label": "OPEN Taiyo1.JobLifecycle",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -490,9 +490,9 @@
         }
       },
       {
-        "id": "event.close.evt_uwgrrrj5",
+        "id": "event.close.evt_l7sqmied",
         "kind": "event_close",
-        "refId": "evt_uwgrrrj5",
+        "refId": "evt_l7sqmied",
         "label": "CLOSE Taiyo1.JobLifecycle",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -526,9 +526,9 @@
         }
       },
       {
-        "id": "event.open.evt_b2g7asve",
+        "id": "event.open.evt_bi3rltlr",
         "kind": "event_open",
-        "refId": "evt_b2g7asve",
+        "refId": "evt_bi3rltlr",
         "label": "OPEN Taiyo1.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -562,9 +562,9 @@
         }
       },
       {
-        "id": "event.close.evt_b2g7asve",
+        "id": "event.close.evt_bi3rltlr",
         "kind": "event_close",
-        "refId": "evt_b2g7asve",
+        "refId": "evt_bi3rltlr",
         "label": "CLOSE Taiyo1.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -598,9 +598,9 @@
         }
       },
       {
-        "id": "event.close.evt_1wzojtqg",
+        "id": "event.close.evt_hf4rafsu",
         "kind": "event_close",
-        "refId": "evt_1wzojtqg",
+        "refId": "evt_hf4rafsu",
         "label": "CLOSE Taiyo2.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -659,7 +659,7 @@
         "templateId": "template.taiyo.paper.output.capture",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Output Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Output Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Output`;\n\nconst raw = Number(asset.get(rawPath, 0) ?? 0);\nconst prevRaw = Number(asset.get(prevRawPath, 0) ?? 0);\nconst totalPrev = Number(asset.get(totalConsumedPath, 0) ?? 0);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"output\";\n\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Output Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Output Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Output`;\n\nconst raw = asset.getValue(rawPath);\nconst prevRaw = asset.getValue(prevRawPath);\nconst totalPrev = asset.getValue(totalConsumedPath);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  msg.paperConsumedDelta = 0;\n  msg.paperConsumedSource = \"output\";\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"output\";\n\nsend(msg);",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -711,7 +711,7 @@
         "templateId": "template.taiyo.paper.consumption.by.activity",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst totalConsumed = Number(asset.get(totalConsumedPath, 0) ?? 0);\nconst setupPrev = Number(asset.get(setupPath, 0) ?? 0);\nconst idlePrev = Number(asset.get(idlePath, 0) ?? 0);\nconst prodPrev = Number(asset.get(prodPath, 0) ?? 0);\n\nlet deltaConsumed = Number(msg.paperConsumedDelta ?? NaN);\nif (!Number.isFinite(deltaConsumed)) {\n  deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n}\n\nconst activeCategory = String(msg.activityCategory ?? asset.get(categoryPath, \"-\") ?? \"-\").trim();\n\nif (!Number.isFinite(deltaConsumed) || deltaConsumed <= 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst totalConsumed = asset.getValue(totalConsumedPath);\nconst setupPrev = asset.getValue(setupPath);\nconst idlePrev = asset.getValue(idlePath);\nconst prodPrev = asset.getValue(prodPath);\n\nlet deltaConsumed = Number(msg.paperConsumedDelta ?? NaN);\nif (!Number.isFinite(deltaConsumed)) {\n  deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n}\n\nconst activeCategory = String(msg.activityCategory ?? asset.getValue(categoryPath)).trim();\n\nif (!Number.isFinite(deltaConsumed) || deltaConsumed <= 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nsend(msg);",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -811,31 +811,31 @@
         "enabled": true
       },
       {
-        "from": "event.open.evt_uwgrrrj5",
+        "from": "event.open.evt_l7sqmied",
         "to": "act_xi9ttxqd",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.close.evt_uwgrrrj5",
+        "from": "event.close.evt_l7sqmied",
         "to": "act_xi9ttxqd",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_uwgrrrj5",
+        "from": "event.open.evt_l7sqmied",
         "to": "act_o8dbxj0x",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.close.evt_uwgrrrj5",
+        "from": "event.close.evt_l7sqmied",
         "to": "act_nad2xse9",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_b2g7asve",
+        "from": "event.open.evt_bi3rltlr",
         "to": "act_xi9ttxqd",
         "fromPort": "onSuccess",
         "enabled": true
@@ -854,19 +854,19 @@
       },
       {
         "from": "act_o750buzm",
-        "to": "event.open.evt_uwgrrrj5",
+        "to": "event.open.evt_l7sqmied",
         "fromPort": "open event",
         "enabled": true
       },
       {
         "from": "act_o750buzm",
-        "to": "event.close.evt_uwgrrrj5",
+        "to": "event.close.evt_l7sqmied",
         "fromPort": "close event",
         "enabled": true
       },
       {
         "from": "act_pqgrrjup",
-        "to": "event.open.evt_b2g7asve",
+        "to": "event.open.evt_bi3rltlr",
         "fromPort": "out",
         "enabled": true
       },
@@ -901,19 +901,19 @@
         "enabled": true
       },
       {
-        "from": "event.open.evt_uwgrrrj5",
+        "from": "event.open.evt_l7sqmied",
         "to": "act_xi9ttxqd",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "event.close.evt_uwgrrrj5",
+        "from": "event.close.evt_l7sqmied",
         "to": "act_xi9ttxqd",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "event.open.evt_b2g7asve",
+        "from": "event.open.evt_bi3rltlr",
         "to": "act_xi9ttxqd",
         "fromPort": "onFail",
         "enabled": true
@@ -996,7 +996,7 @@
       },
       "trg_y12o0byg": {
         "x": 300,
-        "y": 800
+        "y": 900
       },
       "trg_yaqn0nzn": {
         "x": 300,
@@ -1007,8 +1007,8 @@
         "y": 420
       },
       "act_zxdzcreb": {
-        "x": 760,
-        "y": 760
+        "x": 740,
+        "y": 880
       },
       "act_bef4hk9d": {
         "x": 760,
@@ -1062,29 +1062,29 @@
         "x": 300,
         "y": 600
       },
-      "event.open.evt_uwgrrrj5": {
+      "trg_t1prc001": {
+        "x": 260,
+        "y": 720
+      },
+      "trg_t1pgc001": {
+        "x": 1260,
+        "y": 560
+      },
+      "trg_t1pct001": {
+        "x": 1640,
+        "y": 540
+      },
+      "event.open.evt_l7sqmied": {
         "x": 1300,
         "y": 940
       },
-      "event.close.evt_uwgrrrj5": {
+      "event.close.evt_l7sqmied": {
         "x": 1300,
         "y": 1100
       },
-      "event.open.evt_b2g7asve": {
+      "event.open.evt_bi3rltlr": {
         "x": 1300,
         "y": 1260
-      },
-      "trg_t1prc001": {
-        "x": 300,
-        "y": 700
-      },
-      "trg_t1pgc001": {
-        "x": 300,
-        "y": 840
-      },
-      "trg_t1pct001": {
-        "x": 300,
-        "y": 980
       }
     }
   },
@@ -1099,8 +1099,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": "2026-03-30T02:30:15.401Z",
-            "ts": "2026-03-30T02:30:15.403Z"
+            "value": "2026-03-30T10:16:58.471Z",
+            "ts": "2026-03-30T10:17:02.873Z"
           }
         }
       },
@@ -1117,58 +1117,58 @@
         "attributes": {
           "Machine Speed": {
             "value": 0,
-            "ts": "2026-03-30T02:30:15.408Z"
+            "ts": "2026-03-30T10:17:02.886Z"
           },
           "Work Order": {
-            "value": "WO-456",
-            "ts": "2026-03-30T01:49:53.462Z"
+            "value": "WO-2026-01",
+            "ts": "2026-03-30T09:57:42.462Z"
           },
           "Job Lifecycle": {
-            "value": "-",
-            "ts": "2026-03-29T14:18:52.403Z"
+            "value": "load",
+            "ts": "2026-03-30T09:57:42.464Z"
           },
           "Machine Operator": {
             "value": {
-              "value": "Alice123",
-              "label": "Alice"
+              "value": "90efaa37-9275-41d5-bb90-06352d055f1b",
+              "lable": "Alice Operator"
             },
-            "ts": "2026-03-17T04:31:06.645Z"
+            "ts": "2026-03-31T02:22:20.252Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-03-29T14:18:52.291Z"
+            "ts": "2026-03-30T09:57:42.472Z"
           },
           "Job Activity": {
-            "value": "-",
-            "ts": "2026-03-29T14:18:52.401Z"
+            "value": "Setup/PuncholeSingle",
+            "ts": "2026-03-30T09:58:34.222Z"
           },
           "Paper Consumed Setup": {
-            "value": 0,
-            "ts": "2026-03-29T14:18:52.406Z"
+            "value": 2.76,
+            "ts": "2026-03-30T09:58:42.065Z"
           },
           "Job Activity Category": {
             "value": "-",
-            "ts": "2026-03-30T02:30:15.545Z"
+            "ts": "2026-03-31T02:42:53.973Z"
           },
           "Paper Consumed Production": {
             "value": 0,
-            "ts": "2026-03-29T14:18:52.411Z"
+            "ts": "2026-03-30T09:58:42.066Z"
           },
           "Paper Consumed Idle": {
             "value": 0,
-            "ts": "2026-03-29T14:18:52.408Z"
+            "ts": "2026-03-30T09:58:42.066Z"
           },
           "Total Production Time": {
             "value": 0,
-            "ts": "2026-03-30T02:30:15.551Z"
+            "ts": "2026-03-31T02:42:53.976Z"
           },
           "Total Setup Time": {
-            "value": 0,
-            "ts": "2026-03-30T02:30:15.548Z"
+            "value": 860.5,
+            "ts": "2026-03-31T02:42:53.975Z"
           },
           "Total Idle Time": {
             "value": 0,
-            "ts": "2026-03-30T02:30:15.550Z"
+            "ts": "2026-03-31T02:42:53.975Z"
           },
           "Material Barcode": {
             "value": "KertasG001",
@@ -1176,43 +1176,43 @@
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-03-30T02:30:15.546Z"
+            "ts": "2026-03-31T02:42:53.974Z"
           },
           "Total Paper Waste": {
-            "value": 0,
-            "ts": "2026-03-29T14:18:52.413Z"
+            "value": 2.76,
+            "ts": "2026-03-30T09:58:42.066Z"
           },
           "Product Count Per Fold": {
             "value": 4,
             "ts": "2026-03-17T03:32:05.371Z"
           },
           "Running Hour": {
-            "value": 18139,
-            "ts": "2026-03-30T02:30:15.553Z"
+            "value": 39283,
+            "ts": "2026-03-31T02:42:53.977Z"
           },
           "Product Good Count": {
             "value": 0,
-            "ts": "2026-03-29T14:17:35.158Z"
+            "ts": "2026-03-30T09:58:42.067Z"
           },
           "Product Reject Count": {
             "value": 0,
-            "ts": "2026-03-29T14:17:35.159Z"
+            "ts": "2026-03-30T09:57:42.530Z"
           },
           "Availability": {
             "value": 0,
-            "ts": "2026-03-29T14:18:52.427Z"
+            "ts": "2026-03-30T09:57:42.532Z"
           },
           "Performance": {
             "value": 0,
-            "ts": "2026-03-29T14:18:52.429Z"
+            "ts": "2026-03-30T09:57:42.533Z"
           },
           "Quality": {
             "value": 0,
-            "ts": "2026-03-29T14:18:52.431Z"
+            "ts": "2026-03-30T09:57:42.534Z"
           },
           "OEE": {
             "value": 0,
-            "ts": "2026-03-29T14:18:52.432Z"
+            "ts": "2026-03-30T09:57:42.535Z"
           },
           "Ply": {
             "value": "1/8",
@@ -1241,11 +1241,37 @@
           },
           "Product Total Count": {
             "value": 0,
-            "ts": "2026-03-30T02:30:15.412Z"
+            "ts": "2026-03-30T09:58:42.067Z"
           },
           "Job Loader": {
-            "value": {},
-            "ts": "2026-03-29T14:18:52.398Z"
+            "value": {
+              "id": "dd1d5437-39cb-4826-aca8-79b960f6a5c8",
+              "work_center": {
+                "id": 24,
+                "lookup_type": "WORK_CENTER",
+                "code": "Jasuindo.OffsetPrinter.Taiyo1",
+                "label": "Offset Printer Taiyo 1",
+                "description": null,
+                "sort_order": 1,
+                "is_active": true
+              },
+              "work_order": "WO-2026-01",
+              "sales_order": "SO-2026-195",
+              "quantity_order": 1,
+              "quantity_unit": {
+                "id": 23,
+                "lookup_type": "QUANTITY_UNIT",
+                "code": "EA",
+                "label": "EA",
+                "description": null,
+                "sort_order": 2,
+                "is_active": true
+              },
+              "planned_start_time": "2026-03-29T17:00:00.000Z",
+              "job_lifecycle_state": "Running",
+              "notes": ""
+            },
+            "ts": "2026-03-30T09:57:42.469Z"
           },
           "Ideal Speed": {
             "value": 9,
@@ -1257,27 +1283,27 @@
           },
           "Job Progress": {
             "value": 0,
-            "ts": "2026-03-29T14:18:52.396Z"
+            "ts": "2026-03-30T09:58:42.068Z"
           },
           "Product Count Target": {
-            "value": 0,
-            "ts": "2026-03-29T14:18:52.433Z"
+            "value": "1 EA",
+            "ts": "2026-03-30T09:57:42.466Z"
           },
           "Total Paper Consumed Input": {
-            "value": 8.169999999999995,
-            "ts": "2026-03-30T02:14:34.470Z"
+            "value": 2.76,
+            "ts": "2026-03-30T09:58:42.064Z"
           },
           "Total Paper Consumed Output": {
             "value": 0,
-            "ts": "2026-03-29T14:18:52.418Z"
+            "ts": "2026-03-30T09:57:42.523Z"
           },
           "Encoder Input Raw Value": {
-            "value": 817,
-            "ts": "2026-03-30T02:30:15.406Z"
+            "value": 647,
+            "ts": "2026-03-30T10:17:02.877Z"
           },
           "Encoder Input Prev Value": {
-            "value": 817,
-            "ts": "2026-03-30T02:30:15.407Z"
+            "value": 647,
+            "ts": "2026-03-30T10:17:02.884Z"
           }
         }
       },
@@ -1437,8 +1463,8 @@
             "ts": "2026-03-26T01:47:02.365Z"
           },
           "Encoder Input Raw Value": {
-            "value": 339,
-            "ts": "2026-03-30T02:30:15.410Z"
+            "value": 386,
+            "ts": "2026-03-30T10:17:02.881Z"
           },
           "Total Paper Consumed Input": {
             "value": 3.3699999999999997,
@@ -3899,7 +3925,7 @@
       "id": "template.script_1771898442157",
       "name": "TaiyoJobLifecycleEvent",
       "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n\n  return;\n\n}\n\nif (!workOrder || workOrder === \"-\") {\n\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n\n  return;\n\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = { mode: \"open\", notes: `${workOrder} loaded` };\n\n  console.log(\"load job\");\n\n  send([\"open event\"], msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} cancelled` };\n\n  console.log(\"cancel job\");\n\n  send([\"close event\"], msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} completed` };\n\n  console.log(\"complete job\");\n\n  send([\"close event\"], msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nif (lifecycle === \"load\") {\n  await asset.set(alarmPath, \"-\");\n  msg.eventRequest = { mode: \"open\", notes: `${workOrder} loaded` };\n  send([\"open event\"], msg);\n  return;\n}\n\nif (lifecycle === \"cancel\") {\n  await asset.set(alarmPath, \"-\");\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} cancelled` };\n  send([\"close event\"], msg);\n  return;\n}\n\nif (lifecycle === \"complete\") {\n  await asset.set(alarmPath, \"-\");\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} completed` };\n  send([\"close event\"], msg);\n}\n",
       "variableBindings": [
         {
           "name": "AssetPath",
@@ -3928,7 +3954,7 @@
       "id": "template.script_1772002036179",
       "name": "TaiyoJobActivityEvent",
       "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst rawActivity = String(msg.payload?.value ?? \"\").trim();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\n\nif (!rawActivity || rawActivity === \"-\") {\n  await asset.set(alarmPath, \"-\");\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nconst parts = rawActivity.split(\"/\").map((item) => item.trim()).filter(Boolean);\nconst categoryToken = String(parts[0] || \"\").toLowerCase();\nconst activityDetail = parts.slice(1).join(\"/\").trim() || \"Run\";\n\nlet templateId = \"\";\n\nswitch (categoryToken) {\n  case \"production\":\n    templateId = \"template.taiyo.job.activity.production\";\n    break;\n  case \"setup\":\n    templateId = \"template.taiyo.job.activity.setup\";\n    break;\n  case \"idle\":\n    templateId = \"template.taiyo.job.activity.idle\";\n    break;\n  default:\n    await asset.set(alarmPath, `!!!Unknown activity category: ${rawActivity}!!!`);\n    return;\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: \"open\",\n  templateId,\n  vars: { activityDetail },\n  notes: `${workOrder} ${categoryToken}/${activityDetail} opened`\n};\n\nsend(msg);",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst rawActivity = String(msg.payload?.value ?? \"\").trim();\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\n\nif (!rawActivity || rawActivity === \"-\") {\n  await asset.set(alarmPath, \"-\");\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nconst parts = rawActivity.split(\"/\").map((item) => item.trim()).filter(Boolean);\nconst categoryToken = String(parts[0] || \"\").toLowerCase();\nconst activityDetail = parts.slice(1).join(\"/\").trim() || \"Run\";\n\nlet templateId = \"\";\n\nswitch (categoryToken) {\n  case \"production\":\n    templateId = \"template.taiyo.job.activity.production\";\n    break;\n  case \"setup\":\n    templateId = \"template.taiyo.job.activity.setup\";\n    break;\n  case \"idle\":\n    templateId = \"template.taiyo.job.activity.idle\";\n    break;\n  default:\n    await asset.set(alarmPath, `!!!Unknown activity category: ${rawActivity}!!!`);\n    return;\n}\n\nawait asset.set(alarmPath, \"-\");\nmsg.eventRequest = {\n  mode: \"open\",\n  templateId,\n  vars: { activityDetail },\n  notes: `${workOrder} ${categoryToken}/${activityDetail} opened`\n};\n\nsend(msg);",
       "variableBindings": [
         {
           "name": "AssetPath",
@@ -3952,7 +3978,7 @@
       "id": "template.script_1772300414929",
       "name": "TaiyoResolveActivityCategory",
       "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst categoryPath = `${assetPath}.Job Activity Category`;\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, \"\") ?? \"\").trim();\n\nlet activeCategory = \"-\";\nconst activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nmsg.activityCategory = activeCategory;\nmsg.activeCategories = activeCategories;\n\nsend(msg);",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst categoryPath = `${assetPath}.Job Activity Category`;\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\n\nlet activeCategory = \"-\";\nconst activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nmsg.activityCategory = activeCategory;\nmsg.activeCategories = activeCategories;\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -3975,7 +4001,7 @@
       "id": "template.script_1772340546636",
       "name": "TaiyoTimeSpentPerActivity",
       "description": "",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst activeCategory = String(msg.activityCategory ?? asset.get(`${assetPath}.Job Activity Category`, \"-\") ?? \"-\").trim();\n\nlet setupTime = Number(asset.get(`${assetPath}.Total Setup Time`, 0));\nlet idleTime = Number(asset.get(`${assetPath}.Total Idle Time`, 0));\nlet prodTime = Number(asset.get(`${assetPath}.Total Production Time`, 0));\nlet runningHour = Number(asset.get(`${assetPath}.Running Hour`, 0));\n\nif (activeCategory === \"Setup\") setupTime += 0.5;\nelse if (activeCategory === \"Idle\") idleTime += 0.5;\nelse if (activeCategory === \"Production\") prodTime += 0.5;\n\nif ([\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  runningHour += 0.5;\n}\n\nawait asset.set(`${assetPath}.Total Setup Time`, setupTime);\nawait asset.set(`${assetPath}.Total Idle Time`, idleTime);\nawait asset.set(`${assetPath}.Total Production Time`, prodTime);\nawait asset.set(`${assetPath}.Running Hour`, runningHour);\n\nsend(msg);",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst activeCategory = String(msg.activityCategory ?? asset.getValue(`${assetPath}.Job Activity Category`)).trim();\n\nlet setupTime = asset.getValue(`${assetPath}.Total Setup Time`);\nlet idleTime = asset.getValue(`${assetPath}.Total Idle Time`);\nlet prodTime = asset.getValue(`${assetPath}.Total Production Time`);\nlet runningHour = asset.getValue(`${assetPath}.Running Hour`);\n\nif (activeCategory === \"Setup\") setupTime += 0.5;\nelse if (activeCategory === \"Idle\") idleTime += 0.5;\nelse if (activeCategory === \"Production\") prodTime += 0.5;\n\nif ([\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  runningHour += 0.5;\n}\n\nawait asset.set(`${assetPath}.Total Setup Time`, setupTime);\nawait asset.set(`${assetPath}.Total Idle Time`, idleTime);\nawait asset.set(`${assetPath}.Total Production Time`, prodTime);\nawait asset.set(`${assetPath}.Running Hour`, runningHour);\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -4044,7 +4070,7 @@
       "id": "template.taiyo.paper.output.capture",
       "name": "TaiyoPaperConsumedOutputCapture",
       "description": "Capture total paper consumed output from encoder output only.",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Output Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Output Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Output`;\n\nconst raw = Number(asset.get(rawPath, 0) ?? 0);\nconst prevRaw = Number(asset.get(prevRawPath, 0) ?? 0);\nconst totalPrev = Number(asset.get(totalConsumedPath, 0) ?? 0);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"output\";\n\nsend(msg);",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Output Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Output Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Output`;\n\nconst raw = asset.getValue(rawPath);\nconst prevRaw = asset.getValue(prevRawPath);\nconst totalPrev = asset.getValue(totalConsumedPath);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  msg.paperConsumedDelta = 0;\n  msg.paperConsumedSource = \"output\";\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"output\";\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -4067,7 +4093,7 @@
       "id": "template.taiyo.paper.input.capture",
       "name": "TaiyoPaperConsumedInputCapture",
       "description": "Capture total paper consumed input from encoder input only.",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Input Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Input Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\n\nconst raw = Number(asset.get(rawPath, 0) ?? 0);\nconst prevRaw = Number(asset.get(prevRawPath, 0) ?? 0);\nconst totalPrev = Number(asset.get(totalConsumedPath, 0) ?? 0);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  msg.encoderDeltaRaw = 0;\n  msg.paperConsumedDelta = 0;\n  msg.paperConsumedSource = \"input\";\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.encoderDeltaRaw = deltaRaw;\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"input\";\n\nsend(msg);",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Input Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Input Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\n\nconst raw = asset.getValue(rawPath);\nconst prevRaw = asset.getValue(prevRawPath);\nconst totalPrev = asset.getValue(totalConsumedPath);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  msg.encoderDeltaRaw = 0;\n  msg.paperConsumedDelta = 0;\n  msg.paperConsumedSource = \"input\";\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.encoderDeltaRaw = deltaRaw;\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"input\";\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -4113,7 +4139,7 @@
       "id": "template.taiyo.paper.consumption.by.activity",
       "name": "TaiyoPaperConsumptionByActivity",
       "description": "Classify consumed input paper into setup, idle, production, and waste.",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst totalConsumed = Number(asset.get(totalConsumedPath, 0) ?? 0);\nconst setupPrev = Number(asset.get(setupPath, 0) ?? 0);\nconst idlePrev = Number(asset.get(idlePath, 0) ?? 0);\nconst prodPrev = Number(asset.get(prodPath, 0) ?? 0);\n\nlet deltaConsumed = Number(msg.paperConsumedDelta ?? NaN);\nif (!Number.isFinite(deltaConsumed)) {\n  deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n}\n\nconst activeCategory = String(msg.activityCategory ?? asset.get(categoryPath, \"-\") ?? \"-\").trim();\n\nif (!Number.isFinite(deltaConsumed) || deltaConsumed <= 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nsend(msg);",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst totalConsumed = asset.getValue(totalConsumedPath);\nconst setupPrev = asset.getValue(setupPath);\nconst idlePrev = asset.getValue(idlePath);\nconst prodPrev = asset.getValue(prodPath);\n\nlet deltaConsumed = Number(msg.paperConsumedDelta ?? NaN);\nif (!Number.isFinite(deltaConsumed)) {\n  deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n}\n\nconst activeCategory = String(msg.activityCategory ?? asset.getValue(categoryPath)).trim();\n\nif (!Number.isFinite(deltaConsumed) || deltaConsumed <= 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -4136,7 +4162,7 @@
       "id": "template.taiyo.production.count.and.progress",
       "name": "TaiyoProductCounts",
       "description": "Calculate product total count and good count from paper consumed production and reject count.",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\nconst prodConsumed = Number(asset.get(`${assetPath}.Paper Consumed Production`, 0) ?? 0);\nconst rejectCount = Number(asset.get(rejectCountPath, 0) ?? 0);\nconst paperFoldSizeRaw = String(asset.get(`${assetPath}.Paper/Fold Size`, ``) ?? ``).trim();\nconst countPerFoldRaw = String(asset.get(`${assetPath}.Product Count Per Fold`, ``) ?? ``).trim();\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / paperFoldSize) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? Math.max(0, Math.round(rejectCount)) : 0;\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\nconst prodConsumed = asset.getValue(`${assetPath}.Paper Consumed Production`);\nconst rejectCount = asset.getValue(rejectCountPath);\nconst paperFoldSizeRaw = asset.getValue(`${assetPath}.Paper/Fold Size`);\nconst countPerFoldRaw = asset.getValue(`${assetPath}.Product Count Per Fold`);\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / paperFoldSize) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? Math.max(0, Math.round(rejectCount)) : 0;\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -4159,7 +4185,7 @@
       "id": "template.taiyo.job.progress.from.good",
       "name": "TaiyoJobProgressFromGoodCount",
       "description": "Calculate job progress from product good count against product count target.",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst goodCount = Number(asset.get(`${assetPath}.Product Good Count`, 0) ?? 0);\nconst progressPath = `${assetPath}.Job Progress`;\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeGoodCount = Number.isFinite(goodCount) ? Math.max(0, Math.round(goodCount)) : 0;\nconst progress = Math.max(0, Math.round((safeGoodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nmsg.jobProgress = progress;\nmsg.productGoodCount = safeGoodCount;\n\nsend(msg);",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\nconst lifecycle = asset.getValue(`${assetPath}.Job Lifecycle`).trim().toLowerCase();\nconst targetRaw = asset.getValue(`${assetPath}.Product Count Target`);\nconst goodCount = asset.getValue(`${assetPath}.Product Good Count`);\nconst progressPath = `${assetPath}.Job Progress`;\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeGoodCount = Number.isFinite(goodCount) ? Math.max(0, Math.round(goodCount)) : 0;\nconst progress = Math.max(0, Math.round((safeGoodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nmsg.jobProgress = progress;\nmsg.productGoodCount = safeGoodCount;\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -4265,7 +4291,7 @@
           "templateId": "template.taiyo.job.progress.from.good",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst lifecycle = String(asset.get(`${assetPath}.Job Lifecycle`, ``) ?? ``).trim().toLowerCase();\nconst targetRaw = String(asset.get(`${assetPath}.Product Count Target`, ``) ?? ``).trim();\nconst goodCount = Number(asset.get(`${assetPath}.Product Good Count`, 0) ?? 0);\nconst progressPath = `${assetPath}.Job Progress`;\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeGoodCount = Number.isFinite(goodCount) ? Math.max(0, Math.round(goodCount)) : 0;\nconst progress = Math.max(0, Math.round((safeGoodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nmsg.jobProgress = progress;\nmsg.productGoodCount = safeGoodCount;\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\nconst lifecycle = asset.getValue(`${assetPath}.Job Lifecycle`).trim().toLowerCase();\nconst targetRaw = asset.getValue(`${assetPath}.Product Count Target`);\nconst goodCount = asset.getValue(`${assetPath}.Product Good Count`);\nconst progressPath = `${assetPath}.Job Progress`;\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nif (!workOrder || workOrder === \"-\" || ![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeGoodCount = Number.isFinite(goodCount) ? Math.max(0, Math.round(goodCount)) : 0;\nconst progress = Math.max(0, Math.round((safeGoodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nmsg.jobProgress = progress;\nmsg.productGoodCount = safeGoodCount;\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -4291,7 +4317,7 @@
           "templateId": "template.script_1772300414929",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\nconst categoryPath = `${assetPath}.Job Activity Category`;\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, \"\") ?? \"\").trim();\n\nlet activeCategory = \"-\";\nconst activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nmsg.activityCategory = activeCategory;\nmsg.activeCategories = activeCategories;\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst categoryPath = `${assetPath}.Job Activity Category`;\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\n\nlet activeCategory = \"-\";\nconst activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nmsg.activityCategory = activeCategory;\nmsg.activeCategories = activeCategories;\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -4317,7 +4343,7 @@
           "templateId": "template.taiyo.paper.input.capture",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Input Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Input Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\n\nconst raw = Number(asset.get(rawPath, 0) ?? 0);\nconst prevRaw = Number(asset.get(prevRawPath, 0) ?? 0);\nconst totalPrev = Number(asset.get(totalConsumedPath, 0) ?? 0);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  msg.encoderDeltaRaw = 0;\n  msg.paperConsumedDelta = 0;\n  msg.paperConsumedSource = \"input\";\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.encoderDeltaRaw = deltaRaw;\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"input\";\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Input Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Input Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\n\nconst raw = asset.getValue(rawPath);\nconst prevRaw = asset.getValue(prevRawPath);\nconst totalPrev = asset.getValue(totalConsumedPath);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  msg.encoderDeltaRaw = 0;\n  msg.paperConsumedDelta = 0;\n  msg.paperConsumedSource = \"input\";\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.encoderDeltaRaw = deltaRaw;\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"input\";\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -4343,7 +4369,7 @@
           "templateId": "template.script_1772340546636",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\nconst activeCategory = String(msg.activityCategory ?? asset.get(`${assetPath}.Job Activity Category`, \"-\") ?? \"-\").trim();\n\nlet setupTime = Number(asset.get(`${assetPath}.Total Setup Time`, 0));\nlet idleTime = Number(asset.get(`${assetPath}.Total Idle Time`, 0));\nlet prodTime = Number(asset.get(`${assetPath}.Total Production Time`, 0));\nlet runningHour = Number(asset.get(`${assetPath}.Running Hour`, 0));\n\nif (activeCategory === \"Setup\") setupTime += 0.5;\nelse if (activeCategory === \"Idle\") idleTime += 0.5;\nelse if (activeCategory === \"Production\") prodTime += 0.5;\n\nif ([\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  runningHour += 0.5;\n}\n\nawait asset.set(`${assetPath}.Total Setup Time`, setupTime);\nawait asset.set(`${assetPath}.Total Idle Time`, idleTime);\nawait asset.set(`${assetPath}.Total Production Time`, prodTime);\nawait asset.set(`${assetPath}.Running Hour`, runningHour);\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst activeCategory = String(msg.activityCategory ?? asset.getValue(`${assetPath}.Job Activity Category`)).trim();\n\nlet setupTime = asset.getValue(`${assetPath}.Total Setup Time`);\nlet idleTime = asset.getValue(`${assetPath}.Total Idle Time`);\nlet prodTime = asset.getValue(`${assetPath}.Total Production Time`);\nlet runningHour = asset.getValue(`${assetPath}.Running Hour`);\n\nif (activeCategory === \"Setup\") setupTime += 0.5;\nelse if (activeCategory === \"Idle\") idleTime += 0.5;\nelse if (activeCategory === \"Production\") prodTime += 0.5;\n\nif ([\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  runningHour += 0.5;\n}\n\nawait asset.set(`${assetPath}.Total Setup Time`, setupTime);\nawait asset.set(`${assetPath}.Total Idle Time`, idleTime);\nawait asset.set(`${assetPath}.Total Production Time`, prodTime);\nawait asset.set(`${assetPath}.Running Hour`, runningHour);\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -4369,7 +4395,7 @@
           "templateId": "template.script_1771898442157",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\nconsole.log(lifecycle);\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n\n  return;\n\n}\n\nif (!workOrder || workOrder === \"-\") {\n\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n\n  return;\n\n}\n\n\nif (lifecycle === \"load\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = { mode: \"open\", notes: `${workOrder} loaded` };\n\n  console.log(\"load job\");\n\n  send([\"open event\"], msg);\n\n  return;\n\n} else if (lifecycle === \"cancel\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} cancelled` };\n\n  console.log(\"cancel job\");\n\n  send([\"close event\"], msg);\n\n  return;\n\n} else if (lifecycle === \"complete\") {\n\n  await asset.set(alarmPath, \"-\");\n\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} completed` };\n\n  console.log(\"complete job\");\n\n  send([\"close event\"], msg);\n\n  return;\n\n} else {\n\n  return;\n\n}",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nif (lifecycle === \"load\") {\n  await asset.set(alarmPath, \"-\");\n  msg.eventRequest = { mode: \"open\", notes: `${workOrder} loaded` };\n  send([\"open event\"], msg);\n  return;\n}\n\nif (lifecycle === \"cancel\") {\n  await asset.set(alarmPath, \"-\");\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} cancelled` };\n  send([\"close event\"], msg);\n  return;\n}\n\nif (lifecycle === \"complete\") {\n  await asset.set(alarmPath, \"-\");\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} completed` };\n  send([\"close event\"], msg);\n}\n",
             "templateBindingOverrides": {},
             "eventTemplateId": "",
             "eventTemplateOverrides": {},
@@ -4388,7 +4414,7 @@
           "templateId": "template.script_1772002036179",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\nconst rawActivity = String(msg.payload?.value ?? \"\").trim();\nconst workOrder = String(asset.get(`${assetPath}.Work Order`, ``) ?? ``).trim();\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\n\nif (!rawActivity || rawActivity === \"-\") {\n  await asset.set(alarmPath, \"-\");\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nconst parts = rawActivity.split(\"/\").map((item) => item.trim()).filter(Boolean);\nconst categoryToken = String(parts[0] || \"\").toLowerCase();\nconst activityDetail = parts.slice(1).join(\"/\").trim() || \"Run\";\n\nlet templateId = \"\";\n\nswitch (categoryToken) {\n  case \"production\":\n    templateId = \"template.taiyo.job.activity.production\";\n    break;\n  case \"setup\":\n    templateId = \"template.taiyo.job.activity.setup\";\n    break;\n  case \"idle\":\n    templateId = \"template.taiyo.job.activity.idle\";\n    break;\n  default:\n    await asset.set(alarmPath, `!!!Unknown activity category: ${rawActivity}!!!`);\n    return;\n}\n\nawait asset.set(alarmPath, \"-\");\n\nmsg.eventRequest = {\n  mode: \"open\",\n  templateId,\n  vars: { activityDetail },\n  notes: `${workOrder} ${categoryToken}/${activityDetail} opened`\n};\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst rawActivity = String(msg.payload?.value ?? \"\").trim();\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\n\nif (!rawActivity || rawActivity === \"-\") {\n  await asset.set(alarmPath, \"-\");\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nconst parts = rawActivity.split(\"/\").map((item) => item.trim()).filter(Boolean);\nconst categoryToken = String(parts[0] || \"\").toLowerCase();\nconst activityDetail = parts.slice(1).join(\"/\").trim() || \"Run\";\n\nlet templateId = \"\";\n\nswitch (categoryToken) {\n  case \"production\":\n    templateId = \"template.taiyo.job.activity.production\";\n    break;\n  case \"setup\":\n    templateId = \"template.taiyo.job.activity.setup\";\n    break;\n  case \"idle\":\n    templateId = \"template.taiyo.job.activity.idle\";\n    break;\n  default:\n    await asset.set(alarmPath, `!!!Unknown activity category: ${rawActivity}!!!`);\n    return;\n}\n\nawait asset.set(alarmPath, \"-\");\nmsg.eventRequest = {\n  mode: \"open\",\n  templateId,\n  vars: { activityDetail },\n  notes: `${workOrder} ${categoryToken}/${activityDetail} opened`\n};\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -4414,7 +4440,7 @@
           "templateId": "template.taiyo.production.count.and.progress",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\nconst prodConsumed = Number(asset.get(`${assetPath}.Paper Consumed Production`, 0) ?? 0);\nconst rejectCount = Number(asset.get(rejectCountPath, 0) ?? 0);\nconst paperFoldSizeRaw = String(asset.get(`${assetPath}.Paper/Fold Size`, ``) ?? ``).trim();\nconst countPerFoldRaw = String(asset.get(`${assetPath}.Product Count Per Fold`, ``) ?? ``).trim();\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / paperFoldSize) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? Math.max(0, Math.round(rejectCount)) : 0;\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\nconst prodConsumed = asset.getValue(`${assetPath}.Paper Consumed Production`);\nconst rejectCount = asset.getValue(rejectCountPath);\nconst paperFoldSizeRaw = asset.getValue(`${assetPath}.Paper/Fold Size`);\nconst countPerFoldRaw = asset.getValue(`${assetPath}.Product Count Per Fold`);\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / paperFoldSize) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? Math.max(0, Math.round(rejectCount)) : 0;\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -4494,9 +4520,9 @@
           }
         },
         {
-          "id": "event.open.evt_uwgrrrj5",
+          "id": "event.open.evt_l7sqmied",
           "kind": "event_open",
-          "refId": "evt_uwgrrrj5",
+          "refId": "evt_l7sqmied",
           "label": "OPEN Taiyo1.JobLifecycle",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -4530,9 +4556,9 @@
           }
         },
         {
-          "id": "event.close.evt_uwgrrrj5",
+          "id": "event.close.evt_l7sqmied",
           "kind": "event_close",
-          "refId": "evt_uwgrrrj5",
+          "refId": "evt_l7sqmied",
           "label": "CLOSE Taiyo1.JobLifecycle",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -4566,9 +4592,9 @@
           }
         },
         {
-          "id": "event.open.evt_b2g7asve",
+          "id": "event.open.evt_bi3rltlr",
           "kind": "event_open",
-          "refId": "evt_b2g7asve",
+          "refId": "evt_bi3rltlr",
           "label": "OPEN Taiyo1.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4602,9 +4628,9 @@
           }
         },
         {
-          "id": "event.close.evt_b2g7asve",
+          "id": "event.close.evt_bi3rltlr",
           "kind": "event_close",
-          "refId": "evt_b2g7asve",
+          "refId": "evt_bi3rltlr",
           "label": "CLOSE Taiyo1.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4638,9 +4664,9 @@
           }
         },
         {
-          "id": "event.close.evt_1wzojtqg",
+          "id": "event.close.evt_hf4rafsu",
           "kind": "event_close",
-          "refId": "evt_1wzojtqg",
+          "refId": "evt_hf4rafsu",
           "label": "CLOSE Taiyo2.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4699,7 +4725,7 @@
           "templateId": "template.taiyo.paper.output.capture",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Output Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Output Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Output`;\n\nconst raw = Number(asset.get(rawPath, 0) ?? 0);\nconst prevRaw = Number(asset.get(prevRawPath, 0) ?? 0);\nconst totalPrev = Number(asset.get(totalConsumedPath, 0) ?? 0);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"output\";\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Output Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Output Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Output`;\n\nconst raw = asset.getValue(rawPath);\nconst prevRaw = asset.getValue(prevRawPath);\nconst totalPrev = asset.getValue(totalConsumedPath);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  msg.paperConsumedDelta = 0;\n  msg.paperConsumedSource = \"output\";\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"output\";\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -4751,7 +4777,7 @@
           "templateId": "template.taiyo.paper.consumption.by.activity",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst totalConsumed = Number(asset.get(totalConsumedPath, 0) ?? 0);\nconst setupPrev = Number(asset.get(setupPath, 0) ?? 0);\nconst idlePrev = Number(asset.get(idlePath, 0) ?? 0);\nconst prodPrev = Number(asset.get(prodPath, 0) ?? 0);\n\nlet deltaConsumed = Number(msg.paperConsumedDelta ?? NaN);\nif (!Number.isFinite(deltaConsumed)) {\n  deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n}\n\nconst activeCategory = String(msg.activityCategory ?? asset.get(categoryPath, \"-\") ?? \"-\").trim();\n\nif (!Number.isFinite(deltaConsumed) || deltaConsumed <= 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst totalConsumed = asset.getValue(totalConsumedPath);\nconst setupPrev = asset.getValue(setupPath);\nconst idlePrev = asset.getValue(idlePath);\nconst prodPrev = asset.getValue(prodPath);\n\nlet deltaConsumed = Number(msg.paperConsumedDelta ?? NaN);\nif (!Number.isFinite(deltaConsumed)) {\n  deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n}\n\nconst activeCategory = String(msg.activityCategory ?? asset.getValue(categoryPath)).trim();\n\nif (!Number.isFinite(deltaConsumed) || deltaConsumed <= 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -4851,31 +4877,31 @@
           "enabled": true
         },
         {
-          "from": "event.open.evt_uwgrrrj5",
+          "from": "event.open.evt_l7sqmied",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.close.evt_uwgrrrj5",
+          "from": "event.close.evt_l7sqmied",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_uwgrrrj5",
+          "from": "event.open.evt_l7sqmied",
           "to": "act_o8dbxj0x",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.close.evt_uwgrrrj5",
+          "from": "event.close.evt_l7sqmied",
           "to": "act_nad2xse9",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_b2g7asve",
+          "from": "event.open.evt_bi3rltlr",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
@@ -4894,19 +4920,19 @@
         },
         {
           "from": "act_o750buzm",
-          "to": "event.open.evt_uwgrrrj5",
+          "to": "event.open.evt_l7sqmied",
           "fromPort": "open event",
           "enabled": true
         },
         {
           "from": "act_o750buzm",
-          "to": "event.close.evt_uwgrrrj5",
+          "to": "event.close.evt_l7sqmied",
           "fromPort": "close event",
           "enabled": true
         },
         {
           "from": "act_pqgrrjup",
-          "to": "event.open.evt_b2g7asve",
+          "to": "event.open.evt_bi3rltlr",
           "fromPort": "out",
           "enabled": true
         },
@@ -4941,19 +4967,19 @@
           "enabled": true
         },
         {
-          "from": "event.open.evt_uwgrrrj5",
+          "from": "event.open.evt_l7sqmied",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
-          "from": "event.close.evt_uwgrrrj5",
+          "from": "event.close.evt_l7sqmied",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
-          "from": "event.open.evt_b2g7asve",
+          "from": "event.open.evt_bi3rltlr",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
@@ -5036,7 +5062,7 @@
         },
         "trg_y12o0byg": {
           "x": 300,
-          "y": 800
+          "y": 900
         },
         "trg_yaqn0nzn": {
           "x": 300,
@@ -5047,8 +5073,8 @@
           "y": 420
         },
         "act_zxdzcreb": {
-          "x": 760,
-          "y": 760
+          "x": 740,
+          "y": 880
         },
         "act_bef4hk9d": {
           "x": 760,
@@ -5102,29 +5128,29 @@
           "x": 300,
           "y": 600
         },
-        "event.open.evt_uwgrrrj5": {
+        "trg_t1prc001": {
+          "x": 260,
+          "y": 720
+        },
+        "trg_t1pgc001": {
+          "x": 1260,
+          "y": 560
+        },
+        "trg_t1pct001": {
+          "x": 1640,
+          "y": 540
+        },
+        "event.open.evt_l7sqmied": {
           "x": 1300,
           "y": 940
         },
-        "event.close.evt_uwgrrrj5": {
+        "event.close.evt_l7sqmied": {
           "x": 1300,
           "y": 1100
         },
-        "event.open.evt_b2g7asve": {
+        "event.open.evt_bi3rltlr": {
           "x": 1300,
           "y": 1260
-        },
-        "trg_t1prc001": {
-          "x": 300,
-          "y": 700
-        },
-        "trg_t1pgc001": {
-          "x": 300,
-          "y": 840
-        },
-        "trg_t1pct001": {
-          "x": 300,
-          "y": 980
         }
       }
     }

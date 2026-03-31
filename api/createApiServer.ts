@@ -3,9 +3,11 @@ import type http from "node:http";
 import type { Socket } from "node:net";
 import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
-import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import type { OpenAPIObject } from "@nestjs/swagger";
+import { SwaggerModule } from "@nestjs/swagger";
 import type Runtime from "../runtime/Runtime";
 import { AppModule } from "./app.module";
+import { OPENAPI_RUNTIME_SPEC } from "./openapiRuntimeSpec";
 
 export default function createApiServer(runtime: Runtime, options: { port?: number; host?: string } = {}) {
   const port = options.port ?? 4000;
@@ -19,6 +21,7 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     "http://localhost:3002",
     "http://localhost:3003",
     "http://192.168.68.9:3000",
+    "http://192.168.68.9:4000",
     "http://192.168.68.9:3002",
     "http://192.168.68.9:3003",
     "http://192.168.68.106:3001"
@@ -27,6 +30,15 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   let nestApp: INestApplication | null = null;
   let server: http.Server | null = null;
   const sockets = new Set<Socket>();
+
+  const buildSwaggerDocument = (): OpenAPIObject => {
+    const originHost = host === "0.0.0.0" ? "localhost" : host;
+    const originUrl = `http://${originHost}:${port}`;
+    return JSON.parse(JSON.stringify({
+      ...structuredClone(OPENAPI_RUNTIME_SPEC),
+      servers: [{ url: originUrl }]
+    })) as OpenAPIObject;
+  };
 
   return {
     async start() {
@@ -67,12 +79,7 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
         exclude: ["docs", "docs-json"]
       });
 
-      const swaggerConfig = new DocumentBuilder()
-        .setTitle("Kufayeka Runtime API")
-        .setDescription("Kufayeka runtime API documentation")
-        .setVersion("1.0")
-        .build();
-      const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+      const swaggerDocument = buildSwaggerDocument();
       SwaggerModule.setup("docs", app, swaggerDocument, {
         jsonDocumentUrl: "docs-json"
       });

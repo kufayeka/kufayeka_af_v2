@@ -42,7 +42,8 @@ export const SCRIPT_EDITOR_SETTINGS = {
         "editorIndentGuide.background1": "#3b3a32",
         "editorIndentGuide.activeBackground1": "#75715e",
         "editor.lineHighlightBackground": "#3e3d32"
-      }
+      },
+      semanticHighlighting: true
     } as Monaco.editor.IStandaloneThemeData
   },
   options: {
@@ -138,17 +139,37 @@ declare interface AssetQueryMatch {
 
 declare interface ScriptContext {
   global: {
+    /** Read one runtime global value. */
     get: (key: string, defaultValue?: any) => any;
+    /** Write one runtime global value. */
     set: (key: string, value: any) => any;
+    /** Check whether one runtime global exists. */
     has: (key: string) => boolean;
+    /** Delete one runtime global key. */
     delete: (key: string) => boolean;
   };
   asset: {
+    /** Query assets or attributes by wildcard path. */
     query: (path: string) => AssetQueryMatch[];
+    /**
+     * Get one effective attribute value.
+     * Respects attribute type metadata and template default value.
+     * Optional fallback is only used when the attribute path is not found.
+     */
     get: (path: string, defaultValue?: any) => any;
+    /**
+     * Get one effective attribute value.
+     * Respects attribute type metadata and template default value.
+     * Optional fallback is only used when the attribute path is not found.
+     */
+    getValue: (path: string, defaultValue?: any) => any;
+    /** Return all matched attribute rows for a wildcard path. */
     getAll: (path: string) => AssetQueryMatch[];
+    /** Set one attribute value by path. */
     set: (path: string, value: any) => Promise<AssetQueryMatch[]>;
+    /** Set many attribute values in one write batch. */
     setMany: (items: Array<{ path: string; value: any }>) => Promise<Array<{ path: string; count: number; matches: AssetQueryMatch[] }>>;
+    /** Find assets by attribute value. */
     findByValue: (
       path: string,
       expectedValue: any,
@@ -159,9 +180,10 @@ declare interface ScriptContext {
       strict: boolean;
       count: number;
       assetCount: number;
-      matches: AssetQueryMatch[];
-      assets: Array<{ assetId: string; path: string }>;
+        matches: AssetQueryMatch[];
+        assets: Array<{ assetId: string; path: string }>;
     };
+    /** Alias of asset.findByValue(...). */
     find: (
       path: string,
       expectedValue: any,
@@ -172,9 +194,10 @@ declare interface ScriptContext {
       strict: boolean;
       count: number;
       assetCount: number;
-      matches: AssetQueryMatch[];
-      assets: Array<{ assetId: string; path: string }>;
+        matches: AssetQueryMatch[];
+        assets: Array<{ assetId: string; path: string }>;
     };
+    /** Return asset hierarchy tree. */
     hierarchy: (options?: { populateAttributes?: boolean }) => any[];
   };
   eventSys: {
@@ -373,7 +396,13 @@ declare const db: ScriptContext["db"];
         label: "asset.get",
         insertText: callSnippet("asset.get"),
         detail: "Get one attribute value",
-        documentation: "Alias of context.asset.get(...)"
+        documentation: "Get one effective attribute value. Respects attribute type metadata and template default value."
+      },
+      {
+        label: "asset.getValue",
+        insertText: callSnippet("asset.getValue"),
+        detail: "Get one effective attribute value",
+        documentation: "Preferred attribute getter. Respects attribute type metadata and template default value. Optional fallback is only used when the path is missing."
       },
       {
         label: "asset.query",
@@ -439,7 +468,13 @@ declare const db: ScriptContext["db"];
         label: "context.asset.get",
         insertText: callSnippet("context.asset.get"),
         detail: "Get one attribute value",
-        documentation: "Return attribute value (single/default/array)."
+        documentation: "Get one effective attribute value. Respects attribute type metadata and template default value."
+      },
+      {
+        label: "context.asset.getValue",
+        insertText: callSnippet("context.asset.getValue"),
+        detail: "Get one effective attribute value",
+        documentation: "Preferred attribute getter. Respects attribute type metadata and template default value. Optional fallback is only used when the path is missing."
       },
       {
         label: "context.asset.query",

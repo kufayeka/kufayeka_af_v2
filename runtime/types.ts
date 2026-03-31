@@ -155,6 +155,7 @@ export interface AssetStore {
   replace(nextState: unknown): AssetSection;
   query(path: string): QueryMatch[];
   getAttribute(path: string, defaultValue?: unknown): unknown;
+  getValue(path: string, defaultValue?: unknown): unknown;
   getAttributes(path: string): AttributeQueryMatch[];
   setAttribute(path: string, value: unknown): AttributeQueryMatch[];
   setAttributes(items: Array<{ path: string; value: unknown }>): Array<{
@@ -183,6 +184,7 @@ export interface RuntimeGlobalApi {
 export interface RuntimeAssetApi {
   query(path: string): QueryMatch[];
   get<T = unknown>(path: string, defaultValue?: T): T;
+  getValue<T = unknown>(path: string, defaultValue?: T): T;
   getAll(path: string): AttributeQueryMatch[];
   set(path: string, value: unknown): Promise<AttributeQueryMatch[]>;
   setMany(items: Array<{ path: string; value: unknown }>): Promise<Array<{

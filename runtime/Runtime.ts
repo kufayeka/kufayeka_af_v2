@@ -189,7 +189,12 @@ class Runtime {
         get: <T = unknown>(path: string, defaultValue?: T): T => {
           const store = getAssetStorage();
           if (!store) return defaultValue as T;
-          return store.getAttribute(path, defaultValue) as T;
+          return store.getValue(path, defaultValue) as T;
+        },
+        getValue: <T = unknown>(path: string, defaultValue?: T): T => {
+          const store = getAssetStorage();
+          if (!store) return defaultValue as T;
+          return store.getValue(path, defaultValue) as T;
         },
         getAll: (path: string) => {
           const store = getAssetStorage();
