@@ -313,6 +313,80 @@ function buildBaseWhere(
   return `WHERE ${where.join(" AND ")}${ctxWhere}`;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function wildcardToRegExp(pattern: unknown): RegExp {
+  const input = String(pattern == null ? "*" : pattern);
+  const source = `^${input.split("*").map((part) => escapeRegExp(part)).join(".*")}$`;
+  return new RegExp(source);
+}
+
+function getContextValueAtPath(input: unknown, path: string): unknown {
+  const parts = toJsonPath(path);
+  let current: unknown = input;
+  for (const part of parts) {
+    if (!current || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
+function matchesContextFilters(row: EventRow, contextFilters: unknown): boolean {
+  const filter = normalizeContextFilters(contextFilters);
+  if (filter.conditions.length === 0) return true;
+
+  const matches = filter.conditions.map((condition) => {
+    const actual = getContextValueAtPath(row.context, condition.path);
+    switch (condition.operator) {
+      case "exists":
+        return actual !== undefined;
+      case "not_exists":
+        return actual === undefined;
+      case "neq":
+        return String(actual ?? "") !== String(condition.value ?? "");
+      case "in": {
+        const values = Array.isArray(condition.value) ? condition.value.map((item) => String(item)) : [];
+        return values.includes(String(actual ?? ""));
+      }
+      case "not_in": {
+        const values = Array.isArray(condition.value) ? condition.value.map((item) => String(item)) : [];
+        return !values.includes(String(actual ?? ""));
+      }
+      case "eq":
+      default:
+        return String(actual ?? "") === String(condition.value ?? "");
+    }
+  });
+
+  return filter.op === "OR" ? matches.some(Boolean) : matches.every(Boolean);
+}
+
+function compareEventRows(a: EventRow, b: EventRow, sortBy: string, sortDir: "ASC" | "DESC"): number {
+  const getComparable = (row: EventRow): string | number => {
+    switch (sortBy) {
+      case "start_ts":
+        return Date.parse(row.start_ts || "") || 0;
+      case "end_ts":
+        return row.end_ts ? Date.parse(row.end_ts) || 0 : 0;
+      case "acknowledged_ts":
+        return row.acknowledged_ts ? Date.parse(row.acknowledged_ts) || 0 : 0;
+      case "is_acknowledge":
+        return row.is_acknowledge ? 1 : 0;
+      default:
+        return String((row as unknown as Record<string, unknown>)[sortBy] ?? "");
+    }
+  };
+
+  const left = getComparable(a);
+  const right = getComparable(b);
+  let result = 0;
+  if (typeof left === "number" && typeof right === "number") result = left - right;
+  else result = String(left).localeCompare(String(right));
+  return sortDir === "ASC" ? result : -result;
+}
+
 function ensureDb(options: EventStoreOptions): DbConnectionManager {
   const db = options.dbConnectionManager;
   if (!db) throw new Error("DB connection manager is required for af_event store");
@@ -327,6 +401,96 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
   const database = String(dbCfg.connection.database);
   const tableRef = `"${schema}"."${table}"`;
   const listeners = new Set<(meta: EventStoreChangeMeta) => void>();
+  const openRowsById = new Map<string, EventRow>();
+  const openRowIdsByPath = new Map<string, Set<string>>();
+  let openRowsWarmupPromise: Promise<void> | null = null;
+  let openRowsWarm = false;
+  let openRowsLastWarmupAt: string | null = null;
+
+  const attachOpenRow = (row: EventRow): void => {
+    if (!row || row.status !== "open") return;
+    openRowsById.set(row.id, row);
+    const current = openRowIdsByPath.get(row.event_path) || new Set<string>();
+    current.add(row.id);
+    openRowIdsByPath.set(row.event_path, current);
+  };
+
+  const detachOpenRow = (row: EventRow | undefined | null): void => {
+    if (!row) return;
+    openRowsById.delete(row.id);
+    const current = openRowIdsByPath.get(row.event_path);
+    if (!current) return;
+    current.delete(row.id);
+    if (current.size === 0) openRowIdsByPath.delete(row.event_path);
+  };
+
+  const ensureOpenRowsWarm = async (): Promise<void> => {
+    if (!openRowsWarmupPromise) {
+      openRowsWarmupPromise = (async () => {
+        const result = await db.query(`
+          SELECT id, event_path, start_ts, end_ts, status, severity, context, is_acknowledge, acknowledged_ts, notes_on_open, notes_on_close, event_metadata, captured_data_on_open, captured_data_on_close
+          FROM ${tableRef}
+          WHERE status = 'open'
+        `);
+        openRowsById.clear();
+        openRowIdsByPath.clear();
+        for (const rawRow of result.rows) {
+          attachOpenRow(mapRow(rawRow as Record<string, unknown>));
+        }
+        openRowsWarm = true;
+        openRowsLastWarmupAt = new Date().toISOString();
+        console.info(`[eventStore] open-events cache warmed with ${openRowsById.size} row(s)`);
+      })().catch((error) => {
+        openRowsWarmupPromise = null;
+        openRowsWarm = false;
+        throw error;
+      });
+    }
+    await openRowsWarmupPromise;
+  };
+
+  const queryOpenRowsFromMemory = async (
+    pattern = "*",
+    from = "*",
+    to = "*",
+    contextFilters: unknown = {},
+    options: Record<string, unknown> = {}
+  ): Promise<{ rows: EventRow[]; total: number; limit: number; offset: number; sortBy: string; sortDir: "ASC" | "DESC" }> => {
+    await ensureOpenRowsWarm();
+
+    const matcher = wildcardToRegExp(pattern);
+    const toTs = parseIsoTs(to, null);
+    const severity = options?.severity && options.severity !== "*" ? normalizeSeverity(options.severity) : null;
+    const sortBy = normalizeSortBy(options?.sortBy || "start_ts");
+    const sortDir = normalizeSortDir(options?.sortDir || "desc");
+    const limitRaw = Number(options?.limit ?? 200);
+    const offsetRaw = Number(options?.offset ?? 0);
+    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(5000, Math.floor(limitRaw))) : 200;
+    const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.floor(offsetRaw)) : 0;
+
+    const rows = Array.from(openRowsById.values()).filter((row) => {
+      if (!matcher.test(row.event_path)) return false;
+      if (severity && row.severity !== severity) return false;
+      if (toTs && row.start_ts > toTs) return false;
+      if (!matchesContextFilters(row, contextFilters)) return false;
+      return true;
+    });
+
+    rows.sort((a, b) => compareEventRows(a, b, sortBy, sortDir));
+    return {
+      total: rows.length,
+      limit,
+      offset,
+      sortBy,
+      sortDir,
+      rows: rows.slice(offset, offset + limit)
+    };
+  };
+
+  void ensureOpenRowsWarm().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[eventStore] open-events warmup failed:", message);
+  });
 
   const emitChange = (meta: Omit<EventStoreChangeMeta, "ts">): void => {
     if (listeners.size === 0) return;
@@ -379,6 +543,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
       JSON.stringify(row.captured_data_on_open)
     ]);
     const mapped = mapRow(result.rows[0] || row);
+    attachOpenRow(mapped);
     emitChange({ type: "open", row: mapped, rows: [mapped], count: 1 });
     return mapped;
   };
@@ -402,6 +567,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
     const result = await db.query(sql, [normalizedTs, normalizedNotes, JSON.stringify(normalizedCapturedOnClose), likePattern]);
     const rows = result.rows.map((row) => mapRow(row as Record<string, unknown>));
     if (rows.length > 0) {
+      rows.forEach((row) => detachOpenRow(row));
       emitChange({ type: "close", pattern: String(pattern || "*"), rows, count: rows.length });
     }
     return {
@@ -433,6 +599,7 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
     const result = await db.query(sql, [normalizedTs, normalizedNotes, JSON.stringify(normalizedCapturedOnClose), normalizedId]);
     const rows = result.rows.map((row) => mapRow(row as Record<string, unknown>));
     if (rows.length > 0) {
+      rows.forEach((row) => detachOpenRow(row));
       emitChange({ type: "closeById", id: normalizedId, rows, row: rows[0], count: rows.length });
     }
     return {
@@ -451,6 +618,14 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
     const sql = `UPDATE ${tableRef} SET is_acknowledge = TRUE, acknowledged_ts = $1::timestamptz, updated_at = NOW() WHERE id = $2`;
     const result = await db.query(sql, [normalizedTs, normalizedId]);
     if (Number(result.rowCount || 0) > 0) {
+      const current = openRowsById.get(normalizedId);
+      if (current) {
+        attachOpenRow({
+          ...current,
+          is_acknowledge: true,
+          acknowledged_ts: normalizedTs
+        });
+      }
       emitChange({ type: "acknowledgeById", id: normalizedId, count: Number(result.rowCount || 0) });
     }
     return {
@@ -463,18 +638,25 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
   const deleteById: EventStore["deleteById"] = async (id) => {
     const normalizedId = String(id || "").trim();
     if (!normalizedId) throw new Error("id is required");
+    const existingOpenRow = openRowsById.get(normalizedId);
     const result = await db.query(`DELETE FROM ${tableRef} WHERE id = $1`, [normalizedId]);
     if (Number(result.rowCount || 0) > 0) {
+      detachOpenRow(existingOpenRow);
       emitChange({ type: "deleteById", id: normalizedId, count: Number(result.rowCount || 0) });
     }
     return { id: normalizedId, deletedCount: Number(result.rowCount || 0) };
   };
 
   const deleteByPattern: EventStore["deleteByPattern"] = async (pattern = "*", status = "*", from = "*", to = "*", severity = "*") => {
+    const rowsToDetach =
+      normalizeStatus(status || "*") === "open"
+        ? await get(pattern, from, to, "open", {}, { limit: 5000 })
+        : [];
     const params: unknown[] = [];
     const whereSql = buildBaseWhere({ pattern, status, from, to, contextFilters: {}, severity }, params);
     const result = await db.query(`DELETE FROM ${tableRef} ${whereSql}`, params);
     if (Number(result.rowCount || 0) > 0) {
+      rowsToDetach.forEach((row) => detachOpenRow(row));
       emitChange({ type: "deleteByPattern", pattern: String(pattern || "*"), count: Number(result.rowCount || 0) });
     }
     return {
@@ -486,6 +668,10 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
   };
 
   const query: EventStore["query"] = async (pattern = "*", from = "*", to = "*", status = "*", contextFilters = {}, options = {}) => {
+    const normalizedStatus = normalizeStatus(status || "*");
+    if (normalizedStatus === "open") {
+      return await queryOpenRowsFromMemory(pattern, from, to, contextFilters, options || {});
+    }
     const limitRaw = Number(options.limit ?? 1000);
     const offsetRaw = Number(options.offset ?? 0);
     const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(5000, limitRaw)) : 1000;
@@ -516,6 +702,9 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
   const getById: EventStore["getById"] = async (id) => {
     const normalizedId = String(id || "").trim();
     if (!normalizedId) throw new Error("id is required");
+    await ensureOpenRowsWarm();
+    const cached = openRowsById.get(normalizedId);
+    if (cached) return cached;
     const sql = `
       SELECT id, event_path, start_ts, end_ts, status, severity, context, is_acknowledge, acknowledged_ts, notes_on_open, notes_on_close, event_metadata, captured_data_on_open, captured_data_on_close
       FROM ${tableRef}
@@ -539,7 +728,13 @@ export function createEventStore(options: EventStoreOptions = {}): EventStore {
       engine: "postgresql",
       database,
       schema,
-      table
+      table,
+      openEventCache: {
+        enabled: true,
+        warm: openRowsWarm,
+        openCount: openRowsById.size,
+        lastWarmupAt: openRowsLastWarmupAt
+      }
     }),
     open,
     close,

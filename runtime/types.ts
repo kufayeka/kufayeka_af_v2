@@ -449,6 +449,12 @@ export interface EventStore {
     database: string;
     schema: string;
     table: string;
+    openEventCache: {
+      enabled: true;
+      warm: boolean;
+      openCount: number;
+      lastWarmupAt: string | null;
+    };
   };
   open(
     eventPath: string,
