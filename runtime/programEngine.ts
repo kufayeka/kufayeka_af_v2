@@ -60,13 +60,23 @@ interface ProgramTrigger {
   id: string;
   type:
     | "interval"
+    | "cron"
     | "watcher_set"
     | "watcher_valuechange"
-    | "watcher_event_falling";
+    | "watcher_event_falling"
+    | "watcher_event_open"
+    | "watcher_event_close";
   enabled?: boolean;
   intervalMs?: number;
+  activeFrom?: string;
+  activeTo?: string;
   message?: Record<string, unknown>;
   watchPath?: string;
+}
+
+interface ProgramTriggerTemplate extends ProgramTrigger {
+  name?: string;
+  description?: string;
 }
 
 export function loadProgramFromFile(programPath: string): { absolutePath: string; program: ProgramDefinition } {
@@ -149,9 +159,15 @@ function registerFlowNodes(runtime: Runtime, nodes: unknown[] = []): void {
   );
 
   const nodeConfigById: Record<string, Record<string, unknown>> = {};
+  const seenNodeIds = new Set<string>();
   for (const rawNode of nodes) {
     const node = rawNode as ProgramFlowNode;
     if (!node.id) throw new Error("Flow node must have an id");
+    if (seenNodeIds.has(node.id)) {
+      const flowId = String((node.config as Record<string, unknown> | undefined)?.__flowId || "").trim();
+      throw new Error(`Duplicate flow node id "${node.id}" detected${flowId ? ` in flow "${flowId}"` : ""}`);
+    }
+    seenNodeIds.add(node.id);
     nodeConfigById[node.id] =
       node.config && typeof node.config === "object"
         ? (node.config as Record<string, unknown>)
@@ -432,10 +448,89 @@ function startEventFallingTrigger(runtime: Runtime, trigger: ProgramTrigger): ()
   };
 }
 
-function startTriggers(runtime: Runtime, triggers: unknown[] = []): Array<() => void> {
+function startEventOpenTrigger(runtime: Runtime, trigger: ProgramTrigger): () => void {
+  const watchPath = String(trigger.watchPath || "").trim() || "*";
+  const baseMsg = trigger.message || {};
+  const eventStore = runtime.getGlobal<EventStore | undefined>("eventStore");
+  if (!eventStore || typeof eventStore.subscribe !== "function") {
+    throw new Error(`Watcher trigger "${trigger.id}" failed: eventStore is not available`);
+  }
+
+  const emitChange = (meta: EventStoreChangeMeta, row: Record<string, unknown>): void => {
+    const msg = structuredClone(baseMsg) as Record<string, unknown>;
+    msg.payload = row;
+    msg._trigger = {
+      id: trigger.id,
+      type: "watcher_event_open",
+      watchPath,
+      source: meta.type,
+      ts: new Date().toISOString()
+    };
+    runtime.send(trigger.id, msg as RuntimeMessage);
+  };
+
+  const unsubscribe = eventStore.subscribe((meta) => {
+    if (meta.type !== "open") return;
+    const rows = Array.isArray(meta.rows) ? meta.rows : meta.row ? [meta.row] : [];
+    for (const row of rows) {
+      if (!row || row.status !== "open") continue;
+      if (!matchWildcardText(watchPath, row.event_path)) continue;
+      emitChange(meta, {
+        id: row.id,
+        event_path: row.event_path,
+        start_ts: row.start_ts,
+        end_ts: row.end_ts,
+        status_before: "closed",
+        status_after: "open",
+        source: meta.type,
+        event: row
+      });
+    }
+  });
+
+  return () => {
+    if (typeof unsubscribe === "function") unsubscribe();
+  };
+}
+
+function resolveTriggerConfig(
+  node: ProgramFlowNode,
+  templateById: Map<string, ProgramTriggerTemplate>
+): ProgramTrigger {
+  const config = node.config && typeof node.config === "object" ? (node.config as Record<string, unknown>) : {};
+  const template = node.templateId ? templateById.get(node.templateId) : undefined;
+  return {
+    id: node.id,
+    enabled: node.enabled !== false && (template?.enabled !== false),
+    type:
+      String(config.type || template?.type || "interval") as ProgramTrigger["type"],
+    intervalMs: Math.max(1, Number(config.intervalMs ?? template?.intervalMs ?? 1000) || 1000),
+    activeFrom: String(config.activeFrom ?? template?.activeFrom ?? ""),
+    activeTo: String(config.activeTo ?? template?.activeTo ?? ""),
+    watchPath: String(config.watchPath ?? template?.watchPath ?? ""),
+    message:
+      config.message && typeof config.message === "object"
+        ? (config.message as Record<string, unknown>)
+        : template?.message && typeof template.message === "object"
+          ? (template.message as Record<string, unknown>)
+          : { payload: 0 }
+  };
+}
+
+function startTriggers(
+  runtime: Runtime,
+  triggerNodes: ProgramFlowNode[] = [],
+  triggerTemplates: ProgramTriggerTemplate[] = [],
+  legacyTriggers: unknown[] = []
+): Array<() => void> {
   const stops: Array<() => void> = [];
-  for (const rawTrigger of triggers) {
-    const trigger = rawTrigger as ProgramTrigger;
+  const templateById = new Map(triggerTemplates.map((item) => [String(item.id || "").trim(), item]));
+  const derivedTriggers =
+    triggerNodes.length > 0
+      ? triggerNodes.map((node) => resolveTriggerConfig(node, templateById))
+      : (legacyTriggers as ProgramTrigger[]);
+
+  for (const trigger of derivedTriggers) {
     if (!trigger.id) throw new Error("Trigger must have an id");
     if (trigger.enabled === false) continue;
     if (trigger.type === "interval") {
@@ -450,8 +545,12 @@ function startTriggers(runtime: Runtime, triggers: unknown[] = []): Array<() => 
       stops.push(startWatcherTrigger(runtime, trigger, "valuechange"));
       continue;
     }
-    if (trigger.type === "watcher_event_falling") {
+    if (trigger.type === "watcher_event_falling" || trigger.type === "watcher_event_close") {
       stops.push(startEventFallingTrigger(runtime, trigger));
+      continue;
+    }
+    if (trigger.type === "watcher_event_open") {
+      stops.push(startEventOpenTrigger(runtime, trigger));
       continue;
     }
     throw new Error(`Unsupported trigger type "${String(trigger.type)}"`);
@@ -497,7 +596,13 @@ export function startProgram(runtime: Runtime, program: ProgramDefinition): () =
   );
   registerFlowNodes(runtime, flatNodes);
   registerLinks(runtime, flatLinks);
-  const stops = startTriggers(runtime, program.triggers || []);
+  const triggerNodes = flatNodes.filter((node) => node.kind === "trigger");
+  const stops = startTriggers(
+    runtime,
+    triggerNodes,
+    Array.isArray(program.triggerTemplates) ? (program.triggerTemplates as ProgramTriggerTemplate[]) : [],
+    program.triggers || []
+  );
 
   return () => {
     for (const stop of stops) stop();

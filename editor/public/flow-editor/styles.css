@@ -160,11 +160,39 @@ input {
   overflow: visible;
   padding: 10px;
   display: grid;
-  gap: 8px;
+  gap: 12px;
   align-content: start;
   min-width: 0;
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+}
+
+.palette-section {
+  display: grid;
+  gap: 8px;
+}
+
+.palette-section-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #334155;
+  padding-top: 2px;
+  border-bottom: 1px solid #dbe4ee;
+  padding-bottom: 6px;
+}
+
+.palette-section-list {
+  display: grid;
+  gap: 8px;
+}
+
+.palette-empty {
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  background: rgba(255,255,255,0.75);
 }
 
 .flows-shell {
@@ -334,13 +362,16 @@ input {
 }
 
 .palette-item {
-  border-radius: 14px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  padding: 8px 10px;
   border: 1px solid transparent;
   cursor: grab;
   user-select: none;
   color: #fff;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  min-height: 58px;
+  display: grid;
+  align-content: center;
 }
 
 .palette-item:active {
@@ -348,15 +379,17 @@ input {
 }
 
 .palette-item-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
+  line-height: 1.15;
 }
 
 .palette-item-subtitle {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: 11px;
   opacity: 0.88;
   word-break: break-word;
+  line-height: 1.15;
 }
 
 .editor {
@@ -639,6 +672,11 @@ input {
   left: -8px;
   top: 50%;
   pointer-events: none;
+}
+
+.node.trigger-node .input-port,
+.node.trigger-node .input-drop-zone {
+  display: none;
 }
 
 .output-port {

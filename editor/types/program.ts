@@ -3,7 +3,15 @@ export type TriggerType =
   | "cron"
   | "watcher_set"
   | "watcher_valuechange"
-  | "watcher_event_falling";
+  | "watcher_event_falling"
+  | "watcher_event_open"
+  | "watcher_event_close";
+export type TriggerTemplateType =
+  | "interval"
+  | "watcher_set"
+  | "watcher_valuechange"
+  | "watcher_event_open"
+  | "watcher_event_close";
 export type AssetAttributeType =
   | "int8"
   | "uint8"
@@ -86,6 +94,22 @@ export interface TriggerDefinition {
   intervalMs: number;
   cronExpression?: string;
   timezone?: string;
+  activeFrom?: string;
+  activeTo?: string;
+  watchPath?: string;
+  message: {
+    payload?: unknown;
+    [key: string]: unknown;
+  };
+}
+
+export interface TriggerTemplateDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  type: TriggerTemplateType;
+  enabled: boolean;
+  intervalMs: number;
   activeFrom?: string;
   activeTo?: string;
   watchPath?: string;
@@ -284,6 +308,7 @@ export interface Program {
   activeFlowId?: string;
   flowDefinitions?: FlowDefinition[];
   eventTemplates?: EventTemplateDefinition[];
+  triggerTemplates?: TriggerTemplateDefinition[];
   triggers: TriggerDefinition[];
   scriptTemplates: ScriptTemplateDefinition[];
   flows: {

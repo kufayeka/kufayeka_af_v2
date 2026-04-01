@@ -12,7 +12,6 @@ import {
   Toolbar,
   Typography
 } from "@mui/material";
-import TriggerManager from "../components/managers/TriggerManager";
 import ActionManager from "../components/managers/ActionManager";
 import EventDesignerManager from "../components/managers/EventDesignerManager";
 import FlowManager from "../components/managers/FlowManager";
@@ -33,7 +32,9 @@ import {
 } from "../lib/programUtils";
 import type {
   AssetFrameworkDefinition,
+  EventActionBindingDefinition,
   EventTemplateDefinition,
+  EventTemplateInputBindingDefinition,
   FlowDefinition,
   FlowNodeDefinition,
   FlowLink,
@@ -44,6 +45,8 @@ import type {
   EventNodeSummary,
   ScriptOutputDefinition,
   TriggerDefinition,
+  TriggerTemplateDefinition,
+  TriggerTemplateType,
   NodePosition
 } from "../types/program";
 import type { FlowPaletteItem } from "../components/managers/FlowManager";
@@ -64,6 +67,7 @@ const EMPTY_PROGRAM: Program = {
     }
   ],
   eventTemplates: [],
+  triggerTemplates: [],
   triggers: [],
   scriptTemplates: [],
   flows: { id: "flow_main", name: "Main Flow", enabled: true, variables: [], activeFlowId: "flow_main", nodes: [], links: [], nodePositions: {} },
@@ -94,13 +98,17 @@ const getNextIncrementalLabel = (base: string, usedLabels: string[]): string => 
   return candidate;
 };
 
-const getTriggerBaseLabel = (type: TriggerDefinition["type"]): string => {
+const getTriggerBaseLabel = (type: TriggerTypeLike): string => {
   if (type === "interval") return "Interval Trigger";
-  if (type === "cron") return "Cron Trigger";
   if (type === "watcher_set") return "Watcher Set";
   if (type === "watcher_valuechange") return "Watcher Value Change";
+  if (type === "watcher_event_open") return "Watcher Event Open";
+  if (type === "watcher_event_close") return "Watcher Event Close";
+  if (type === "cron") return "Cron Trigger";
   return "Watcher Event Falling";
 };
+
+type TriggerTypeLike = TriggerDefinition["type"] | TriggerTemplateType;
 
 const getActiveFlow = (program: Program): FlowDefinition => {
   const flowDefinitions = Array.isArray(program.flowDefinitions) ? program.flowDefinitions : [];
@@ -356,6 +364,52 @@ const defaultEventBindingForVariable = (name: string) => {
   return { source: "msg_path" as const, attributePath: `payload.${name}` };
 };
 
+const eventTemplateBindingToActionBinding = (
+  binding: EventTemplateInputBindingDefinition
+): EventActionBindingDefinition => {
+  const fallback = defaultEventBindingForVariable(binding.name);
+  const source = binding.source || fallback.source;
+  if (source === "asset" || source === "attribute" || source === "flow_variable" || source === "msg_path") {
+    return {
+      source,
+      attributePath:
+        typeof binding.defaultValue === "string"
+          ? binding.defaultValue
+          : fallback.attributePath ?? ""
+    };
+  }
+  if (source === "static_boolean") {
+    return {
+      source,
+      staticValue: binding.defaultValue === true
+    };
+  }
+  if (source === "static_number") {
+    return {
+      source,
+      staticValue: Number(binding.defaultValue ?? 0)
+    };
+  }
+  return {
+    source,
+    staticValue: binding.defaultValue ?? ""
+  };
+};
+
+const buildEventActionBindingsFromTemplate = (
+  template: EventTemplateDefinition
+): Record<string, EventActionBindingDefinition> => {
+  const explicit = new Map(
+    (template.bindings || [])
+      .filter((item) => String(item.name || "").trim())
+      .map((item) => [String(item.name).trim(), eventTemplateBindingToActionBinding(item)])
+  );
+  for (const key of collectTemplateVariables(template)) {
+    if (!explicit.has(key)) explicit.set(key, defaultEventBindingForVariable(key));
+  }
+  return Object.fromEntries(explicit);
+};
+
 type ProgramUpdater = (program: Program) => Program;
 
 interface HistoryState {
@@ -458,13 +512,13 @@ export default function HomePage() {
     present: EMPTY_PROGRAM,
     future: []
   });
-  const [selectedTriggerId, setSelectedTriggerId] = useState("");
+  const [selectedTriggerTemplateId, setSelectedTriggerTemplateId] = useState("");
   const [selectedActionId, setSelectedActionId] = useState("");
   const [selectedScriptTemplateId, setSelectedScriptTemplateId] = useState("");
   const [selectedEventActionId, setSelectedEventActionId] = useState("");
   const [selectedEventTemplateId, setSelectedEventTemplateId] = useState("");
   const [selectedFlowId, setSelectedFlowId] = useState("flow_main");
-  const [inspectorTarget, setInspectorTarget] = useState<{ kind: "action" | "event"; id: string } | null>(null);
+  const [inspectorTarget, setInspectorTarget] = useState<{ kind: "trigger" | "action" | "event"; id: string } | null>(null);
   const [flowZoom, setFlowZoom] = useState(0.5);
   const [, setStatusText] = useState("Loading...");
   const [toast, setToast] = useState<{ open: boolean; message: string; severity: "success" | "info" | "warning" | "error" }>({
@@ -516,7 +570,7 @@ export default function HomePage() {
     );
     dispatch({ type: "INIT", program: hydrated });
     setSelectedFlowId(hydrated.activeFlowId || "flow_main");
-    setSelectedTriggerId(hydrated.triggers[0]?.id ?? "");
+    setSelectedTriggerTemplateId(hydrated.triggerTemplates?.[0]?.id ?? "");
     setSelectedActionId((hydrated.flows.nodes || []).find((node) => node.kind === "action")?.id ?? "");
     setSelectedScriptTemplateId(hydrated.scriptTemplates?.[0]?.id ?? "");
     setSelectedEventActionId((hydrated.flows.nodes || []).find((node) => node.kind === "event_open")?.refId ?? "");
@@ -596,17 +650,18 @@ export default function HomePage() {
       const source = (prev.flowDefinitions || []).find((item) => item.id === flowId);
       if (!source) return prev;
       const remap = new Map<string, string>();
-      const nextNodes = (source.nodes || []).map((node) => {
-        if (node.kind === "trigger") {
-          remap.set(node.id, node.id);
-          return structuredClone(node);
-        }
-        if (node.kind === "action") {
-          const nextNodeId = makeRandomToken("act");
-          remap.set(node.id, nextNodeId);
-          latestActionScriptsRef.current[nextNodeId] = String(((node.config || {}) as Record<string, unknown>).script || "");
-          return { ...structuredClone(node), id: nextNodeId, refId: nextNodeId, label: getNextIncrementalLabel(node.label || "Action", (source.nodes || []).map((item) => item.label || "")) };
-        }
+        const nextNodes = (source.nodes || []).map((node) => {
+          if (node.kind === "trigger") {
+            const nextNodeId = makeRandomToken("trg");
+            remap.set(node.id, nextNodeId);
+            return { ...structuredClone(node), id: nextNodeId, refId: nextNodeId, label: node.label || "" };
+          }
+          if (node.kind === "action") {
+            const nextNodeId = makeRandomToken("act");
+            remap.set(node.id, nextNodeId);
+            latestActionScriptsRef.current[nextNodeId] = String(((node.config || {}) as Record<string, unknown>).script || "");
+            return { ...structuredClone(node), id: nextNodeId, refId: nextNodeId, label: node.label || "" };
+          }
         const nextRef = makeRandomToken("evt");
         const nextNodeId = node.kind === "event_open" ? getEventActionOpenNodeId(nextRef) : getEventActionCloseNodeId(nextRef);
         remap.set(node.id, nextNodeId);
@@ -836,53 +891,35 @@ export default function HomePage() {
     }
   };
 
-  const addTriggerWithType = (type: TriggerDefinition["type"]): void => {
-    const id = makeRandomToken("trg");
+  const addTriggerTemplateWithType = (type: TriggerTemplateType): void => {
+    const id = makeRandomToken("trigger_template");
     const defaultWatchPath =
       type === "watcher_set" || type === "watcher_valuechange"
         ? "*.*.*"
-        : type === "watcher_event_falling"
+        : type === "watcher_event_open" || type === "watcher_event_close"
           ? "*"
           : "";
-    const label = getNextIncrementalLabel(
+    const name = getNextIncrementalLabel(
       getTriggerBaseLabel(type),
-      program.triggers.map((item) => item.label || "")
+      (program.triggerTemplates || []).map((item) => item.name || "")
     );
-    const next: TriggerDefinition = {
+    const next: TriggerTemplateDefinition = {
       id,
-      label,
+      name,
+      description: "",
       type,
       enabled: true,
       intervalMs: 1000,
+      activeFrom: "",
+      activeTo: "",
       watchPath: defaultWatchPath,
       message: { payload: 0 }
     };
     applyProgramUpdate((prev) => ({
-      ...updateActiveFlowInProgram(prev, (flow) => ({
-        ...flow,
-        nodes: [
-          ...(flow.nodes || []),
-          {
-            id,
-            kind: "trigger",
-            refId: id,
-            label,
-            enabled: true,
-            config: {
-              type,
-              watchPath: defaultWatchPath,
-              intervalMs: 1000,
-              cronExpression: "",
-              timezone: "",
-              activeFrom: "",
-              activeTo: ""
-            }
-          }
-        ]
-      })),
-      triggers: [...prev.triggers, next]
+      ...prev,
+      triggerTemplates: [...(prev.triggerTemplates || []), next]
     }));
-    setSelectedTriggerId(id);
+    setSelectedTriggerTemplateId(id);
   };
 
   const importProgramJson = async (file: File): Promise<void> => {
@@ -896,6 +933,117 @@ export default function HomePage() {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(`Import error: ${message}`);
     }
+  };
+
+  const createTriggerNodeFromTemplateInFlow = (templateId: string, position: NodePosition): void => {
+    const template = (program.triggerTemplates || []).find((item) => item.id === templateId);
+    if (!template) return;
+    const id = makeRandomToken("trg");
+    const label = getNextIncrementalLabel(
+      template.name || getTriggerBaseLabel(template.type),
+      flowNodes.filter((item) => item.kind === "trigger").map((item) => item.label || "")
+    );
+    const nextNode: FlowNodeDefinition = {
+      id,
+      label,
+      subtitle: template.name || label,
+      kind: "trigger",
+      refId: id,
+      enabled: true,
+      templateId: template.id,
+      config: {
+        description: template.description || "",
+        type: template.type,
+        watchPath: template.watchPath || "",
+        intervalMs: template.intervalMs,
+        activeFrom: template.activeFrom || "",
+        activeTo: template.activeTo || "",
+        message: structuredClone(template.message || { payload: 0 })
+      }
+    };
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      nodes: [...(flow.nodes || []), nextNode],
+      nodePositions: { ...(flow.nodePositions || {}), [id]: position }
+    }));
+    setSelectedTriggerTemplateId(template.id);
+    setTab(1);
+    setStatus(`Trigger node created from template "${template.name}"`);
+  };
+
+  const createBuiltInTriggerNodeInFlow = (
+    triggerType: "interval" | "watcher_set" | "watcher_valuechange" | "watcher_event_open" | "watcher_event_close",
+    position: NodePosition
+  ): void => {
+    const id = makeRandomToken("trg");
+    const defaultWatchPath =
+      triggerType === "watcher_set" || triggerType === "watcher_valuechange"
+        ? "*.*.*"
+        : triggerType === "watcher_event_open" || triggerType === "watcher_event_close"
+          ? "*"
+          : "";
+    const label = getNextIncrementalLabel(
+      getTriggerBaseLabel(triggerType),
+      flowNodes.filter((item) => item.kind === "trigger").map((item) => item.label || "")
+    );
+    const nextNode: FlowNodeDefinition = {
+      id,
+      label,
+      subtitle: getTriggerBaseLabel(triggerType),
+      kind: "trigger",
+      refId: id,
+      enabled: true,
+      templateId: "",
+      config: {
+        description: "",
+        type: triggerType,
+        watchPath: defaultWatchPath,
+        intervalMs: 1000,
+        activeFrom: "",
+        activeTo: "",
+        message: { payload: 0 }
+      }
+    };
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      nodes: [...(flow.nodes || []), nextNode],
+      nodePositions: { ...(flow.nodePositions || {}), [id]: position }
+    }));
+    setStatus(`Trigger node created: ${label}`);
+  };
+
+  const createBuiltInDebugActionInFlow = (position: NodePosition): void => {
+    const id = makeRandomToken("act");
+    const label = getNextIncrementalLabel(
+      "Debug",
+      flowNodes.filter((item) => item.kind === "action").map((item) => item.label || "")
+    );
+    const nextNode: FlowNodeDefinition = {
+      id,
+      label,
+      subtitle: "Built-in Debug",
+      kind: "action",
+      refId: id,
+      enabled: true,
+      templateId: "",
+      config: {
+        description: "Built-in debug action",
+        script: "helpers.log(msg);\nsend(msg);",
+        outputs: ["out"],
+        templateBindingOverrides: {},
+        eventTemplateId: "",
+        eventTemplateOverrides: {}
+      }
+    };
+    latestActionScriptsRef.current[id] = String((nextNode.config as Record<string, unknown>).script || "");
+    applyActiveFlowUpdate((flow) => ({
+      ...flow,
+      nodes: [...(flow.nodes || []), nextNode],
+      nodePositions: { ...(flow.nodePositions || {}), [id]: position }
+    }));
+    setSelectedActionId(id);
+    setInspectorTarget({ kind: "action", id });
+    setStatus(`Action node created: ${label}`);
   };
 
   const addAction = (parentPath?: string): void => {
@@ -1049,9 +1197,7 @@ export default function HomePage() {
     const template = (program.eventTemplates || []).find((item) => item.id === templateId);
     if (!template) return;
     const id = makeRandomToken("evt");
-    const bindings = Object.fromEntries(
-      collectTemplateVariables(template).map((key) => [key, defaultEventBindingForVariable(key)])
-    );
+    const bindings = buildEventActionBindingsFromTemplate(template);
     const openNodeId = getEventActionOpenNodeId(id);
     const closeNodeId = getEventActionCloseNodeId(id);
     applyActiveFlowUpdate((flow) => ({
@@ -1101,9 +1247,7 @@ export default function HomePage() {
     const template = (program.eventTemplates || []).find((item) => item.id === templateId);
     if (!template) return;
     const id = makeRandomToken("evt");
-    const bindings = Object.fromEntries(
-      collectTemplateVariables(template).map((key) => [key, defaultEventBindingForVariable(key)])
-    );
+    const bindings = buildEventActionBindingsFromTemplate(template);
     const nodeId = eventKind === "event_open" ? getEventActionOpenNodeId(id) : getEventActionCloseNodeId(id);
     const nextNode: FlowNodeDefinition = {
       id: nodeId,
@@ -1172,21 +1316,14 @@ export default function HomePage() {
     setStatus(`Action duplicated: ${candidateId}`);
   };
 
-  const removeTrigger = (id: string): void => {
+  const removeTriggerTemplate = (id: string): void => {
     applyProgramUpdate((prev) => ({
-      ...updateActiveFlowInProgram(prev, (flow) => ({
-        ...flow,
-        nodes: (flow.nodes || []).filter((item) => item.id !== id),
-        links: removeNodeFromLinks(flow.links, id),
-        nodePositions: (() => {
-          const next = { ...(flow.nodePositions || {}) };
-          delete next[id];
-          return next;
-        })()
-      })),
-      triggers: prev.triggers.filter((item) => item.id !== id)
+      ...prev,
+      triggerTemplates: (prev.triggerTemplates || []).filter((item) => item.id !== id)
     }));
-    if (selectedTriggerId === id) setSelectedTriggerId("");
+    if (selectedTriggerTemplateId === id) {
+      setSelectedTriggerTemplateId((program.triggerTemplates || []).find((item) => item.id !== id)?.id || "");
+    }
   };
 
   const removeAction = (id: string): void => {
@@ -1221,23 +1358,6 @@ export default function HomePage() {
       }));
     if (selectedEventActionId === id) setSelectedEventActionId("");
     if (inspectorTarget?.kind === "event" && inspectorTarget.id === id) setInspectorTarget(null);
-  };
-
-  const renameTrigger = (oldId: string, newId: string): void => {
-    setSelectedTriggerId(newId);
-    applyProgramUpdate((prev) => ({
-      ...updateActiveFlowInProgram(
-        {
-          ...prev,
-          triggers: upsertById(prev.triggers, oldId, { id: newId })
-        },
-        (flow) => ({
-          ...flow,
-          links: renameNodeInLinks(flow.links, oldId, newId),
-          nodePositions: renameNodePositionKey(flow.nodePositions, oldId, newId)
-        })
-      )
-    }));
   };
 
   const renameAction = (oldId: string, newId: string): void => {
@@ -1320,11 +1440,12 @@ export default function HomePage() {
               ? program.scriptTemplates.find((item) => item.id === node.templateId)?.name
               : node.kind === "event_open" || node.kind === "event_close"
                 ? (program.eventTemplates || []).find((item) => item.id === node.templateId)?.id
-                : getTriggerBaseLabel((node.config as Record<string, unknown> | undefined)?.type as TriggerDefinition["type"] || "interval");
+                : (program.triggerTemplates || []).find((item) => item.id === node.templateId)?.name ||
+                  getTriggerBaseLabel((node.config as Record<string, unknown> | undefined)?.type as TriggerDefinition["type"] || "interval");
           return [node.id, String(node.subtitle || templateLabel || node.label || node.id)];
         }) as Array<[string, string]>
       ),
-    [program.eventTemplates, program.flows?.nodes, program.scriptTemplates]
+    [program.eventTemplates, program.flows?.nodes, program.scriptTemplates, program.triggerTemplates]
   );
 
   const flowNodeOutputs = useMemo(
@@ -1426,45 +1547,19 @@ export default function HomePage() {
 
   const eventWatchPathOptions = useMemo(() => {
     const options = new Set<string>(["*"]);
-    for (const trigger of program.triggers) {
-      if (trigger.type !== "watcher_event_falling") continue;
-      const pattern = String(trigger.watchPath || "").trim();
+    for (const template of program.triggerTemplates || []) {
+      if (template.type !== "watcher_event_open" && template.type !== "watcher_event_close") continue;
+      const pattern = String(template.watchPath || "").trim();
       if (!pattern) continue;
       options.add(pattern);
     }
     return Array.from(options).sort((a, b) => a.localeCompare(b));
-  }, [program.triggers]);
+  }, [program.triggerTemplates]);
 
-  const updateTrigger = (id: string, patch: Partial<TriggerDefinition>): void => {
+  const updateTriggerTemplate = (id: string, patch: Partial<TriggerTemplateDefinition>): void => {
     applyProgramUpdate((prev) => ({
-      ...updateActiveFlowInProgram(
-        {
-          ...prev,
-          triggers: upsertById(prev.triggers, id, patch)
-        },
-        (flow) => ({
-          ...flow,
-          nodes: (flow.nodes || []).map((node) =>
-          node.id === id && node.kind === "trigger"
-            ? {
-                ...node,
-                label: Object.prototype.hasOwnProperty.call(patch, "label") ? patch.label ?? "" : node.label,
-                enabled: Object.prototype.hasOwnProperty.call(patch, "enabled") ? patch.enabled !== false : node.enabled,
-                config: {
-                  ...(node.config || {}),
-                  ...(Object.prototype.hasOwnProperty.call(patch, "type") ? { type: patch.type } : {}),
-                  ...(Object.prototype.hasOwnProperty.call(patch, "watchPath") ? { watchPath: patch.watchPath ?? "" } : {}),
-                  ...(Object.prototype.hasOwnProperty.call(patch, "intervalMs") ? { intervalMs: patch.intervalMs } : {}),
-                  ...(Object.prototype.hasOwnProperty.call(patch, "cronExpression") ? { cronExpression: patch.cronExpression ?? "" } : {}),
-                  ...(Object.prototype.hasOwnProperty.call(patch, "timezone") ? { timezone: patch.timezone ?? "" } : {}),
-                  ...(Object.prototype.hasOwnProperty.call(patch, "activeFrom") ? { activeFrom: patch.activeFrom ?? "" } : {}),
-                  ...(Object.prototype.hasOwnProperty.call(patch, "activeTo") ? { activeTo: patch.activeTo ?? "" } : {})
-                }
-              }
-            : node
-        )
-        })
-      )
+      ...prev,
+      triggerTemplates: upsertById(prev.triggerTemplates || [], id, patch)
     }));
   };
 
@@ -1556,8 +1651,10 @@ export default function HomePage() {
     if (!currentOpen && !currentClose) return;
     const resolvedPatch: Partial<EventNodeSummary> = { ...patch };
     if (Object.prototype.hasOwnProperty.call(patch, "templateId")) {
-      const currentConfig = ((currentOpen?.config || currentClose?.config || {}) as Record<string, unknown>);
-      resolvedPatch.bindings = patch.templateId ? (((currentConfig.bindings as Record<string, unknown>) || {}) as any) : {};
+      const template = patch.templateId
+        ? (program.eventTemplates || []).find((item) => item.id === patch.templateId)
+        : null;
+      resolvedPatch.bindings = template ? buildEventActionBindingsFromTemplate(template) : {};
     }
     applyActiveFlowUpdate((flow) => ({
         ...flow,
@@ -1830,11 +1927,11 @@ export default function HomePage() {
     });
   };
 
-  const updateTriggerPayload = (id: string, rawPayload: string): void => {
-    const trigger = program.triggers.find((item) => item.id === id);
-    if (!trigger) return;
-    updateTrigger(id, {
-      message: { ...trigger.message, payload: parseMaybeJson(rawPayload) }
+  const updateTriggerTemplatePayload = (id: string, rawPayload: string): void => {
+    const template = (program.triggerTemplates || []).find((item) => item.id === id);
+    if (!template) return;
+    updateTriggerTemplate(id, {
+      message: { ...template.message, payload: parseMaybeJson(rawPayload) }
     });
   };
 
@@ -1888,22 +1985,12 @@ export default function HomePage() {
     applyProgramUpdate((prev) => {
       const nextPositions = { ...(prev.flows.nodePositions || {}) };
       delete nextPositions[nodeId];
-      const node = (prev.flows.nodes || []).find((item) => item.id === nodeId);
-      return updateActiveFlowInProgram(
-        {
-          ...prev,
-          triggers:
-            node?.kind === "trigger"
-              ? prev.triggers.filter((item) => item.id !== nodeId)
-              : prev.triggers
-        },
-        (flow) => ({
+      return updateActiveFlowInProgram(prev, (flow) => ({
           ...flow,
           nodes: (flow.nodes || []).filter((item) => item.id !== nodeId),
           links: flow.links.filter((link) => link.from !== nodeId && link.to !== nodeId),
           nodePositions: nextPositions
-        })
-      );
+        }));
     });
   };
 
@@ -1936,12 +2023,7 @@ export default function HomePage() {
       remainingNodes.forEach((node) => {
         if (!nextPositions[node.id]) return;
       });
-      return updateActiveFlowInProgram(
-        {
-          ...prev,
-          triggers: prev.triggers.filter((item) => !triggerIds.includes(item.id))
-        },
-        (flow) => ({
+      return updateActiveFlowInProgram(prev, (flow) => ({
           ...flow,
           nodes: remainingNodes,
           links: flow.links.filter((link) => {
@@ -1949,8 +2031,7 @@ export default function HomePage() {
             return true;
           }),
           nodePositions: nextPositions
-        })
-      );
+        }));
     });
 
     if (inspectorTarget?.kind === "action" && actionIds.includes(inspectorTarget.id)) setInspectorTarget(null);
@@ -1971,7 +2052,6 @@ export default function HomePage() {
     let actionCount = 0;
     let eventCount = 0;
     let triggerCount = 0;
-    const nextTriggers: TriggerDefinition[] = [];
     const nodesById = new Map((program.flows.nodes || []).map((node) => [node.id, node] as const));
 
     uniqueIds.forEach((nodeId, index) => {
@@ -1995,20 +2075,13 @@ export default function HomePage() {
       }
 
       if (action?.kind === "trigger") {
-        const sourceTrigger = program.triggers.find((item) => item.id === nodeId);
-        if (!sourceTrigger) return;
         const nextId = makeRandomToken("trg");
         const position = program.flows.nodePositions?.[nodeId];
-        nextTriggers.push({
-          ...structuredClone(sourceTrigger),
-          id: nextId,
-          label: getNextIncrementalLabel(sourceTrigger.label || getTriggerBaseLabel(sourceTrigger.type), program.triggers.map((item) => item.label || ""))
-        });
         nextNodes.push({
           ...structuredClone(action),
           id: nextId,
           refId: nextId,
-          label: getNextIncrementalLabel(action.label || getTriggerBaseLabel(sourceTrigger.type), flowNodes.map((item) => item.label || ""))
+          label: getNextIncrementalLabel(action.label || "Trigger", flowNodes.map((item) => item.label || ""))
         });
         duplicatedNodeMap.set(nodeId, nextId);
         if (basePosition) nextPositions[nextId] = { x: basePosition.x + offset, y: basePosition.y + offset };
@@ -2035,36 +2108,30 @@ export default function HomePage() {
       }
     });
 
-    if (nextNodes.length === 0 && nextTriggers.length === 0) {
+    if (nextNodes.length === 0) {
       setStatus("No nodes available to paste.");
       return;
     }
 
     applyProgramUpdate((prev) =>
-      updateActiveFlowInProgram(
-        {
-          ...prev,
-          triggers: [...prev.triggers, ...nextTriggers]
-        },
-        (flow) => ({
-          ...flow,
-          nodes: [...(flow.nodes || []), ...nextNodes],
-          links: [
-            ...flow.links,
-            ...flow.links
-              .filter((link) => duplicatedNodeMap.has(link.from) && duplicatedNodeMap.has(link.to))
-              .map((link) => ({
-                ...link,
-                from: duplicatedNodeMap.get(link.from) || link.from,
-                to: duplicatedNodeMap.get(link.to) || link.to
-              }))
-          ],
-          nodePositions: {
-            ...(flow.nodePositions || {}),
-            ...nextPositions
-          }
-        })
-      )
+      updateActiveFlowInProgram(prev, (flow) => ({
+        ...flow,
+        nodes: [...(flow.nodes || []), ...nextNodes],
+        links: [
+          ...flow.links,
+          ...flow.links
+            .filter((link) => duplicatedNodeMap.has(link.from) && duplicatedNodeMap.has(link.to))
+            .map((link) => ({
+              ...link,
+              from: duplicatedNodeMap.get(link.from) || link.from,
+              to: duplicatedNodeMap.get(link.to) || link.to
+            }))
+        ],
+        nodePositions: {
+          ...(flow.nodePositions || {}),
+          ...nextPositions
+        }
+      }))
     );
     setStatus(`Pasted ${triggerCount} trigger node(s), ${actionCount} script node(s), and ${eventCount} event node(s)`);
   };
@@ -2072,6 +2139,14 @@ export default function HomePage() {
   const handleDropPaletteItem = (item: FlowPaletteItem, position: NodePosition): void => {
     if (item.type === "existing-node") {
       updateNodePosition(item.nodeId, position);
+      return;
+    }
+    if (item.type === "builtin-trigger") {
+      createBuiltInTriggerNodeInFlow(item.triggerType, position);
+      return;
+    }
+    if (item.type === "builtin-action") {
+      createBuiltInDebugActionInFlow(position);
       return;
     }
     if (item.type === "script-template") {
@@ -2146,7 +2221,6 @@ export default function HomePage() {
         <Divider />
         <Tabs value={tab} onChange={(_, value: number) => setTab(value)} variant="scrollable" scrollButtons="auto">
           <Tab label="Asset Manager" />
-          <Tab label="Trigger Manager" />
           <Tab label="Flow Manager" />
           <Tab label="Script Templates" />
           <Tab label="Event Templates" />
@@ -2162,25 +2236,12 @@ export default function HomePage() {
           <AssetManager assets={program.assets} onChange={updateAssets} />
         )}
         {tab === 1 && (
-          <TriggerManager
-            triggers={program.triggers}
-            watchPathOptions={watchPathOptions}
-            eventWatchPathOptions={eventWatchPathOptions}
-            selectedTriggerId={selectedTriggerId}
-            onSelectTrigger={setSelectedTriggerId}
-            onAddTrigger={addTriggerWithType}
-            onRemoveTrigger={removeTrigger}
-            onRenameTrigger={renameTrigger}
-            onUpdateTrigger={updateTrigger}
-            onUpdateTriggerPayload={updateTriggerPayload}
-          />
-        )}
-        {tab === 2 && (
           <FlowManager
             flows={program.flowDefinitions || []}
             selectedFlowId={program.activeFlowId || selectedFlowId}
             activeFlowVariables={activeFlow.variables || []}
             triggerIds={flowTriggerIds}
+            triggerTemplates={program.triggerTemplates || []}
             actionIds={flowActionIds}
             eventNodeIds={flowEventNodeIds}
             scriptTemplates={program.scriptTemplates}
@@ -2199,9 +2260,7 @@ export default function HomePage() {
             onDeleteNodes={deleteNodesFromFlow}
             onDuplicateNodes={duplicateNodesInFlow}
             onTriggerNodeDoubleClick={(triggerId) => {
-              setSelectedTriggerId(triggerId);
-              setInspectorTarget(null);
-              setTab(1);
+              setInspectorTarget({ kind: "trigger", id: triggerId });
             }}
             onActionNodeDoubleClick={(actionId) => {
               setSelectedActionId(actionId);
@@ -2223,7 +2282,7 @@ export default function HomePage() {
             onUpdateFlow={updateFlowDefinition}
           />
         )}
-        {tab === 3 && (
+        {tab === 2 && (
           <ActionManager
             actions={derivedActions}
             scriptTemplates={program.scriptTemplates}
@@ -2244,7 +2303,7 @@ export default function HomePage() {
             templateOnly
           />
         )}
-        {tab === 4 && (
+        {tab === 3 && (
           <EventDesignerManager
             eventActions={derivedEventActions}
             eventTemplates={program.eventTemplates || []}
@@ -2267,10 +2326,10 @@ export default function HomePage() {
             templateOnly
           />
         )}
-        {tab === 5 && <DbConnectionManager />}
-        {tab === 6 && <EventManager />}
-        {tab === 7 && <GlobalStoreManager onStatus={setStatus} />}
-        {tab === 8 && <DocsManager />}
+        {tab === 4 && <DbConnectionManager />}
+        {tab === 5 && <EventManager />}
+        {tab === 6 && <GlobalStoreManager onStatus={setStatus} />}
+        {tab === 7 && <DocsManager />}
       </Box>
 
       <FlowNodeInspectorDrawer
@@ -2280,6 +2339,8 @@ export default function HomePage() {
         scriptTemplates={program.scriptTemplates}
         eventTemplates={program.eventTemplates || []}
         assets={program.assets}
+        watchPathOptions={watchPathOptions}
+        eventWatchPathOptions={eventWatchPathOptions}
         flowVariableNames={activeFlowVariableNames}
         onOpenScriptTemplateManager={(templateId) => {
           setSelectedScriptTemplateId(templateId);
@@ -2306,6 +2367,31 @@ export default function HomePage() {
         onUpdateNode={(id, patch) => {
           const targetNode = (program.flows.nodes || []).find((node) => node.id === id);
           if (!targetNode) return;
+          if (targetNode.kind === "trigger") {
+            const config = (patch.config || {}) as Record<string, unknown>;
+            applyActiveFlowUpdate((flow) => ({
+              ...flow,
+              nodes: (flow.nodes || []).map((node) =>
+                node.id === id && node.kind === "trigger"
+                  ? {
+                      ...node,
+                      label: Object.prototype.hasOwnProperty.call(patch, "label") ? String(patch.label ?? "") : node.label,
+                      enabled: Object.prototype.hasOwnProperty.call(patch, "enabled") ? patch.enabled !== false : node.enabled,
+                      config: {
+                        ...(node.config || {}),
+                        ...(Object.prototype.hasOwnProperty.call(config, "description") ? { description: String(config.description ?? "") } : {}),
+                        ...(Object.prototype.hasOwnProperty.call(config, "intervalMs") ? { intervalMs: Math.max(1, Number(config.intervalMs) || 1) } : {}),
+                        ...(Object.prototype.hasOwnProperty.call(config, "activeFrom") ? { activeFrom: String(config.activeFrom ?? "") } : {}),
+                        ...(Object.prototype.hasOwnProperty.call(config, "activeTo") ? { activeTo: String(config.activeTo ?? "") } : {}),
+                        ...(Object.prototype.hasOwnProperty.call(config, "watchPath") ? { watchPath: String(config.watchPath ?? "") } : {}),
+                        ...(Object.prototype.hasOwnProperty.call(config, "message") ? { message: config.message } : {})
+                      }
+                    }
+                  : node
+              )
+            }));
+            return;
+          }
           if (targetNode.kind === "action") {
             const config = (patch.config || {}) as Record<string, unknown>;
             updateAction(id, {

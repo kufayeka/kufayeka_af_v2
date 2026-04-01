@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useMemo, useState } from "react";
 import {
   Autocomplete,
   Box,
@@ -11,356 +10,258 @@ import {
   Typography
 } from "@mui/material";
 import { scrollBothOverflowSx } from "../common/scrollSx";
-import Tree from "rc-tree";
-import type { DataNode, Key } from "rc-tree/lib/interface";
-import { AlarmClock, Eye, FolderTree } from "lucide-react";
-import type { TriggerDefinition } from "../../types/program";
+import type { TriggerTemplateDefinition, TriggerTemplateType } from "../../types/program";
 
 interface TriggerManagerProps {
-  triggers: TriggerDefinition[];
+  triggerTemplates: TriggerTemplateDefinition[];
   watchPathOptions?: string[];
   eventWatchPathOptions?: string[];
-  selectedTriggerId: string;
-  onSelectTrigger: (id: string) => void;
-  onAddTrigger: (type: TriggerDefinition["type"]) => void;
-  onRemoveTrigger: (id: string) => void;
-  onRenameTrigger: (oldId: string, newId: string) => void;
-  onUpdateTrigger: (id: string, patch: Partial<TriggerDefinition>) => void;
-  onUpdateTriggerPayload: (id: string, rawPayload: string) => void;
+  selectedTriggerTemplateId: string;
+  onSelectTriggerTemplate: (id: string) => void;
+  onAddTriggerTemplate: (type: TriggerTemplateType) => void;
+  onRemoveTriggerTemplate: (id: string) => void;
+  onUpdateTriggerTemplate: (id: string, patch: Partial<TriggerTemplateDefinition>) => void;
+  onUpdateTriggerTemplatePayload: (id: string, rawPayload: string) => void;
 }
 
-function buildTriggerHierarchyTree(triggers: TriggerDefinition[], search: string): DataNode[] {
-  const keyword = search.trim().toLowerCase();
-  const filtered = keyword
-    ? triggers.filter((trigger) =>
-        `${trigger.id} ${trigger.label ?? ""} ${trigger.type} ${trigger.watchPath ?? ""}`
-          .toLowerCase()
-          .includes(keyword)
-      )
-    : triggers;
-
-  const categories: Array<{ type: TriggerDefinition["type"]; label: string; icon: ReactNode }> = [
-    { type: "interval", label: "Interval", icon: <AlarmClock size={15} /> },
-    { type: "cron", label: "Cron", icon: <AlarmClock size={15} /> },
-    { type: "watcher_set", label: "Watcher (Set)", icon: <Eye size={15} /> },
-    { type: "watcher_valuechange", label: "Watcher (Value Change)", icon: <Eye size={15} /> },
-    { type: "watcher_event_falling", label: "Watcher (Event Falling)", icon: <Eye size={15} /> }
-  ];
-
-  const tree: DataNode[] = [];
-
-  for (const category of categories) {
-    const categoryTriggers = filtered.filter((trigger) => trigger.type === category.type);
-    const folderChildren = new Map<string, Set<string>>();
-    const triggerChildren = new Map<string, TriggerDefinition[]>();
-
-    const ensureFolder = (path: string) => {
-      if (!folderChildren.has(path)) folderChildren.set(path, new Set<string>());
-      if (!triggerChildren.has(path)) triggerChildren.set(path, []);
-    };
-
-    const rootPath = String(category.type);
-    ensureFolder(rootPath);
-
-    for (const trigger of categoryTriggers) {
-      const segments = trigger.id.split(".").filter(Boolean);
-      const folders = segments.slice(0, -1);
-      let parent: string = rootPath;
-      for (const folder of folders) {
-        const path = `${parent}.${folder}`;
-        ensureFolder(path);
-        folderChildren.get(parent)?.add(path);
-        parent = path;
-      }
-      triggerChildren.get(parent)?.push(trigger);
-    }
-
-    for (const [, list] of triggerChildren) {
-      list.sort((a, b) => a.id.localeCompare(b.id));
-    }
-
-    const walk = (path: string): DataNode[] => {
-      const childFolders = Array.from(folderChildren.get(path) || []).sort((a, b) => a.localeCompare(b));
-      const folderNodes: DataNode[] = childFolders.map((folderPath) => {
-        const label = folderPath.split(".").pop() || folderPath;
-        return {
-          key: `folder:${folderPath}`,
-          title: (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-              <FolderTree size={15} />
-              <Typography variant="body2">{label}</Typography>
-            </Box>
-          ),
-          children: walk(folderPath)
-        };
-      });
-
-      const triggerNodes: DataNode[] = (triggerChildren.get(path) || []).map((trigger) => ({
-        key: `trigger:${trigger.id}`,
-        title: (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-            {category.type === "interval" || category.type === "cron" ? <AlarmClock size={15} /> : <Eye size={15} />}
-            <Typography variant="body2">{trigger.id.split(".").pop() || trigger.id}</Typography>
-            {!!trigger.label?.trim() && (
-              <Typography variant="caption" color="text.secondary">
-                {trigger.label}
-              </Typography>
-            )}
-          </Box>
-        ),
-        isLeaf: true
-      }));
-
-      return [...folderNodes, ...triggerNodes];
-    };
-
-    tree.push({
-      key: `category:${category.type}`,
-      title: (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-          {category.icon}
-          <Typography variant="subtitle2">{category.label}</Typography>
-        </Box>
-      ),
-      children: walk(rootPath)
-    });
-  }
-
-  return tree;
+function getTriggerTemplateTypeLabel(type: TriggerTemplateType): string {
+  if (type === "interval") return "Interval";
+  if (type === "watcher_set") return "Attribute Set";
+  if (type === "watcher_valuechange") return "Attribute Value Change";
+  if (type === "watcher_event_open") return "Event Open";
+  return "Event Close";
 }
 
 export default function TriggerManager({
-  triggers,
+  triggerTemplates,
   watchPathOptions = [],
   eventWatchPathOptions = ["*"],
-  selectedTriggerId,
-  onSelectTrigger,
-  onAddTrigger,
-  onRemoveTrigger,
-  onRenameTrigger,
-  onUpdateTrigger,
-  onUpdateTriggerPayload
+  selectedTriggerTemplateId,
+  onSelectTriggerTemplate,
+  onAddTriggerTemplate,
+  onRemoveTriggerTemplate,
+  onUpdateTriggerTemplate,
+  onUpdateTriggerTemplatePayload
 }: TriggerManagerProps) {
   const [search, setSearch] = useState("");
-  const [selectedTreeKey, setSelectedTreeKey] = useState("");
-  const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
-  const selectedTrigger = triggers.find((item) => item.id === selectedTriggerId);
-  const hierarchyTree = useMemo(() => buildTriggerHierarchyTree(triggers, search), [triggers, search]);
 
-  useEffect(() => {
-    const nextExpanded: Key[] = [];
-    const walk = (nodes: DataNode[]) => {
-      for (const node of nodes) {
-        const key = String(node.key || "");
-        if (key.startsWith("category:") || key.startsWith("folder:")) {
-          nextExpanded.push(node.key as Key);
-        }
-        if (node.children) walk(node.children as DataNode[]);
-      }
-    };
-    walk(hierarchyTree);
-    setExpandedKeys(nextExpanded);
-  }, [hierarchyTree]);
+  const filteredTemplates = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return triggerTemplates;
+    return triggerTemplates.filter((template) =>
+      `${template.id} ${template.name} ${template.description || ""} ${template.type} ${template.watchPath || ""}`
+        .toLowerCase()
+        .includes(keyword)
+    );
+  }, [search, triggerTemplates]);
+
+  const selectedTemplate =
+    triggerTemplates.find((item) => item.id === selectedTriggerTemplateId) ||
+    filteredTemplates[0] ||
+    null;
 
   return (
-    <Box sx={{ p: 1.25, display: "grid", gridTemplateColumns: "320px 1fr", gap: 1.25 }}>
-      <Paper variant="outlined" sx={{ p: 1, display: "grid", gridTemplateRows: "auto 1fr", gap: 1 }}>
-        <Box sx={{ display: "grid", gap: 0.75 }}>
-          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.75 }}>
-            <Button fullWidth variant="outlined" onClick={() => onAddTrigger("interval")}>
-              Add Interval
-            </Button>
-            <Button fullWidth variant="outlined" onClick={() => onAddTrigger("watcher_set")}>
-              Add Watcher (Set)
-            </Button>
-            <Button fullWidth variant="outlined" onClick={() => onAddTrigger("cron")}>
-              Add Cron
-            </Button>
-            <Button fullWidth variant="outlined" onClick={() => onAddTrigger("watcher_valuechange")}>
-              Add Watcher (Value)
-            </Button>
-            <Button fullWidth variant="outlined" onClick={() => onAddTrigger("watcher_event_falling")}>
-              Add Event Falling
-            </Button>
-          </Box>
-          <TextField
-            size="small"
-            label="Search Trigger"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+    <Box sx={{ p: 1.25, display: "grid", gridTemplateColumns: "360px 1fr", gap: 1.25 }}>
+      <Paper
+        variant="outlined"
+        sx={{
+          p: 1,
+          display: "grid",
+          gridTemplateRows: "auto auto 1fr",
+          gap: 1,
+          minHeight: "calc(100vh - 220px)",
+          height: "calc(100vh - 220px)",
+          overflow: "hidden"
+        }}
+      >
+        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.75 }}>
+          <Button fullWidth variant="outlined" onClick={() => onAddTriggerTemplate("interval")}>
+            Add Interval
+          </Button>
+          <Button fullWidth variant="outlined" onClick={() => onAddTriggerTemplate("watcher_set")}>
+            Add Set Trigger
+          </Button>
+          <Button fullWidth variant="outlined" onClick={() => onAddTriggerTemplate("watcher_valuechange")}>
+            Add Value Trigger
+          </Button>
+          <Button fullWidth variant="outlined" onClick={() => onAddTriggerTemplate("watcher_event_open")}>
+            Add Event Open
+          </Button>
+          <Button fullWidth variant="outlined" onClick={() => onAddTriggerTemplate("watcher_event_close")}>
+            Add Event Close
+          </Button>
         </Box>
+        <TextField
+          size="small"
+          label="Search Trigger Template"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <Box sx={{ ...scrollBothOverflowSx, maxHeight: "calc(100vh - 220px)", display: "grid", gap: 0.75 }}>
         <Box
           sx={{
             ...scrollBothOverflowSx,
-            maxHeight: "calc(100vh - 220px)"
+            minHeight: 0,
+            height: "100%",
+            display: "grid",
+            alignContent: "start",
+            gap: 0.75,
+            pr: 0.25
           }}
         >
-          <Tree
-            treeData={hierarchyTree}
-            expandedKeys={expandedKeys}
-            selectedKeys={
-              selectedTriggerId
-                ? [`trigger:${selectedTriggerId}`]
-                : selectedTreeKey
-                  ? [selectedTreeKey]
-                  : []
-            }
-            onExpand={(keys) => setExpandedKeys(keys)}
-            onSelect={(keys) => {
-              const key = String(keys[0] || "");
-              if (!key) return;
-              setSelectedTreeKey(key);
-              if (key.startsWith("trigger:")) {
-                onSelectTrigger(key.slice("trigger:".length));
-              }
-            }}
-          />
+          {filteredTemplates.map((template) => {
+            const selected = template.id === selectedTemplate?.id;
+            return (
+              <Box
+                key={template.id}
+                onClick={() => onSelectTriggerTemplate(template.id)}
+                sx={{
+                  border: "1px solid",
+                  borderColor: selected ? "#3b82f6" : "#dbe4ee",
+                  borderRadius: 1.5,
+                  px: 1.1,
+                  py: 0.85,
+                  cursor: "pointer",
+                  background: selected ? "#eff6ff" : "#fff",
+                  minHeight: 76,
+                  display: "grid",
+                  alignContent: "start",
+                  boxShadow: selected ? "0 0 0 1px rgba(59,130,246,0.14)" : "none"
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+                  {template.name || template.id}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                  {getTriggerTemplateTypeLabel(template.type)}
+                </Typography>
+                {!!template.watchPath && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                    {template.watchPath}
+                  </Typography>
+                )}
+              </Box>
+            );
+          })}
+          {filteredTemplates.length === 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ px: 0.5, py: 1 }}>
+              No trigger templates found.
+            </Typography>
+          )}
+        </Box>
         </Box>
       </Paper>
 
       <Paper variant="outlined" sx={{ p: 1.25, minHeight: "calc(100vh - 220px)" }}>
-        {!selectedTrigger && (
+        {!selectedTemplate && (
           <Typography variant="body2" color="text.secondary">
-            Select a trigger from the left panel.
+            Select a trigger template from the left panel.
           </Typography>
         )}
 
-        {selectedTrigger && (
+        {selectedTemplate && (
           <Box sx={{ display: "grid", gap: 1.5 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <Typography variant="h6">Trigger Detail</Typography>
+              <Typography variant="h6">Trigger Template Detail</Typography>
               <Button
                 size="small"
                 color="error"
                 variant="outlined"
-                onClick={() => onRemoveTrigger(selectedTrigger.id)}
+                onClick={() => onRemoveTriggerTemplate(selectedTemplate.id)}
               >
-                Remove Trigger
+                Remove Template
               </Button>
             </Box>
             <TextField
-              label="Trigger ID"
-              value={selectedTrigger.id}
+              label="Template ID"
+              value={selectedTemplate.id}
               disabled
               helperText="Internal ID is generated automatically and cannot be edited."
             />
             <TextField
-              label="Trigger Type"
-              value={selectedTrigger.type}
-              disabled
+              label="Template Name"
+              value={selectedTemplate.name}
+              onChange={(e) => onUpdateTriggerTemplate(selectedTemplate.id, { name: e.target.value })}
             />
             <TextField
-              label="Trigger Label"
-              value={selectedTrigger.label ?? ""}
-              onChange={(e) => onUpdateTrigger(selectedTrigger.id, { label: e.target.value })}
-              helperText="Flow node display label (internal ID is unchanged)."
+              label="Description"
+              value={selectedTemplate.description ?? ""}
+              onChange={(e) => onUpdateTriggerTemplate(selectedTemplate.id, { description: e.target.value })}
             />
-            {selectedTrigger.type === "interval" && (
+            <TextField label="Trigger Type" value={selectedTemplate.type} disabled />
+
+            {selectedTemplate.type === "interval" && (
               <TextField
                 label="Interval (ms)"
                 type="number"
-                value={selectedTrigger.intervalMs}
+                value={selectedTemplate.intervalMs}
                 onChange={(e) =>
-                  onUpdateTrigger(selectedTrigger.id, {
-                    intervalMs: Number(e.target.value) || 1
+                  onUpdateTriggerTemplate(selectedTemplate.id, {
+                    intervalMs: Math.max(1, Number(e.target.value) || 1)
                   })
                 }
-                />
+              />
             )}
-            {selectedTrigger.type === "cron" && (
-              <>
-                <TextField
-                  label="Cron Expression"
-                  value={selectedTrigger.cronExpression ?? "*/5 * * * * *"}
-                  onChange={(e) =>
-                    onUpdateTrigger(selectedTrigger.id, {
-                      cronExpression: e.target.value
-                    })
-                  }
-                  helperText='Example: "*/5 * * * * *" (every 5s), "0 0 6 * * *" (06:00:00 daily)'
-                />
-                <TextField
-                  label="Timezone (optional)"
-                  value={selectedTrigger.timezone ?? ""}
-                  onChange={(e) =>
-                    onUpdateTrigger(selectedTrigger.id, {
-                      timezone: e.target.value
-                    })
-                  }
-                  helperText='Example: "Asia/Jakarta", "UTC"'
-                />
-              </>
-            )}
-            {(selectedTrigger.type === "interval" || selectedTrigger.type === "cron") && (
+
+            {(selectedTemplate.type === "interval") && (
               <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
                 <TextField
                   label="Active From (HH:mm)"
-                  value={selectedTrigger.activeFrom ?? ""}
-                  onChange={(e) =>
-                    onUpdateTrigger(selectedTrigger.id, {
-                      activeFrom: e.target.value
-                    })
-                  }
+                  value={selectedTemplate.activeFrom ?? ""}
+                  onChange={(e) => onUpdateTriggerTemplate(selectedTemplate.id, { activeFrom: e.target.value })}
                   helperText="Optional time window"
                 />
                 <TextField
                   label="Active To (HH:mm)"
-                  value={selectedTrigger.activeTo ?? ""}
-                  onChange={(e) =>
-                    onUpdateTrigger(selectedTrigger.id, {
-                      activeTo: e.target.value
-                    })
-                  }
+                  value={selectedTemplate.activeTo ?? ""}
+                  onChange={(e) => onUpdateTriggerTemplate(selectedTemplate.id, { activeTo: e.target.value })}
                   helperText="Optional time window"
                 />
               </Box>
             )}
-            {(selectedTrigger.type === "watcher_set" ||
-              selectedTrigger.type === "watcher_valuechange" ||
-              selectedTrigger.type === "watcher_event_falling") && (
-                <Autocomplete
-                  freeSolo
-                  options={
-                    selectedTrigger.type === "watcher_event_falling"
-                      ? eventWatchPathOptions
-                      : watchPathOptions
-                  }
-                  value={
-                    selectedTrigger.watchPath ??
-                    (selectedTrigger.type === "watcher_event_falling" ? "*" : "*.*.*")
-                  }
-                  onInputChange={(_e, value) =>
-                    onUpdateTrigger(selectedTrigger.id, { watchPath: value })
-                  }
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Watch Path (wildcard supported)"
-                      helperText={
-                        selectedTrigger.type === "watcher_event_falling"
-                          ? 'Event path example: "Taiyo1.Events.*" or "*"'
-                          : 'Attribute path example: "Jasuindo.*.Operator" or "*.*.*"'
-                      }
-                    />
-                  )}
-                />
-              )}
+
+            {(selectedTemplate.type === "watcher_set" ||
+              selectedTemplate.type === "watcher_valuechange" ||
+              selectedTemplate.type === "watcher_event_open" ||
+              selectedTemplate.type === "watcher_event_close") && (
+              <Autocomplete
+                freeSolo
+                options={
+                  selectedTemplate.type === "watcher_event_open" || selectedTemplate.type === "watcher_event_close"
+                    ? eventWatchPathOptions
+                    : watchPathOptions
+                }
+                value={selectedTemplate.watchPath ?? ((selectedTemplate.type === "watcher_event_open" || selectedTemplate.type === "watcher_event_close") ? "*" : "*.*.*")}
+                onInputChange={(_e, value) => onUpdateTriggerTemplate(selectedTemplate.id, { watchPath: value })}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Watch Path (wildcard supported)"
+                    helperText={
+                      selectedTemplate.type === "watcher_event_open" || selectedTemplate.type === "watcher_event_close"
+                        ? 'Event path example: "Taiyo1.Events.*" or "*"'
+                        : 'Attribute path example: "Jasuindo.*.Operator" or "*.*.*"'
+                    }
+                  />
+                )}
+              />
+            )}
+
             <TextField
               label="Initial Payload"
-              value={JSON.stringify(selectedTrigger.message?.payload ?? 0)}
-              onChange={(e) => onUpdateTriggerPayload(selectedTrigger.id, e.target.value)}
+              value={JSON.stringify(selectedTemplate.message?.payload ?? 0)}
+              onChange={(e) => onUpdateTriggerTemplatePayload(selectedTemplate.id, e.target.value)}
             />
             <FormControlLabel
               control={
                 <Switch
-                  checked={selectedTrigger.enabled !== false}
+                  checked={selectedTemplate.enabled !== false}
                   onChange={(_event, checked) =>
-                    onUpdateTrigger(selectedTrigger.id, { enabled: checked })
+                    onUpdateTriggerTemplate(selectedTemplate.id, { enabled: checked })
                   }
                 />
               }
-              label="Trigger Enabled"
+              label="Template Enabled"
             />
           </Box>
         )}

@@ -5,72 +5,12 @@
   },
   "triggers": [
     {
-      "id": "trg_3cazbipi",
-      "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
-      "type": "watcher_set",
-      "enabled": true,
-      "intervalMs": 1000,
-      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
-      "message": {
-        "payload": 0
-      },
-      "cronExpression": "",
-      "timezone": "",
-      "activeFrom": "",
-      "activeTo": ""
-    },
-    {
-      "id": "trg_i2jdu13y",
-      "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
-      "type": "watcher_set",
-      "enabled": true,
-      "intervalMs": 1000,
-      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
-      "message": {
-        "payload": 0
-      },
-      "cronExpression": "",
-      "timezone": "",
-      "activeFrom": "",
-      "activeTo": ""
-    },
-    {
       "id": "trg_y12o0byg",
       "label": "1s trigger",
       "type": "interval",
       "enabled": true,
       "intervalMs": 1000,
       "watchPath": "",
-      "message": {
-        "payload": 0
-      },
-      "cronExpression": "",
-      "timezone": "",
-      "activeFrom": "",
-      "activeTo": ""
-    },
-    {
-      "id": "trg_yaqn0nzn",
-      "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Input Raw Value",
-      "type": "watcher_set",
-      "enabled": true,
-      "intervalMs": 1000,
-      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Input Raw Value",
-      "message": {
-        "payload": 0
-      },
-      "cronExpression": "",
-      "timezone": "",
-      "activeFrom": "",
-      "activeTo": ""
-    },
-    {
-      "id": "trg_9u8r2mqa",
-      "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Output Raw Value",
-      "type": "watcher_set",
-      "enabled": true,
-      "intervalMs": 1000,
-      "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Output Raw Value",
       "message": {
         "payload": 0
       },
@@ -88,74 +28,6 @@
     "variables": [],
     "activeFlowId": "flow_main",
     "nodes": [
-      {
-        "id": "trg_3cazbipi",
-        "kind": "trigger",
-        "refId": "trg_3cazbipi",
-        "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
-        "enabled": true,
-        "templateId": "",
-        "config": {
-          "type": "watcher_set",
-          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
-          "intervalMs": 1000,
-          "cronExpression": "",
-          "timezone": "",
-          "activeFrom": "",
-          "activeTo": ""
-        }
-      },
-      {
-        "id": "trg_i2jdu13y",
-        "kind": "trigger",
-        "refId": "trg_i2jdu13y",
-        "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
-        "enabled": true,
-        "templateId": "",
-        "config": {
-          "type": "watcher_set",
-          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
-          "intervalMs": 1000,
-          "cronExpression": "",
-          "timezone": "",
-          "activeFrom": "",
-          "activeTo": ""
-        }
-      },
-      {
-        "id": "trg_y12o0byg",
-        "kind": "trigger",
-        "refId": "trg_y12o0byg",
-        "label": "1s trigger",
-        "enabled": true,
-        "templateId": "",
-        "config": {
-          "type": "interval",
-          "watchPath": "",
-          "intervalMs": 1000,
-          "cronExpression": "",
-          "timezone": "",
-          "activeFrom": "",
-          "activeTo": ""
-        }
-      },
-      {
-        "id": "trg_yaqn0nzn",
-        "kind": "trigger",
-        "refId": "trg_yaqn0nzn",
-        "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Input Raw Value",
-        "enabled": true,
-        "templateId": "",
-        "config": {
-          "type": "watcher_set",
-          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Input Raw Value",
-          "intervalMs": 1000,
-          "cronExpression": "",
-          "timezone": "",
-          "activeFrom": "",
-          "activeTo": ""
-        }
-      },
       {
         "id": "act_wznj2p9u",
         "kind": "action",
@@ -264,7 +136,7 @@
         "id": "act_o750buzm",
         "kind": "action",
         "refId": "act_o750buzm",
-        "label": "Taiyo1 Job Lifecycle Router",
+        "label": "Job Lifecycle Router",
         "enabled": true,
         "templateId": "template.script_1771898442157",
         "config": {
@@ -283,7 +155,7 @@
         "id": "act_pqgrrjup",
         "kind": "action",
         "refId": "act_pqgrrjup",
-        "label": "Taiyo1 Job Activity Router",
+        "label": "Job Activity Router",
         "enabled": true,
         "templateId": "template.script_1772002036179",
         "config": {
@@ -314,7 +186,7 @@
         "templateId": "template.taiyo.production.count.and.progress",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\nconst prodConsumed = asset.getValue(`${assetPath}.Paper Consumed Production`);\nconst rejectCount = asset.getValue(rejectCountPath);\nconst paperFoldSizeRaw = asset.getValue(`${assetPath}.Paper/Fold Size`);\nconst countPerFoldRaw = asset.getValue(`${assetPath}.Product Count Per Fold`);\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / (paperFoldSize * 0.01)) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? Math.max(0, Math.round(rejectCount)) : 0;\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\n\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\n\n//const prodConsumed = msg.paperConsumedProduction;\n\nconst prodConsumed = asset.getValue(`${assetPath}.Paper Consumed Production`);\nconst rejectCount = asset.getValue(rejectCountPath);\nconst paperFoldSizeRaw = asset.getValue(`${assetPath}.Paper/Fold Size`);\nconst countPerFoldRaw = asset.getValue(`${assetPath}.Product Count Per Fold`);\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (prodConsumed > 0 && paperFoldSize > 0 && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / (paperFoldSize * 0.01)) * countPerFold));\n}\n\nconst safeRejectCount = Math.max(0, Math.round(rejectCount));\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -335,7 +207,7 @@
         "id": "act_nad2xse9",
         "kind": "action",
         "refId": "act_nad2xse9",
-        "label": "Taiyo1 Reset MES On Job Close",
+        "label": "Reset MES Attributes On Job Close",
         "enabled": true,
         "templateId": "template.script_1774408144628",
         "config": {
@@ -353,7 +225,7 @@
         "id": "act_o8dbxj0x",
         "kind": "action",
         "refId": "act_o8dbxj0x",
-        "label": "Taiyo1 Init MES On Job Open",
+        "label": "Init MES Attributes On Job Open",
         "enabled": true,
         "templateId": "template.script_1774407747707",
         "config": {
@@ -394,117 +266,9 @@
         }
       },
       {
-        "id": "event.open.evt_07oxzz6i",
-        "kind": "event_open",
-        "refId": "evt_07oxzz6i",
-        "label": "OPEN Taiyo1.JobLifecycle",
-        "enabled": true,
-        "templateId": "template.taiyo.job.lifecycle",
-        "config": {
-          "description": "",
-          "bindings": {
-            "offsetPrinterAsset": {
-              "source": "asset",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-            },
-            "activeJob": {
-              "source": "attribute",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
-            },
-            "mesMeta": {
-              "source": "asset",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-            },
-            "mesData": {
-              "source": "asset",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-            }
-          },
-          "templateOverrides": {},
-          "openNotes": "",
-          "closeNotes": ""
-        }
-      },
-      {
-        "id": "event.close.evt_07oxzz6i",
+        "id": "event.close.evt_xld0lik0",
         "kind": "event_close",
-        "refId": "evt_07oxzz6i",
-        "label": "CLOSE Taiyo1.JobLifecycle",
-        "enabled": true,
-        "templateId": "template.taiyo.job.lifecycle",
-        "config": {
-          "description": "",
-          "bindings": {
-            "offsetPrinterAsset": {
-              "source": "asset",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-            },
-            "activeJob": {
-              "source": "attribute",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
-            },
-            "mesMeta": {
-              "source": "asset",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-            },
-            "mesData": {
-              "source": "asset",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-            }
-          },
-          "templateOverrides": {},
-          "closeNotes": "",
-          "openNotes": ""
-        }
-      },
-      {
-        "id": "event.open.evt_djqm6cxo",
-        "kind": "event_open",
-        "refId": "evt_djqm6cxo",
-        "label": "OPEN Taiyo1.JobActivity",
-        "enabled": true,
-        "templateId": "template.taiyo.job.activity.production",
-        "config": {
-          "description": "",
-          "bindings": {
-            "offsetPrinterAsset": {
-              "source": "asset",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-            },
-            "activeJob": {
-              "source": "attribute",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
-            },
-            "mesMeta": {
-              "source": "asset",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-            },
-            "mesData": {
-              "source": "asset",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-            }
-          },
-          "templateOverrides": {},
-          "openNotes": "",
-          "closeNotes": ""
-        }
-      },
-      {
-        "id": "event.close.evt_djqm6cxo",
-        "kind": "event_close",
-        "refId": "evt_djqm6cxo",
+        "refId": "evt_xld0lik0",
         "label": "CLOSE Taiyo1.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -535,59 +299,6 @@
           "templateOverrides": {},
           "closeNotes": "",
           "openNotes": ""
-        }
-      },
-      {
-        "id": "event.close.evt_vg8y787h",
-        "kind": "event_close",
-        "refId": "evt_vg8y787h",
-        "label": "CLOSE Taiyo2.JobActivity",
-        "enabled": true,
-        "templateId": "template.taiyo.job.activity.production",
-        "config": {
-          "description": "",
-          "bindings": {
-            "activeJob": {
-              "source": "attribute",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order"
-            },
-            "mesData": {
-              "source": "asset",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
-            },
-            "mesMeta": {
-              "source": "asset",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
-            },
-            "offsetPrinterAsset": {
-              "source": "asset",
-              "staticValue": "",
-              "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
-            }
-          },
-          "templateOverrides": {},
-          "closeNotes": "",
-          "openNotes": ""
-        }
-      },
-      {
-        "id": "trg_9u8r2mqa",
-        "kind": "trigger",
-        "refId": "trg_9u8r2mqa",
-        "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Output Raw Value",
-        "enabled": true,
-        "templateId": "",
-        "config": {
-          "type": "watcher_set",
-          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Output Raw Value",
-          "intervalMs": 1000,
-          "cronExpression": "",
-          "timezone": "",
-          "activeFrom": "",
-          "activeTo": ""
         }
       },
       {
@@ -651,7 +362,7 @@
         "templateId": "template.taiyo.paper.consumption.by.activity",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\n\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\n\nconst totalConsumed = msg.totalPaperConsumed || 0;\n\nconst setupPrev = asset.getValue(setupPath);\nconst idlePrev = asset.getValue(idlePath);\nconst prodPrev = asset.getValue(prodPath);\n\nlet deltaConsumed = Number(msg.paperConsumedDelta ?? NaN);\nif (!Number.isFinite(deltaConsumed)) {\n  deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n}\n\nconst activeCategory = String(msg.activityCategory ?? asset.getValue(categoryPath)).trim();\n\nif (!Number.isFinite(deltaConsumed) || deltaConsumed <= 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nmsg.paperConsumedSetup = setupNew || 0;\nmsg.paperConsumedIdle = idleNew || 0;\nmsg.paperConsumedProduction = prodNew || 0;\n\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\n\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\n\nconst totalConsumed = msg.totalPaperConsumed || 0;\n\nconst setupPrev = asset.getValue(setupPath);\nconst idlePrev = asset.getValue(idlePath);\nconst prodPrev = asset.getValue(prodPath);\n\nlet deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n\nif (deltaConsumed <= 0) {\n  send(msg);\n  return;\n}\n\nconst activeCategory = asset.getValue(categoryPath);\n\nif (![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nsend(msg);",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -667,87 +378,227 @@
             "out"
           ]
         }
+      },
+      {
+        "id": "trg_mflmvo47",
+        "kind": "trigger",
+        "refId": "trg_mflmvo47",
+        "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Output Raw Value",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "description": "",
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Output Raw Value",
+          "intervalMs": 1000,
+          "activeFrom": "",
+          "activeTo": "",
+          "message": {
+            "payload": 0
+          },
+          "cronExpression": "",
+          "timezone": ""
+        }
+      },
+      {
+        "id": "trg_pwvkuwp5",
+        "kind": "trigger",
+        "refId": "trg_pwvkuwp5",
+        "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Input Raw Value",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "description": "",
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Input Raw Value",
+          "intervalMs": 1000,
+          "activeFrom": "",
+          "activeTo": "",
+          "message": {
+            "payload": 0
+          },
+          "cronExpression": "",
+          "timezone": ""
+        }
+      },
+      {
+        "id": "trg_lkd9tb0c",
+        "kind": "trigger",
+        "refId": "trg_lkd9tb0c",
+        "label": "Interval Trigger - 1s",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "description": "",
+          "type": "interval",
+          "watchPath": "",
+          "intervalMs": 1000,
+          "activeFrom": "",
+          "activeTo": "",
+          "message": {
+            "payload": 0
+          },
+          "cronExpression": "",
+          "timezone": ""
+        }
+      },
+      {
+        "id": "trg_qsoxfskd",
+        "kind": "trigger",
+        "refId": "trg_qsoxfskd",
+        "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "description": "",
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
+          "intervalMs": 1000,
+          "activeFrom": "",
+          "activeTo": "",
+          "message": {
+            "payload": 0
+          },
+          "cronExpression": "",
+          "timezone": ""
+        }
+      },
+      {
+        "id": "trg_4je3p1h9",
+        "kind": "trigger",
+        "refId": "trg_4je3p1h9",
+        "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "description": "",
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
+          "intervalMs": 1000,
+          "activeFrom": "",
+          "activeTo": "",
+          "message": {
+            "payload": 0
+          },
+          "cronExpression": "",
+          "timezone": ""
+        }
+      },
+      {
+        "id": "event.open.evt_zxtghh6a",
+        "kind": "event_open",
+        "refId": "evt_zxtghh6a",
+        "label": "Open JobLifecycle Event",
+        "enabled": true,
+        "templateId": "template.taiyo.job.lifecycle",
+        "config": {
+          "description": "Event node for template template.taiyo.job.lifecycle",
+          "bindings": {
+            "activeJob": {
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
+            },
+            "mesData": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "mesMeta": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "offsetPrinterAsset": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            }
+          },
+          "templateOverrides": {},
+          "openNotes": "",
+          "closeNotes": ""
+        }
+      },
+      {
+        "id": "event.close.evt_in00w1g4",
+        "kind": "event_close",
+        "refId": "evt_in00w1g4",
+        "label": "Close JobLifecycle Event",
+        "enabled": true,
+        "templateId": "template.taiyo.job.lifecycle",
+        "config": {
+          "description": "Event node for template template.taiyo.job.lifecycle",
+          "bindings": {
+            "activeJob": {
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
+            },
+            "mesData": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "mesMeta": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "offsetPrinterAsset": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            }
+          },
+          "templateOverrides": {},
+          "closeNotes": "",
+          "openNotes": ""
+        }
+      },
+      {
+        "id": "event.open.evt_7tqu76ia",
+        "kind": "event_open",
+        "refId": "evt_7tqu76ia",
+        "label": "Open JobActivity Event",
+        "enabled": true,
+        "templateId": "template.taiyo.job.activity.production",
+        "config": {
+          "description": "Event node for template template.taiyo.job.activity.production",
+          "bindings": {
+            "activeJob": {
+              "source": "attribute",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
+            },
+            "activityDetail": {
+              "source": "msg_path",
+              "staticValue": "",
+              "attributePath": "payload.activityDetail"
+            },
+            "mesData": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "mesMeta": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            },
+            "offsetPrinterAsset": {
+              "source": "asset",
+              "staticValue": "",
+              "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+            }
+          },
+          "templateOverrides": {},
+          "openNotes": "",
+          "closeNotes": ""
+        }
       }
     ],
     "links": [
-      {
-        "from": "trg_i2jdu13y",
-        "to": "act_o750buzm",
-        "fromPort": "default",
-        "enabled": true
-      },
-      {
-        "from": "trg_3cazbipi",
-        "to": "act_pqgrrjup",
-        "fromPort": "default",
-        "enabled": true
-      },
-      {
-        "from": "event.open.evt_07oxzz6i",
-        "to": "act_xi9ttxqd",
-        "fromPort": "onSuccess",
-        "enabled": true
-      },
-      {
-        "from": "event.close.evt_07oxzz6i",
-        "to": "act_xi9ttxqd",
-        "fromPort": "onSuccess",
-        "enabled": true
-      },
-      {
-        "from": "event.open.evt_07oxzz6i",
-        "to": "act_o8dbxj0x",
-        "fromPort": "onSuccess",
-        "enabled": true
-      },
-      {
-        "from": "event.close.evt_07oxzz6i",
-        "to": "act_nad2xse9",
-        "fromPort": "onSuccess",
-        "enabled": true
-      },
-      {
-        "from": "event.open.evt_djqm6cxo",
-        "to": "act_xi9ttxqd",
-        "fromPort": "onSuccess",
-        "enabled": true
-      },
-      {
-        "from": "trg_y12o0byg",
-        "to": "act_zxdzcreb",
-        "fromPort": "default",
-        "enabled": true
-      },
-      {
-        "from": "trg_yaqn0nzn",
-        "to": "act_bef4hk9d",
-        "fromPort": "default",
-        "enabled": true
-      },
-      {
-        "from": "act_o750buzm",
-        "to": "event.open.evt_07oxzz6i",
-        "fromPort": "open event",
-        "enabled": true
-      },
-      {
-        "from": "act_o750buzm",
-        "to": "event.close.evt_07oxzz6i",
-        "fromPort": "close event",
-        "enabled": true
-      },
-      {
-        "from": "act_pqgrrjup",
-        "to": "event.open.evt_djqm6cxo",
-        "fromPort": "out",
-        "enabled": true
-      },
-      {
-        "from": "trg_9u8r2mqa",
-        "to": "act_q4n7v2ke",
-        "fromPort": "default",
-        "enabled": true
-      },
       {
         "from": "act_zxdzcreb",
         "to": "act_otya9inq",
@@ -761,21 +612,105 @@
         "enabled": true
       },
       {
-        "from": "event.open.evt_07oxzz6i",
+        "from": "act_uc1u4e3v",
+        "to": "act_wznj2p9u",
+        "fromPort": "out",
+        "enabled": true
+      },
+      {
+        "from": "trg_mflmvo47",
+        "to": "act_q4n7v2ke",
+        "fromPort": "default",
+        "enabled": true
+      },
+      {
+        "from": "trg_pwvkuwp5",
+        "to": "act_bef4hk9d",
+        "fromPort": "default",
+        "enabled": true
+      },
+      {
+        "from": "trg_lkd9tb0c",
+        "to": "act_zxdzcreb",
+        "fromPort": "default",
+        "enabled": true
+      },
+      {
+        "from": "trg_qsoxfskd",
+        "to": "act_o750buzm",
+        "fromPort": "default",
+        "enabled": true
+      },
+      {
+        "from": "trg_4je3p1h9",
+        "to": "act_pqgrrjup",
+        "fromPort": "default",
+        "enabled": true
+      },
+      {
+        "from": "act_o750buzm",
+        "to": "event.open.evt_zxtghh6a",
+        "fromPort": "open event",
+        "enabled": true
+      },
+      {
+        "from": "event.open.evt_zxtghh6a",
+        "to": "act_o8dbxj0x",
+        "fromPort": "onSuccess",
+        "enabled": true
+      },
+      {
+        "from": "event.open.evt_zxtghh6a",
+        "to": "act_xi9ttxqd",
+        "fromPort": "onSuccess",
+        "enabled": true
+      },
+      {
+        "from": "event.open.evt_zxtghh6a",
         "to": "act_xi9ttxqd",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "event.close.evt_07oxzz6i",
+        "from": "act_o750buzm",
+        "to": "event.close.evt_in00w1g4",
+        "fromPort": "close event",
+        "enabled": true
+      },
+      {
+        "from": "event.close.evt_in00w1g4",
+        "to": "act_nad2xse9",
+        "fromPort": "onSuccess",
+        "enabled": true
+      },
+      {
+        "from": "event.close.evt_in00w1g4",
         "to": "act_xi9ttxqd",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "event.open.evt_djqm6cxo",
+        "from": "event.close.evt_in00w1g4",
+        "to": "act_xi9ttxqd",
+        "fromPort": "onSuccess",
+        "enabled": true
+      },
+      {
+        "from": "event.open.evt_7tqu76ia",
+        "to": "act_xi9ttxqd",
+        "fromPort": "onSuccess",
+        "enabled": true
+      },
+      {
+        "from": "event.open.evt_7tqu76ia",
         "to": "act_xi9ttxqd",
         "fromPort": "onFail",
+        "enabled": true
+      },
+      {
+        "from": "act_pqgrrjup",
+        "to": "event.open.evt_7tqu76ia",
+        "fromPort": "out",
         "enabled": true
       },
       {
@@ -785,14 +720,8 @@
         "enabled": true
       },
       {
-        "from": "act_otya9inq",
+        "from": "act_t1pac001",
         "to": "act_uc1u4e3v",
-        "fromPort": "out",
-        "enabled": true
-      },
-      {
-        "from": "act_uc1u4e3v",
-        "to": "act_wznj2p9u",
         "fromPort": "out",
         "enabled": true
       }
@@ -846,29 +775,13 @@
         "x": 2440,
         "y": 300
       },
-      "trg_3cazbipi": {
-        "x": 300,
-        "y": 1280
-      },
-      "trg_i2jdu13y": {
-        "x": 300,
-        "y": 1140
-      },
-      "trg_y12o0byg": {
-        "x": 300,
-        "y": 660
-      },
-      "trg_yaqn0nzn": {
-        "x": 300,
-        "y": 420
-      },
       "act_wznj2p9u": {
-        "x": 2240,
-        "y": 520
+        "x": 2160,
+        "y": 500
       },
       "act_zxdzcreb": {
         "x": 760,
-        "y": 700
+        "y": 800
       },
       "act_bef4hk9d": {
         "x": 760,
@@ -876,19 +789,19 @@
       },
       "act_otya9inq": {
         "x": 1240,
-        "y": 720
+        "y": 800
       },
       "act_o750buzm": {
         "x": 760,
-        "y": 1120
+        "y": 980
       },
       "act_pqgrrjup": {
         "x": 760,
-        "y": 1260
+        "y": 1200
       },
       "act_uc1u4e3v": {
-        "x": 1760,
-        "y": 720
+        "x": 1700,
+        "y": 480
       },
       "act_nad2xse9": {
         "x": 1860,
@@ -899,36 +812,52 @@
         "y": 920
       },
       "act_xi9ttxqd": {
-        "x": 1860,
-        "y": 1240
-      },
-      "trg_9u8r2mqa": {
-        "x": 300,
-        "y": 280
+        "x": 1720,
+        "y": 1340
       },
       "act_q4n7v2ke": {
         "x": 760,
         "y": 260
       },
       "act_t1msp001": {
-        "x": 1220,
-        "y": 400
+        "x": 1240,
+        "y": 360
       },
       "act_t1pac001": {
-        "x": 1220,
-        "y": 540
+        "x": 1240,
+        "y": 500
       },
-      "event.open.evt_07oxzz6i": {
-        "x": 1300,
-        "y": 1020
+      "trg_mflmvo47": {
+        "x": 220,
+        "y": 260
       },
-      "event.close.evt_07oxzz6i": {
-        "x": 1300,
-        "y": 1140
+      "trg_pwvkuwp5": {
+        "x": 220,
+        "y": 400
       },
-      "event.open.evt_djqm6cxo": {
-        "x": 1300,
-        "y": 1260
+      "trg_lkd9tb0c": {
+        "x": 220,
+        "y": 780
+      },
+      "trg_qsoxfskd": {
+        "x": 220,
+        "y": 980
+      },
+      "trg_4je3p1h9": {
+        "x": 220,
+        "y": 1200
+      },
+      "event.open.evt_zxtghh6a": {
+        "x": 1260,
+        "y": 960
+      },
+      "event.close.evt_in00w1g4": {
+        "x": 1260,
+        "y": 1080
+      },
+      "event.open.evt_7tqu76ia": {
+        "x": 1260,
+        "y": 1220
       }
     }
   },
@@ -943,8 +872,8 @@
         ],
         "attributes": {
           "Timestamp": {
-            "value": "2026-03-31T09:52:56.433Z",
-            "ts": "2026-03-31T09:52:56.437Z"
+            "value": "2026-04-01T07:56:51.798Z",
+            "ts": "2026-04-01T07:56:51.800Z"
           }
         }
       },
@@ -960,16 +889,16 @@
         ],
         "attributes": {
           "Machine Speed": {
-            "value": 1.2,
-            "ts": "2026-03-31T09:10:28.069Z"
+            "value": 0,
+            "ts": "2026-04-01T07:56:51.532Z"
           },
           "Work Order": {
-            "value": "WO-2026-01",
-            "ts": "2026-03-30T09:57:42.462Z"
+            "value": "No Work Order",
+            "ts": "2026-04-01T07:56:40.706Z"
           },
           "Job Lifecycle": {
-            "value": "load",
-            "ts": "2026-03-31T08:27:20.199Z"
+            "value": "-",
+            "ts": "2026-04-01T07:56:34.344Z"
           },
           "Machine Operator": {
             "value": {
@@ -980,39 +909,39 @@
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-03-31T08:27:20.202Z"
+            "ts": "2026-04-01T07:55:44.289Z"
           },
           "Job Activity": {
-            "value": "Production/Run",
-            "ts": "2026-03-31T08:31:54.131Z"
+            "value": "-",
+            "ts": "2026-04-01T07:56:33.431Z"
           },
           "Paper Consumed Setup": {
-            "value": 12.89,
-            "ts": "2026-03-31T09:10:28.071Z"
+            "value": 0,
+            "ts": "2026-04-01T07:50:03.673Z"
           },
           "Job Activity Category": {
             "value": "-",
-            "ts": "2026-03-31T09:52:56.526Z"
+            "ts": "2026-04-01T07:56:50.925Z"
           },
           "Paper Consumed Production": {
-            "value": 23.99,
-            "ts": "2026-03-31T09:10:28.073Z"
+            "value": 0,
+            "ts": "2026-04-01T07:50:03.677Z"
           },
           "Paper Consumed Idle": {
-            "value": 0.13,
-            "ts": "2026-03-31T09:10:28.073Z"
+            "value": 0,
+            "ts": "2026-04-01T07:50:03.675Z"
           },
           "Total Production Time": {
-            "value": 1265,
-            "ts": "2026-03-31T09:52:56.534Z"
+            "value": 0,
+            "ts": "2026-04-01T07:56:50.929Z"
           },
           "Total Setup Time": {
-            "value": 349,
-            "ts": "2026-03-31T09:52:56.530Z"
+            "value": 0,
+            "ts": "2026-04-01T07:56:50.928Z"
           },
           "Total Idle Time": {
-            "value": 734,
-            "ts": "2026-03-31T09:52:56.532Z"
+            "value": 0,
+            "ts": "2026-04-01T07:56:50.928Z"
           },
           "Material Barcode": {
             "value": "KertasG001",
@@ -1020,43 +949,43 @@
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-03-31T09:52:56.527Z"
+            "ts": "2026-04-01T07:56:50.926Z"
           },
           "Total Paper Waste": {
-            "value": 13.020000000000001,
-            "ts": "2026-03-31T09:10:28.074Z"
+            "value": 0,
+            "ts": "2026-04-01T07:50:03.678Z"
           },
           "Product Count Per Fold": {
             "value": 4,
             "ts": "2026-03-17T03:32:05.371Z"
           },
           "Running Hour": {
-            "value": 41866,
-            "ts": "2026-03-31T09:52:56.536Z"
+            "value": 48953,
+            "ts": "2026-04-01T07:56:50.930Z"
           },
           "Product Good Count": {
-            "value": 480,
-            "ts": "2026-03-31T09:52:56.540Z"
+            "value": 0,
+            "ts": "2026-04-01T07:56:51.536Z"
           },
           "Product Reject Count": {
             "value": 0,
-            "ts": "2026-03-31T08:27:20.390Z"
+            "ts": "2026-04-01T07:50:03.691Z"
           },
           "Availability": {
             "value": 0,
-            "ts": "2026-03-31T08:27:20.396Z"
+            "ts": "2026-04-01T07:50:03.694Z"
           },
           "Performance": {
             "value": 0,
-            "ts": "2026-03-31T08:27:20.400Z"
+            "ts": "2026-04-01T07:50:03.696Z"
           },
           "Quality": {
             "value": 0,
-            "ts": "2026-03-31T08:27:20.402Z"
+            "ts": "2026-04-01T07:50:03.697Z"
           },
           "OEE": {
             "value": 0,
-            "ts": "2026-03-31T08:27:20.404Z"
+            "ts": "2026-04-01T07:50:03.701Z"
           },
           "Ply": {
             "value": "1/8",
@@ -1084,8 +1013,8 @@
             "ts": "2026-03-13T10:28:52.895Z"
           },
           "Product Total Count": {
-            "value": 480,
-            "ts": "2026-03-31T09:52:56.538Z"
+            "value": 0,
+            "ts": "2026-04-01T07:56:51.534Z"
           },
           "Job Loader": {
             "value": {
@@ -1126,28 +1055,28 @@
             "ts": "2026-03-31T08:58:02.187Z"
           },
           "Job Progress": {
-            "value": 48,
-            "ts": "2026-03-31T09:52:56.542Z"
+            "value": 0,
+            "ts": "2026-04-01T07:56:51.538Z"
           },
           "Product Count Target": {
             "value": "1000 EA",
             "ts": "2026-03-31T09:06:47.528Z"
           },
           "Total Paper Consumed Input": {
-            "value": 37.010000000000005,
-            "ts": "2026-03-31T09:10:28.064Z"
+            "value": 0,
+            "ts": "2026-04-01T07:50:03.680Z"
           },
           "Total Paper Consumed Output": {
             "value": 0,
-            "ts": "2026-03-31T08:27:20.382Z"
+            "ts": "2026-04-01T07:50:03.681Z"
           },
           "Encoder Input Raw Value": {
-            "value": 879,
-            "ts": "2026-03-31T09:10:28.062Z"
+            "value": 791,
+            "ts": "2026-04-01T07:56:51.528Z"
           },
           "Encoder Input Prev Value": {
-            "value": 879,
-            "ts": "2026-03-31T09:10:28.066Z"
+            "value": 791,
+            "ts": "2026-04-01T07:56:51.530Z"
           }
         }
       },
@@ -1192,43 +1121,43 @@
           },
           "Job Activity Category": {
             "value": "-",
-            "ts": "2026-03-30T01:58:28.025Z"
+            "ts": "2026-04-01T07:56:50.931Z"
           },
           "Job Activity Alarm": {
             "value": "-",
-            "ts": "2026-03-30T01:58:28.027Z"
+            "ts": "2026-04-01T07:56:50.933Z"
           },
           "Total Setup Time": {
             "value": 0,
-            "ts": "2026-03-30T01:58:28.028Z"
+            "ts": "2026-04-01T07:56:50.934Z"
           },
           "Total Idle Time": {
             "value": 0,
-            "ts": "2026-03-30T01:58:28.030Z"
+            "ts": "2026-04-01T07:56:50.935Z"
           },
           "Total Production Time": {
             "value": 0,
-            "ts": "2026-03-30T01:58:28.031Z"
+            "ts": "2026-04-01T07:56:50.936Z"
           },
           "Running Hour": {
-            "value": 1506,
-            "ts": "2026-03-30T01:58:28.032Z"
+            "value": 3691,
+            "ts": "2026-04-01T07:56:50.937Z"
           },
           "Product Good Count": {
             "value": 0,
-            "ts": "2026-03-27T02:39:40.583Z"
+            "ts": "2026-04-01T07:56:51.562Z"
           },
           "Job Progress": {
             "value": 0,
-            "ts": "2026-03-27T02:39:40.585Z"
+            "ts": "2026-04-01T07:56:51.563Z"
           },
           "Product Total Count": {
             "value": 0,
-            "ts": "2026-03-30T01:58:27.370Z"
+            "ts": "2026-04-01T07:56:51.561Z"
           },
           "Machine Speed": {
-            "value": 202.2,
-            "ts": "2026-03-30T01:48:01.999Z"
+            "value": 0,
+            "ts": "2026-04-01T07:56:51.558Z"
           },
           "Material Barcode": {
             "value": "MaterialB001",
@@ -1248,75 +1177,79 @@
           },
           "Product Reject Count": {
             "value": 0,
-            "ts": "2026-03-26T01:46:21.390Z"
+            "ts": "2026-04-01T07:50:21.221Z"
           },
           "Work Order": {
             "value": "No Work Order",
-            "ts": "2026-03-26T02:49:14.103Z"
+            "ts": "2026-04-01T07:56:00.899Z"
           },
           "Job Lifecycle": {
             "value": "-",
-            "ts": "2026-03-26T01:47:02.365Z"
+            "ts": "2026-04-01T07:56:00.902Z"
           },
           "Product Count Target": {
             "value": 0,
-            "ts": "2026-03-26T01:47:02.370Z"
+            "ts": "2026-04-01T07:56:00.949Z"
           },
           "Job Loader": {
             "value": {},
-            "ts": "2026-03-26T01:47:02.362Z"
+            "ts": "2026-04-01T07:56:00.897Z"
           },
           "Job Lifecycle Alarm": {
             "value": "-",
-            "ts": "2026-03-26T01:47:02.339Z"
+            "ts": "2026-04-01T07:56:00.805Z"
           },
           "Paper Consumed Setup": {
             "value": 0,
-            "ts": "2026-03-26T01:47:02.365Z"
+            "ts": "2026-04-01T07:56:00.904Z"
           },
           "Paper Consumed Idle": {
             "value": 0,
-            "ts": "2026-03-26T01:47:02.366Z"
+            "ts": "2026-04-01T07:56:00.905Z"
           },
           "Paper Consumed Production": {
             "value": 0,
-            "ts": "2026-03-26T01:47:02.366Z"
+            "ts": "2026-04-01T07:56:00.907Z"
           },
           "Total Paper Waste": {
             "value": 0,
-            "ts": "2026-03-26T01:47:02.367Z"
+            "ts": "2026-04-01T07:56:00.909Z"
           },
           "Availability": {
             "value": 0,
-            "ts": "2026-03-26T01:47:02.368Z"
+            "ts": "2026-04-01T07:56:00.941Z"
           },
           "Performance": {
             "value": 0,
-            "ts": "2026-03-26T01:47:02.369Z"
+            "ts": "2026-04-01T07:56:00.945Z"
           },
           "Quality": {
             "value": 0,
-            "ts": "2026-03-26T01:47:02.369Z"
+            "ts": "2026-04-01T07:56:00.946Z"
           },
           "OEE": {
             "value": 0,
-            "ts": "2026-03-26T01:47:02.370Z"
+            "ts": "2026-04-01T07:56:00.948Z"
           },
           "Job Activity": {
             "value": "-",
-            "ts": "2026-03-26T01:47:02.365Z"
+            "ts": "2026-04-01T07:56:00.901Z"
           },
           "Encoder Input Raw Value": {
-            "value": 408,
-            "ts": "2026-03-31T09:09:15.260Z"
+            "value": 430,
+            "ts": "2026-04-01T07:56:51.553Z"
           },
           "Total Paper Consumed Input": {
-            "value": 3.3699999999999997,
-            "ts": "2026-03-30T01:48:01.992Z"
+            "value": 0,
+            "ts": "2026-04-01T07:56:00.911Z"
           },
           "Encoder Input Prev Value": {
-            "value": 337,
-            "ts": "2026-03-30T01:58:27.369Z"
+            "value": 430,
+            "ts": "2026-04-01T07:56:51.556Z"
+          },
+          "Total Paper Consumed Output": {
+            "value": 0,
+            "ts": "2026-04-01T07:56:00.913Z"
           }
         }
       },
@@ -3983,7 +3916,7 @@
       "id": "template.taiyo.paper.consumption.by.activity",
       "name": "TaiyoPaperConsumptionByActivity",
       "description": "Classify consumed input paper into setup, idle, production, and waste.",
-      "script": "const assetPath = AssetPath.path || \"-\";\n\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\n\nconst totalConsumed = msg.totalPaperConsumed || 0;\n\nconst setupPrev = asset.getValue(setupPath);\nconst idlePrev = asset.getValue(idlePath);\nconst prodPrev = asset.getValue(prodPath);\n\nlet deltaConsumed = Number(msg.paperConsumedDelta ?? NaN);\nif (!Number.isFinite(deltaConsumed)) {\n  deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n}\n\nconst activeCategory = String(msg.activityCategory ?? asset.getValue(categoryPath)).trim();\n\nif (!Number.isFinite(deltaConsumed) || deltaConsumed <= 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nmsg.paperConsumedSetup = setupNew || 0;\nmsg.paperConsumedIdle = idleNew || 0;\nmsg.paperConsumedProduction = prodNew || 0;\n\nsend(msg);",
+      "script": "const assetPath = AssetPath.path || \"-\";\n\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\n\nconst totalConsumed = msg.totalPaperConsumed || 0;\n\nconst setupPrev = asset.getValue(setupPath);\nconst idlePrev = asset.getValue(idlePath);\nconst prodPrev = asset.getValue(prodPath);\n\nlet deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n\nif (deltaConsumed <= 0) {\n  send(msg);\n  return;\n}\n\nconst activeCategory = asset.getValue(categoryPath);\n\nif (![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -4006,7 +3939,7 @@
       "id": "template.taiyo.production.count.and.progress",
       "name": "TaiyoProductCounts",
       "description": "Calculate product total count and good count from paper consumed production and reject count.",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\nconst prodConsumed = asset.getValue(`${assetPath}.Paper Consumed Production`);\nconst rejectCount = asset.getValue(rejectCountPath);\nconst paperFoldSizeRaw = asset.getValue(`${assetPath}.Paper/Fold Size`);\nconst countPerFoldRaw = asset.getValue(`${assetPath}.Product Count Per Fold`);\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / (paperFoldSize * 0.01)) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? Math.max(0, Math.round(rejectCount)) : 0;\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
+      "script": "const assetPath = AssetPath.path || \"-\";\n\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\n\n//const prodConsumed = msg.paperConsumedProduction;\n\nconst prodConsumed = asset.getValue(`${assetPath}.Paper Consumed Production`);\nconst rejectCount = asset.getValue(rejectCountPath);\nconst paperFoldSizeRaw = asset.getValue(`${assetPath}.Paper/Fold Size`);\nconst countPerFoldRaw = asset.getValue(`${assetPath}.Product Count Per Fold`);\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (prodConsumed > 0 && paperFoldSize > 0 && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / (paperFoldSize * 0.01)) * countPerFold));\n}\n\nconst safeRejectCount = Math.max(0, Math.round(rejectCount));\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
       "allowTemplateReuse": true,
       "variableBindings": [
         {
@@ -4058,74 +3991,6 @@
       "enabled": true,
       "variables": [],
       "nodes": [
-        {
-          "id": "trg_3cazbipi",
-          "kind": "trigger",
-          "refId": "trg_3cazbipi",
-          "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
-          "enabled": true,
-          "templateId": "",
-          "config": {
-            "type": "watcher_set",
-            "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
-            "intervalMs": 1000,
-            "cronExpression": "",
-            "timezone": "",
-            "activeFrom": "",
-            "activeTo": ""
-          }
-        },
-        {
-          "id": "trg_i2jdu13y",
-          "kind": "trigger",
-          "refId": "trg_i2jdu13y",
-          "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
-          "enabled": true,
-          "templateId": "",
-          "config": {
-            "type": "watcher_set",
-            "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
-            "intervalMs": 1000,
-            "cronExpression": "",
-            "timezone": "",
-            "activeFrom": "",
-            "activeTo": ""
-          }
-        },
-        {
-          "id": "trg_y12o0byg",
-          "kind": "trigger",
-          "refId": "trg_y12o0byg",
-          "label": "1s trigger",
-          "enabled": true,
-          "templateId": "",
-          "config": {
-            "type": "interval",
-            "watchPath": "",
-            "intervalMs": 1000,
-            "cronExpression": "",
-            "timezone": "",
-            "activeFrom": "",
-            "activeTo": ""
-          }
-        },
-        {
-          "id": "trg_yaqn0nzn",
-          "kind": "trigger",
-          "refId": "trg_yaqn0nzn",
-          "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Input Raw Value",
-          "enabled": true,
-          "templateId": "",
-          "config": {
-            "type": "watcher_set",
-            "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Input Raw Value",
-            "intervalMs": 1000,
-            "cronExpression": "",
-            "timezone": "",
-            "activeFrom": "",
-            "activeTo": ""
-          }
-        },
         {
           "id": "act_wznj2p9u",
           "kind": "action",
@@ -4234,7 +4099,7 @@
           "id": "act_o750buzm",
           "kind": "action",
           "refId": "act_o750buzm",
-          "label": "Taiyo1 Job Lifecycle Router",
+          "label": "Job Lifecycle Router",
           "enabled": true,
           "templateId": "template.script_1771898442157",
           "config": {
@@ -4253,7 +4118,7 @@
           "id": "act_pqgrrjup",
           "kind": "action",
           "refId": "act_pqgrrjup",
-          "label": "Taiyo1 Job Activity Router",
+          "label": "Job Activity Router",
           "enabled": true,
           "templateId": "template.script_1772002036179",
           "config": {
@@ -4284,7 +4149,7 @@
           "templateId": "template.taiyo.production.count.and.progress",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\nconst prodConsumed = asset.getValue(`${assetPath}.Paper Consumed Production`);\nconst rejectCount = asset.getValue(rejectCountPath);\nconst paperFoldSizeRaw = asset.getValue(`${assetPath}.Paper/Fold Size`);\nconst countPerFoldRaw = asset.getValue(`${assetPath}.Product Count Per Fold`);\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (Number.isFinite(prodConsumed) && prodConsumed > 0 && Number.isFinite(paperFoldSize) && paperFoldSize > 0 && Number.isFinite(countPerFold) && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / (paperFoldSize * 0.01)) * countPerFold));\n}\n\nconst safeRejectCount = Number.isFinite(rejectCount) ? Math.max(0, Math.round(rejectCount)) : 0;\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\n\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\n\n//const prodConsumed = msg.paperConsumedProduction;\n\nconst prodConsumed = asset.getValue(`${assetPath}.Paper Consumed Production`);\nconst rejectCount = asset.getValue(rejectCountPath);\nconst paperFoldSizeRaw = asset.getValue(`${assetPath}.Paper/Fold Size`);\nconst countPerFoldRaw = asset.getValue(`${assetPath}.Product Count Per Fold`);\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (prodConsumed > 0 && paperFoldSize > 0 && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / (paperFoldSize * 0.01)) * countPerFold));\n}\n\nconst safeRejectCount = Math.max(0, Math.round(rejectCount));\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -4305,7 +4170,7 @@
           "id": "act_nad2xse9",
           "kind": "action",
           "refId": "act_nad2xse9",
-          "label": "Taiyo1 Reset MES On Job Close",
+          "label": "Reset MES Attributes On Job Close",
           "enabled": true,
           "templateId": "template.script_1774408144628",
           "config": {
@@ -4323,7 +4188,7 @@
           "id": "act_o8dbxj0x",
           "kind": "action",
           "refId": "act_o8dbxj0x",
-          "label": "Taiyo1 Init MES On Job Open",
+          "label": "Init MES Attributes On Job Open",
           "enabled": true,
           "templateId": "template.script_1774407747707",
           "config": {
@@ -4364,117 +4229,9 @@
           }
         },
         {
-          "id": "event.open.evt_07oxzz6i",
-          "kind": "event_open",
-          "refId": "evt_07oxzz6i",
-          "label": "OPEN Taiyo1.JobLifecycle",
-          "enabled": true,
-          "templateId": "template.taiyo.job.lifecycle",
-          "config": {
-            "description": "",
-            "bindings": {
-              "offsetPrinterAsset": {
-                "source": "asset",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-              },
-              "activeJob": {
-                "source": "attribute",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
-              },
-              "mesMeta": {
-                "source": "asset",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-              },
-              "mesData": {
-                "source": "asset",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-              }
-            },
-            "templateOverrides": {},
-            "openNotes": "",
-            "closeNotes": ""
-          }
-        },
-        {
-          "id": "event.close.evt_07oxzz6i",
+          "id": "event.close.evt_xld0lik0",
           "kind": "event_close",
-          "refId": "evt_07oxzz6i",
-          "label": "CLOSE Taiyo1.JobLifecycle",
-          "enabled": true,
-          "templateId": "template.taiyo.job.lifecycle",
-          "config": {
-            "description": "",
-            "bindings": {
-              "offsetPrinterAsset": {
-                "source": "asset",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-              },
-              "activeJob": {
-                "source": "attribute",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
-              },
-              "mesMeta": {
-                "source": "asset",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-              },
-              "mesData": {
-                "source": "asset",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-              }
-            },
-            "templateOverrides": {},
-            "closeNotes": "",
-            "openNotes": ""
-          }
-        },
-        {
-          "id": "event.open.evt_djqm6cxo",
-          "kind": "event_open",
-          "refId": "evt_djqm6cxo",
-          "label": "OPEN Taiyo1.JobActivity",
-          "enabled": true,
-          "templateId": "template.taiyo.job.activity.production",
-          "config": {
-            "description": "",
-            "bindings": {
-              "offsetPrinterAsset": {
-                "source": "asset",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-              },
-              "activeJob": {
-                "source": "attribute",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
-              },
-              "mesMeta": {
-                "source": "asset",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-              },
-              "mesData": {
-                "source": "asset",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
-              }
-            },
-            "templateOverrides": {},
-            "openNotes": "",
-            "closeNotes": ""
-          }
-        },
-        {
-          "id": "event.close.evt_djqm6cxo",
-          "kind": "event_close",
-          "refId": "evt_djqm6cxo",
+          "refId": "evt_xld0lik0",
           "label": "CLOSE Taiyo1.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4505,59 +4262,6 @@
             "templateOverrides": {},
             "closeNotes": "",
             "openNotes": ""
-          }
-        },
-        {
-          "id": "event.close.evt_vg8y787h",
-          "kind": "event_close",
-          "refId": "evt_vg8y787h",
-          "label": "CLOSE Taiyo2.JobActivity",
-          "enabled": true,
-          "templateId": "template.taiyo.job.activity.production",
-          "config": {
-            "description": "",
-            "bindings": {
-              "activeJob": {
-                "source": "attribute",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order"
-              },
-              "mesData": {
-                "source": "asset",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
-              },
-              "mesMeta": {
-                "source": "asset",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
-              },
-              "offsetPrinterAsset": {
-                "source": "asset",
-                "staticValue": "",
-                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
-              }
-            },
-            "templateOverrides": {},
-            "closeNotes": "",
-            "openNotes": ""
-          }
-        },
-        {
-          "id": "trg_9u8r2mqa",
-          "kind": "trigger",
-          "refId": "trg_9u8r2mqa",
-          "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Output Raw Value",
-          "enabled": true,
-          "templateId": "",
-          "config": {
-            "type": "watcher_set",
-            "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Output Raw Value",
-            "intervalMs": 1000,
-            "cronExpression": "",
-            "timezone": "",
-            "activeFrom": "",
-            "activeTo": ""
           }
         },
         {
@@ -4621,7 +4325,7 @@
           "templateId": "template.taiyo.paper.consumption.by.activity",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\n\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\n\nconst totalConsumed = msg.totalPaperConsumed || 0;\n\nconst setupPrev = asset.getValue(setupPath);\nconst idlePrev = asset.getValue(idlePath);\nconst prodPrev = asset.getValue(prodPath);\n\nlet deltaConsumed = Number(msg.paperConsumedDelta ?? NaN);\nif (!Number.isFinite(deltaConsumed)) {\n  deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n}\n\nconst activeCategory = String(msg.activityCategory ?? asset.getValue(categoryPath)).trim();\n\nif (!Number.isFinite(deltaConsumed) || deltaConsumed <= 0 || ![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nmsg.paperConsumedSetup = setupNew || 0;\nmsg.paperConsumedIdle = idleNew || 0;\nmsg.paperConsumedProduction = prodNew || 0;\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\n\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\n\nconst totalConsumed = msg.totalPaperConsumed || 0;\n\nconst setupPrev = asset.getValue(setupPath);\nconst idlePrev = asset.getValue(idlePath);\nconst prodPrev = asset.getValue(prodPath);\n\nlet deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n\nif (deltaConsumed <= 0) {\n  send(msg);\n  return;\n}\n\nconst activeCategory = asset.getValue(categoryPath);\n\nif (![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -4637,87 +4341,227 @@
               "out"
             ]
           }
+        },
+        {
+          "id": "trg_mflmvo47",
+          "kind": "trigger",
+          "refId": "trg_mflmvo47",
+          "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Output Raw Value",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Output Raw Value",
+            "intervalMs": 1000,
+            "activeFrom": "",
+            "activeTo": "",
+            "message": {
+              "payload": 0
+            },
+            "cronExpression": "",
+            "timezone": ""
+          }
+        },
+        {
+          "id": "trg_pwvkuwp5",
+          "kind": "trigger",
+          "refId": "trg_pwvkuwp5",
+          "label": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Input Raw Value",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Encoder Input Raw Value",
+            "intervalMs": 1000,
+            "activeFrom": "",
+            "activeTo": "",
+            "message": {
+              "payload": 0
+            },
+            "cronExpression": "",
+            "timezone": ""
+          }
+        },
+        {
+          "id": "trg_lkd9tb0c",
+          "kind": "trigger",
+          "refId": "trg_lkd9tb0c",
+          "label": "Interval Trigger - 1s",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "type": "interval",
+            "watchPath": "",
+            "intervalMs": 1000,
+            "activeFrom": "",
+            "activeTo": "",
+            "message": {
+              "payload": 0
+            },
+            "cronExpression": "",
+            "timezone": ""
+          }
+        },
+        {
+          "id": "trg_qsoxfskd",
+          "kind": "trigger",
+          "refId": "trg_qsoxfskd",
+          "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Lifecycle",
+            "intervalMs": 1000,
+            "activeFrom": "",
+            "activeTo": "",
+            "message": {
+              "payload": 0
+            },
+            "cronExpression": "",
+            "timezone": ""
+          }
+        },
+        {
+          "id": "trg_4je3p1h9",
+          "kind": "trigger",
+          "refId": "trg_4je3p1h9",
+          "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
+            "intervalMs": 1000,
+            "activeFrom": "",
+            "activeTo": "",
+            "message": {
+              "payload": 0
+            },
+            "cronExpression": "",
+            "timezone": ""
+          }
+        },
+        {
+          "id": "event.open.evt_zxtghh6a",
+          "kind": "event_open",
+          "refId": "evt_zxtghh6a",
+          "label": "Open JobLifecycle Event",
+          "enabled": true,
+          "templateId": "template.taiyo.job.lifecycle",
+          "config": {
+            "description": "Event node for template template.taiyo.job.lifecycle",
+            "bindings": {
+              "activeJob": {
+                "source": "attribute",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
+              },
+              "mesData": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+              },
+              "mesMeta": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+              },
+              "offsetPrinterAsset": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+              }
+            },
+            "templateOverrides": {},
+            "openNotes": "",
+            "closeNotes": ""
+          }
+        },
+        {
+          "id": "event.close.evt_in00w1g4",
+          "kind": "event_close",
+          "refId": "evt_in00w1g4",
+          "label": "Close JobLifecycle Event",
+          "enabled": true,
+          "templateId": "template.taiyo.job.lifecycle",
+          "config": {
+            "description": "Event node for template template.taiyo.job.lifecycle",
+            "bindings": {
+              "activeJob": {
+                "source": "attribute",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
+              },
+              "mesData": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+              },
+              "mesMeta": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+              },
+              "offsetPrinterAsset": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+              }
+            },
+            "templateOverrides": {},
+            "closeNotes": "",
+            "openNotes": ""
+          }
+        },
+        {
+          "id": "event.open.evt_7tqu76ia",
+          "kind": "event_open",
+          "refId": "evt_7tqu76ia",
+          "label": "Open JobActivity Event",
+          "enabled": true,
+          "templateId": "template.taiyo.job.activity.production",
+          "config": {
+            "description": "Event node for template template.taiyo.job.activity.production",
+            "bindings": {
+              "activeJob": {
+                "source": "attribute",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1.Work Order"
+              },
+              "activityDetail": {
+                "source": "msg_path",
+                "staticValue": "",
+                "attributePath": "payload.activityDetail"
+              },
+              "mesData": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+              },
+              "mesMeta": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+              },
+              "offsetPrinterAsset": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo1"
+              }
+            },
+            "templateOverrides": {},
+            "openNotes": "",
+            "closeNotes": ""
+          }
         }
       ],
       "links": [
-        {
-          "from": "trg_i2jdu13y",
-          "to": "act_o750buzm",
-          "fromPort": "default",
-          "enabled": true
-        },
-        {
-          "from": "trg_3cazbipi",
-          "to": "act_pqgrrjup",
-          "fromPort": "default",
-          "enabled": true
-        },
-        {
-          "from": "event.open.evt_07oxzz6i",
-          "to": "act_xi9ttxqd",
-          "fromPort": "onSuccess",
-          "enabled": true
-        },
-        {
-          "from": "event.close.evt_07oxzz6i",
-          "to": "act_xi9ttxqd",
-          "fromPort": "onSuccess",
-          "enabled": true
-        },
-        {
-          "from": "event.open.evt_07oxzz6i",
-          "to": "act_o8dbxj0x",
-          "fromPort": "onSuccess",
-          "enabled": true
-        },
-        {
-          "from": "event.close.evt_07oxzz6i",
-          "to": "act_nad2xse9",
-          "fromPort": "onSuccess",
-          "enabled": true
-        },
-        {
-          "from": "event.open.evt_djqm6cxo",
-          "to": "act_xi9ttxqd",
-          "fromPort": "onSuccess",
-          "enabled": true
-        },
-        {
-          "from": "trg_y12o0byg",
-          "to": "act_zxdzcreb",
-          "fromPort": "default",
-          "enabled": true
-        },
-        {
-          "from": "trg_yaqn0nzn",
-          "to": "act_bef4hk9d",
-          "fromPort": "default",
-          "enabled": true
-        },
-        {
-          "from": "act_o750buzm",
-          "to": "event.open.evt_07oxzz6i",
-          "fromPort": "open event",
-          "enabled": true
-        },
-        {
-          "from": "act_o750buzm",
-          "to": "event.close.evt_07oxzz6i",
-          "fromPort": "close event",
-          "enabled": true
-        },
-        {
-          "from": "act_pqgrrjup",
-          "to": "event.open.evt_djqm6cxo",
-          "fromPort": "out",
-          "enabled": true
-        },
-        {
-          "from": "trg_9u8r2mqa",
-          "to": "act_q4n7v2ke",
-          "fromPort": "default",
-          "enabled": true
-        },
         {
           "from": "act_zxdzcreb",
           "to": "act_otya9inq",
@@ -4731,21 +4575,105 @@
           "enabled": true
         },
         {
-          "from": "event.open.evt_07oxzz6i",
+          "from": "act_uc1u4e3v",
+          "to": "act_wznj2p9u",
+          "fromPort": "out",
+          "enabled": true
+        },
+        {
+          "from": "trg_mflmvo47",
+          "to": "act_q4n7v2ke",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "trg_pwvkuwp5",
+          "to": "act_bef4hk9d",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "trg_lkd9tb0c",
+          "to": "act_zxdzcreb",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "trg_qsoxfskd",
+          "to": "act_o750buzm",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "trg_4je3p1h9",
+          "to": "act_pqgrrjup",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "act_o750buzm",
+          "to": "event.open.evt_zxtghh6a",
+          "fromPort": "open event",
+          "enabled": true
+        },
+        {
+          "from": "event.open.evt_zxtghh6a",
+          "to": "act_o8dbxj0x",
+          "fromPort": "onSuccess",
+          "enabled": true
+        },
+        {
+          "from": "event.open.evt_zxtghh6a",
+          "to": "act_xi9ttxqd",
+          "fromPort": "onSuccess",
+          "enabled": true
+        },
+        {
+          "from": "event.open.evt_zxtghh6a",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
-          "from": "event.close.evt_07oxzz6i",
+          "from": "act_o750buzm",
+          "to": "event.close.evt_in00w1g4",
+          "fromPort": "close event",
+          "enabled": true
+        },
+        {
+          "from": "event.close.evt_in00w1g4",
+          "to": "act_nad2xse9",
+          "fromPort": "onSuccess",
+          "enabled": true
+        },
+        {
+          "from": "event.close.evt_in00w1g4",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
-          "from": "event.open.evt_djqm6cxo",
+          "from": "event.close.evt_in00w1g4",
+          "to": "act_xi9ttxqd",
+          "fromPort": "onSuccess",
+          "enabled": true
+        },
+        {
+          "from": "event.open.evt_7tqu76ia",
+          "to": "act_xi9ttxqd",
+          "fromPort": "onSuccess",
+          "enabled": true
+        },
+        {
+          "from": "event.open.evt_7tqu76ia",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
+          "enabled": true
+        },
+        {
+          "from": "act_pqgrrjup",
+          "to": "event.open.evt_7tqu76ia",
+          "fromPort": "out",
           "enabled": true
         },
         {
@@ -4755,14 +4683,8 @@
           "enabled": true
         },
         {
-          "from": "act_otya9inq",
+          "from": "act_t1pac001",
           "to": "act_uc1u4e3v",
-          "fromPort": "out",
-          "enabled": true
-        },
-        {
-          "from": "act_uc1u4e3v",
-          "to": "act_wznj2p9u",
           "fromPort": "out",
           "enabled": true
         }
@@ -4816,29 +4738,13 @@
           "x": 2440,
           "y": 300
         },
-        "trg_3cazbipi": {
-          "x": 300,
-          "y": 1280
-        },
-        "trg_i2jdu13y": {
-          "x": 300,
-          "y": 1140
-        },
-        "trg_y12o0byg": {
-          "x": 300,
-          "y": 660
-        },
-        "trg_yaqn0nzn": {
-          "x": 300,
-          "y": 420
-        },
         "act_wznj2p9u": {
-          "x": 2240,
-          "y": 520
+          "x": 2160,
+          "y": 500
         },
         "act_zxdzcreb": {
           "x": 760,
-          "y": 700
+          "y": 800
         },
         "act_bef4hk9d": {
           "x": 760,
@@ -4846,19 +4752,19 @@
         },
         "act_otya9inq": {
           "x": 1240,
-          "y": 720
+          "y": 800
         },
         "act_o750buzm": {
           "x": 760,
-          "y": 1120
+          "y": 980
         },
         "act_pqgrrjup": {
           "x": 760,
-          "y": 1260
+          "y": 1200
         },
         "act_uc1u4e3v": {
-          "x": 1760,
-          "y": 720
+          "x": 1700,
+          "y": 480
         },
         "act_nad2xse9": {
           "x": 1860,
@@ -4869,37 +4775,925 @@
           "y": 920
         },
         "act_xi9ttxqd": {
-          "x": 1860,
-          "y": 1240
-        },
-        "trg_9u8r2mqa": {
-          "x": 300,
-          "y": 280
+          "x": 1720,
+          "y": 1340
         },
         "act_q4n7v2ke": {
           "x": 760,
           "y": 260
         },
         "act_t1msp001": {
-          "x": 1220,
-          "y": 400
+          "x": 1240,
+          "y": 360
         },
         "act_t1pac001": {
-          "x": 1220,
-          "y": 540
+          "x": 1240,
+          "y": 500
         },
-        "event.open.evt_07oxzz6i": {
-          "x": 1300,
-          "y": 1020
+        "trg_mflmvo47": {
+          "x": 220,
+          "y": 260
         },
-        "event.close.evt_07oxzz6i": {
-          "x": 1300,
-          "y": 1140
+        "trg_pwvkuwp5": {
+          "x": 220,
+          "y": 400
         },
-        "event.open.evt_djqm6cxo": {
-          "x": 1300,
-          "y": 1260
+        "trg_lkd9tb0c": {
+          "x": 220,
+          "y": 780
+        },
+        "trg_qsoxfskd": {
+          "x": 220,
+          "y": 980
+        },
+        "trg_4je3p1h9": {
+          "x": 220,
+          "y": 1200
+        },
+        "event.open.evt_zxtghh6a": {
+          "x": 1260,
+          "y": 960
+        },
+        "event.close.evt_in00w1g4": {
+          "x": 1260,
+          "y": 1080
+        },
+        "event.open.evt_7tqu76ia": {
+          "x": 1260,
+          "y": 1220
         }
+      }
+    },
+    {
+      "id": "flow_14xz0170",
+      "name": "MES - OffsetPrinter - Taiyo 2",
+      "description": "-",
+      "enabled": true,
+      "variables": [],
+      "nodes": [
+        {
+          "id": "act_unezz2y0",
+          "kind": "action",
+          "refId": "act_unezz2y0",
+          "label": "Calculate Job Progress",
+          "enabled": true,
+          "templateId": "template.taiyo.job.progress.from.good",
+          "config": {
+            "description": "",
+            "script": "const assetPath = AssetPath.path || \"-\";\n\nconst targetRaw = asset.getValue(`${assetPath}.Product Count Target`);\nconst goodCount = msg.productGoodCount || 0;\n\nconst lifecycle = asset.getValue(`${assetPath}.Job Lifecycle`).trim().toLowerCase();\n\nconst progressPath = `${assetPath}.Job Progress`;\n\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nif (![\"load\", \"unload\", \"complete\"].includes(lifecycle)) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst targetEa = parseNumberLike(targetRaw);\nif (!Number.isFinite(targetEa) || targetEa <= 0) {\n  await asset.set(progressPath, 0);\n  send(msg);\n  return;\n}\n\nconst safeGoodCount = Number.isFinite(goodCount) ? Math.max(0, Math.round(goodCount)) : 0;\nconst progress = Math.max(0, Math.round((safeGoodCount / targetEa) * 100));\n\nawait asset.set(progressPath, progress);\n\nmsg.jobProgress = progress;\nmsg.productGoodCount = safeGoodCount;\n\nsend(msg);",
+            "templateBindingOverrides": {
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+                "allowOverride": true
+              }
+            },
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "out"
+            ]
+          }
+        },
+        {
+          "id": "act_h7a2huxz",
+          "kind": "action",
+          "refId": "act_h7a2huxz",
+          "label": "Resolve Activity Category",
+          "enabled": true,
+          "templateId": "template.script_1772300414929",
+          "config": {
+            "description": "",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst categoryPath = `${assetPath}.Job Activity Category`;\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\n\nlet activeCategory = \"-\";\nconst activeCategories = [];\n\nif (workOrder && workOrder !== \"-\") {\n  // const basePath = `${assetPath}/Job/${workOrder}/Activity`;\n  const basePath = `${assetPath}/Job/*/Activity`;\n\n  const [setupOpen, idleOpen, prodOpen] = await Promise.all([\n    eventSys.get(`${basePath}/Setup/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Idle/*`, \"*\", \"*\", \"open\", {}, { limit: 200 }),\n    eventSys.get(`${basePath}/Production/*`, \"*\", \"*\", \"open\", {}, { limit: 200 })\n  ]);\n\n  // console.log(`${basePath}/Setup/*`);\n  // console.log(`${basePath}/Idle/*`);\n  // console.log(`${basePath}/Production/*`);\n\n  if (setupOpen.length > 0) activeCategories.push(\"Setup\");\n  if (idleOpen.length > 0) activeCategories.push(\"Idle\");\n  if (prodOpen.length > 0) activeCategories.push(\"Production\");\n}\n\nif (activeCategories.length === 1) {\n  activeCategory = activeCategories[0];\n  await asset.set(categoryPath, activeCategory);\n  await asset.set(alarmPath, \"-\");\n} else if (activeCategories.length === 0) {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, \"-\");\n} else {\n  await asset.set(categoryPath, \"-\");\n  await asset.set(alarmPath, `!!!Multiple activity categories active: ${activeCategories.join(\", \")}!!!`);\n}\n\nmsg.activityCategory = activeCategory;\nmsg.activeCategories = activeCategories;\n\nsend(msg);",
+            "templateBindingOverrides": {
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+                "allowOverride": true
+              }
+            },
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "out"
+            ]
+          }
+        },
+        {
+          "id": "act_potgd362",
+          "kind": "action",
+          "refId": "act_potgd362",
+          "label": "Calculate Paper Length from Encd Input",
+          "enabled": true,
+          "templateId": "template.taiyo.paper.input.capture",
+          "config": {
+            "description": "",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Input Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Input Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Input`;\n\nconst raw = asset.getValue(rawPath);\nconst prevRaw = asset.getValue(prevRawPath);\nconst totalPrev = asset.getValue(totalConsumedPath);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  msg.encoderDeltaRaw = 0;\n  msg.paperConsumedDelta = 0;\n  msg.paperConsumedSource = \"input\";\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.totalPaperConsumed = totalPrev + deltaConsumed;\nmsg.encoderDeltaRaw = deltaRaw;\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"input\";\n\nsend(msg);",
+            "templateBindingOverrides": {
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+                "allowOverride": true
+              }
+            },
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "out"
+            ]
+          }
+        },
+        {
+          "id": "act_kqz63n0a",
+          "kind": "action",
+          "refId": "act_kqz63n0a",
+          "label": "Calculate Time Spent per Activity",
+          "enabled": true,
+          "templateId": "template.script_1772340546636",
+          "config": {
+            "description": "",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst activeCategory = String(msg.activityCategory ?? asset.getValue(`${assetPath}.Job Activity Category`)).trim();\n\nlet setupTime = asset.getValue(`${assetPath}.Total Setup Time`);\nlet idleTime = asset.getValue(`${assetPath}.Total Idle Time`);\nlet prodTime = asset.getValue(`${assetPath}.Total Production Time`);\nlet runningHour = asset.getValue(`${assetPath}.Running Hour`);\n\nif (activeCategory === \"Setup\") setupTime += 1;\nelse if (activeCategory === \"Idle\") idleTime += 1;\nelse if (activeCategory === \"Production\") prodTime += 1;\n\nif ([\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  runningHour += 1;\n}\n\nawait asset.set(`${assetPath}.Total Setup Time`, setupTime);\nawait asset.set(`${assetPath}.Total Idle Time`, idleTime);\nawait asset.set(`${assetPath}.Total Production Time`, prodTime);\nawait asset.set(`${assetPath}.Running Hour`, runningHour);\n\nsend(msg);",
+            "templateBindingOverrides": {
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+                "allowOverride": true
+              }
+            },
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "out"
+            ]
+          }
+        },
+        {
+          "id": "act_dlgwztd0",
+          "kind": "action",
+          "refId": "act_dlgwztd0",
+          "label": "Job Lifecycle Router",
+          "enabled": true,
+          "templateId": "template.script_1771898442157",
+          "config": {
+            "description": "",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst lifecycle = String(msg.payload?.value ?? \"\").trim().toLowerCase();\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\nconst alarmPath = `${assetPath}.Job Lifecycle Alarm`;\n\nif (![\"load\", \"unload\", \"complete\", \"cancel\"].includes(lifecycle)) {\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nif (lifecycle === \"load\") {\n  await asset.set(alarmPath, \"-\");\n  msg.eventRequest = { mode: \"open\", notes: `${workOrder} loaded` };\n  send([\"open event\"], msg);\n  return;\n}\n\nif (lifecycle === \"cancel\") {\n  await asset.set(alarmPath, \"-\");\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} cancelled` };\n  send([\"close event\"], msg);\n  return;\n}\n\nif (lifecycle === \"complete\") {\n  await asset.set(alarmPath, \"-\");\n  msg.eventRequest = { mode: \"close\", notes: `${workOrder} completed` };\n  send([\"close event\"], msg);\n}\n",
+            "templateBindingOverrides": {
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+                "allowOverride": true
+              }
+            },
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "open event",
+              "close event"
+            ]
+          }
+        },
+        {
+          "id": "act_9yue80v9",
+          "kind": "action",
+          "refId": "act_9yue80v9",
+          "label": "Job Activity Router",
+          "enabled": true,
+          "templateId": "template.script_1772002036179",
+          "config": {
+            "description": "",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst rawActivity = String(msg.payload?.value ?? \"\").trim();\nconst workOrder = asset.getValue(`${assetPath}.Work Order`).trim();\nconst alarmPath = `${assetPath}.Job Activity Alarm`;\n\nif (!rawActivity || rawActivity === \"-\") {\n  await asset.set(alarmPath, \"-\");\n  return;\n}\n\nif (!workOrder || workOrder === \"-\") {\n  await asset.set(alarmPath, \"!!!No Active Work Order!!!\");\n  return;\n}\n\nconst parts = rawActivity.split(\"/\").map((item) => item.trim()).filter(Boolean);\nconst categoryToken = String(parts[0] || \"\").toLowerCase();\nconst activityDetail = parts.slice(1).join(\"/\").trim() || \"Run\";\n\nlet templateId = \"\";\n\nswitch (categoryToken) {\n  case \"production\":\n    templateId = \"template.taiyo.job.activity.production\";\n    break;\n  case \"setup\":\n    templateId = \"template.taiyo.job.activity.setup\";\n    break;\n  case \"idle\":\n    templateId = \"template.taiyo.job.activity.idle\";\n    break;\n  default:\n    await asset.set(alarmPath, `!!!Unknown activity category: ${rawActivity}!!!`);\n    return;\n}\n\nawait asset.set(alarmPath, \"-\");\nmsg.eventRequest = {\n  mode: \"open\",\n  templateId,\n  vars: { activityDetail },\n  notes: `${workOrder} ${categoryToken}/${activityDetail} opened`\n};\n\nsend(msg);",
+            "templateBindingOverrides": {
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+                "allowOverride": true
+              }
+            },
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "out"
+            ]
+          }
+        },
+        {
+          "id": "act_xbimncoj",
+          "kind": "action",
+          "refId": "act_xbimncoj",
+          "label": "Calculate Product Counts",
+          "enabled": true,
+          "templateId": "template.taiyo.production.count.and.progress",
+          "config": {
+            "description": "",
+            "script": "const assetPath = AssetPath.path || \"-\";\n\nconst totalCountPath = `${assetPath}.Product Total Count`;\nconst goodCountPath = `${assetPath}.Product Good Count`;\nconst rejectCountPath = `${assetPath}.Product Reject Count`;\n\n//const prodConsumed = msg.paperConsumedProduction;\n\nconst prodConsumed = asset.getValue(`${assetPath}.Paper Consumed Production`);\nconst rejectCount = asset.getValue(rejectCountPath);\nconst paperFoldSizeRaw = asset.getValue(`${assetPath}.Paper/Fold Size`);\nconst countPerFoldRaw = asset.getValue(`${assetPath}.Product Count Per Fold`);\n\nfunction parseNumberLike(value) {\n  const normalized = String(value ?? \"\").replace(/,/g, \"\").replace(/\\s+/g, \" \").trim();\n  if (!normalized) return NaN;\n  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);\n  return match ? Number(match[0]) : NaN;\n}\n\nconst paperFoldSize = parseNumberLike(paperFoldSizeRaw);\nconst countPerFold = parseNumberLike(countPerFoldRaw);\n\nlet totalCount = 0;\nif (prodConsumed > 0 && paperFoldSize > 0 && countPerFold > 0) {\n  totalCount = Math.max(0, Math.round((prodConsumed / (paperFoldSize * 0.01)) * countPerFold));\n}\n\nconst safeRejectCount = Math.max(0, Math.round(rejectCount));\nconst goodCount = Math.max(0, totalCount - safeRejectCount);\n\nawait asset.setMany([\n  { path: totalCountPath, value: totalCount },\n  { path: goodCountPath, value: goodCount }\n]);\n\nmsg.productTotalCount = totalCount;\nmsg.productRejectCount = safeRejectCount;\nmsg.productGoodCount = goodCount;\n\nsend(msg);",
+            "templateBindingOverrides": {
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+                "allowOverride": true
+              }
+            },
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "out"
+            ]
+          }
+        },
+        {
+          "id": "act_9elon898",
+          "kind": "action",
+          "refId": "act_9elon898",
+          "label": "Reset MES Attributes On Job Close",
+          "enabled": true,
+          "templateId": "template.script_1774408144628",
+          "config": {
+            "description": "",
+            "script": "const assetPath = AssetPath.path || \"-\";\r\n\r\nawait asset.setMany([\r\n  { path: `${assetPath}.Job Progress`, value: 0 },\r\n  { path: `${assetPath}.Job Loader`, value: {} },\r\n  { path: `${assetPath}.Work Order`, value: 'No Work Order' },\r\n  { path: `${assetPath}.Job Activity`, value: '-' },\r\n  { path: `${assetPath}.Job Lifecycle`, value: '-' },\r\n  { path: `${assetPath}.Paper Consumed Setup`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Idle`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Production`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Waste`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Input`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Output`, value: 0 },\r\n  { path: `${assetPath}.Total Setup Time`, value: 0 },\r\n  { path: `${assetPath}.Total Idle Time`, value: 0 },\r\n  { path: `${assetPath}.Total Production Time`, value: 0 },\r\n  { path: `${assetPath}.Availability`, value: 0 },\r\n  { path: `${assetPath}.Performance`, value: 0 },\r\n  { path: `${assetPath}.Quality`, value: 0 },\r\n  { path: `${assetPath}.OEE`, value: 0 },\r\n  { path: `${assetPath}.Product Count Target`, value: 0 },\r\n]);\r\n\r\nsend(msg);",
+            "templateBindingOverrides": {
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+                "allowOverride": true
+              }
+            },
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "out"
+            ]
+          }
+        },
+        {
+          "id": "act_jg01wnrl",
+          "kind": "action",
+          "refId": "act_jg01wnrl",
+          "label": "Init MES Attributes On Job Open",
+          "enabled": true,
+          "templateId": "template.script_1774407747707",
+          "config": {
+            "description": "",
+            "script": "const assetPath = AssetPath.path || \"-\";\r\n\r\nawait asset.setMany([\r\n  { path: `${assetPath}.Paper Consumed Setup`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Idle`, value: 0 },\r\n  { path: `${assetPath}.Paper Consumed Production`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Waste`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Input`, value: 0 },\r\n  { path: `${assetPath}.Total Paper Consumed Output`, value: 0 },\r\n  { path: `${assetPath}.Total Setup Time`, value: 0 },\r\n  { path: `${assetPath}.Total Idle Time`, value: 0 },\r\n  { path: `${assetPath}.Total Production Time`, value: 0 },\r\n  { path: `${assetPath}.Product Good Count`, value: 0 },\r\n  { path: `${assetPath}.Product Reject Count`, value: 0 },\r\n  { path: `${assetPath}.Product Total Count`, value: 0 },\r\n  { path: `${assetPath}.Availability`, value: 0 },\r\n  { path: `${assetPath}.Performance`, value: 0 },\r\n  { path: `${assetPath}.Quality`, value: 0 },\r\n  { path: `${assetPath}.OEE`, value: 0 },\r\n]);\r\n\r\n\r\nsend(msg);",
+            "templateBindingOverrides": {
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+                "allowOverride": true
+              }
+            },
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "out"
+            ]
+          }
+        },
+        {
+          "id": "act_z1kdf1oo",
+          "kind": "action",
+          "refId": "act_z1kdf1oo",
+          "label": "Debug",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "script": "helpers.log(\"msg:\", msg);",
+            "templateBindingOverrides": {},
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "out"
+            ]
+          }
+        },
+        {
+          "id": "event.close.evt_4v4377k0",
+          "kind": "event_close",
+          "refId": "evt_4v4377k0",
+          "label": "CLOSE Taiyo2.JobActivity",
+          "enabled": true,
+          "templateId": "template.taiyo.job.activity.production",
+          "config": {
+            "description": "",
+            "bindings": {
+              "activeJob": {
+                "source": "attribute",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order"
+              },
+              "mesData": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+              },
+              "mesMeta": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+              },
+              "offsetPrinterAsset": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+              }
+            },
+            "templateOverrides": {},
+            "closeNotes": "",
+            "openNotes": ""
+          }
+        },
+        {
+          "id": "act_pl0l5mbb",
+          "kind": "action",
+          "refId": "act_pl0l5mbb",
+          "label": "Calculate Paper Length from Encd Output",
+          "enabled": true,
+          "templateId": "template.taiyo.paper.output.capture",
+          "config": {
+            "description": "",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst rawPath = `${assetPath}.Encoder Output Raw Value`;\nconst prevRawPath = `${assetPath}.Encoder Output Prev Value`;\nconst totalConsumedPath = `${assetPath}.Total Paper Consumed Output`;\n\nconst raw = asset.getValue(rawPath);\nconst prevRaw = asset.getValue(prevRawPath);\nconst totalPrev = asset.getValue(totalConsumedPath);\n\nconst deltaRaw = raw >= prevRaw ? (raw - prevRaw) : raw;\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  await asset.set(prevRawPath, raw);\n  send(msg);\n  return;\n}\n\nif (deltaRaw === 0) {\n  await asset.set(prevRawPath, raw);\n  msg.paperConsumedDelta = 0;\n  msg.paperConsumedSource = \"output\";\n  send(msg);\n  return;\n}\n\nconst deltaConsumed = deltaRaw / 100;\n\nawait asset.setMany([\n  { path: totalConsumedPath, value: totalPrev + deltaConsumed },\n  { path: prevRawPath, value: raw }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.paperConsumedSource = \"output\";\n\nsend(msg);",
+            "templateBindingOverrides": {
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+                "allowOverride": true
+              }
+            },
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "out"
+            ]
+          }
+        },
+        {
+          "id": "act_7mt52ha7",
+          "kind": "action",
+          "refId": "act_7mt52ha7",
+          "label": "Calculate Machine Speed from Encd",
+          "enabled": true,
+          "templateId": "template.taiyo.machine.speed.from.total.input",
+          "config": {
+            "description": "",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\n\nconst deltaRaw = Number(msg.encoderDeltaRaw ?? NaN);\nif (!Number.isFinite(deltaRaw) || deltaRaw < 0) {\n  send(msg);\n  return;\n}\n\n// encoder raw is in cm and trigger runs every second, so m/min = cm/s * 60 / 100 = cm * 0.6\nconst speedMpm = deltaRaw * 0.6;\nawait asset.set(machineSpeedPath, speedMpm);\n\nsend(msg);",
+            "templateBindingOverrides": {
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+                "allowOverride": true
+              }
+            },
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "out"
+            ]
+          }
+        },
+        {
+          "id": "act_3ptblup8",
+          "kind": "action",
+          "refId": "act_3ptblup8",
+          "label": "Calculate Paper Consumption per Activity",
+          "enabled": true,
+          "templateId": "template.taiyo.paper.consumption.by.activity",
+          "config": {
+            "description": "",
+            "script": "const assetPath = AssetPath.path || \"-\";\n\nconst categoryPath = `${assetPath}.Job Activity Category`;\n\nconst setupPath = `${assetPath}.Paper Consumed Setup`;\nconst idlePath = `${assetPath}.Paper Consumed Idle`;\nconst prodPath = `${assetPath}.Paper Consumed Production`;\nconst wastePath = `${assetPath}.Total Paper Waste`;\n\nconst totalConsumed = msg.totalPaperConsumed || 0;\n\nconst setupPrev = asset.getValue(setupPath);\nconst idlePrev = asset.getValue(idlePath);\nconst prodPrev = asset.getValue(prodPath);\n\nlet deltaConsumed = totalConsumed - (setupPrev + idlePrev + prodPrev);\n\nif (deltaConsumed <= 0) {\n  send(msg);\n  return;\n}\n\nconst activeCategory = asset.getValue(categoryPath);\n\nif (![\"Setup\", \"Idle\", \"Production\"].includes(activeCategory)) {\n  send(msg);\n  return;\n}\n\nlet setupNew = setupPrev;\nlet idleNew = idlePrev;\nlet prodNew = prodPrev;\n\nif (activeCategory === \"Setup\") setupNew += deltaConsumed;\nelse if (activeCategory === \"Idle\") idleNew += deltaConsumed;\nelse if (activeCategory === \"Production\") prodNew += deltaConsumed;\n\nconst waste = setupNew + idleNew;\n\nawait asset.setMany([\n  { path: setupPath, value: setupNew },\n  { path: idlePath, value: idleNew },\n  { path: prodPath, value: prodNew },\n  { path: wastePath, value: waste }\n]);\n\nmsg.paperConsumedDelta = deltaConsumed;\nmsg.activityCategory = activeCategory;\n\nsend(msg);",
+            "templateBindingOverrides": {
+              "AssetPath": {
+                "name": "AssetPath",
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2",
+                "allowOverride": true
+              }
+            },
+            "eventTemplateId": "",
+            "eventTemplateOverrides": {},
+            "outputs": [
+              "out"
+            ]
+          }
+        },
+        {
+          "id": "trg00817eba",
+          "kind": "trigger",
+          "refId": "trg00817eba",
+          "label": "Jasuindo.OffsetPrinter.Taiyo2.Encoder Output Raw Value",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Encoder Output Raw Value",
+            "intervalMs": 1000,
+            "activeFrom": "",
+            "activeTo": "",
+            "message": {
+              "payload": 0
+            },
+            "cronExpression": "",
+            "timezone": ""
+          }
+        },
+        {
+          "id": "trg953d3e18",
+          "kind": "trigger",
+          "refId": "trg953d3e18",
+          "label": "Jasuindo.OffsetPrinter.Taiyo2.Encoder Input Raw Value",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Encoder Input Raw Value",
+            "intervalMs": 1000,
+            "activeFrom": "",
+            "activeTo": "",
+            "message": {
+              "payload": 0
+            },
+            "cronExpression": "",
+            "timezone": ""
+          }
+        },
+        {
+          "id": "trgec80dda2",
+          "kind": "trigger",
+          "refId": "trgec80dda2",
+          "label": "Interval Trigger - 1s",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "type": "interval",
+            "watchPath": "",
+            "intervalMs": 1000,
+            "activeFrom": "",
+            "activeTo": "",
+            "message": {
+              "payload": 0
+            },
+            "cronExpression": "",
+            "timezone": ""
+          }
+        },
+        {
+          "id": "trg27d4af76",
+          "kind": "trigger",
+          "refId": "trg27d4af76",
+          "label": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Job Lifecycle",
+            "intervalMs": 1000,
+            "activeFrom": "",
+            "activeTo": "",
+            "message": {
+              "payload": 0
+            },
+            "cronExpression": "",
+            "timezone": ""
+          }
+        },
+        {
+          "id": "trg76cb39f4",
+          "kind": "trigger",
+          "refId": "trg76cb39f4",
+          "label": "Jasuindo.OffsetPrinter.Taiyo2.Job Activity",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Job Activity",
+            "intervalMs": 1000,
+            "activeFrom": "",
+            "activeTo": "",
+            "message": {
+              "payload": 0
+            },
+            "cronExpression": "",
+            "timezone": ""
+          }
+        },
+        {
+          "id": "event.open.evt_mi7efnj6",
+          "kind": "event_open",
+          "refId": "evt_mi7efnj6",
+          "label": "Open JobLifecycle Event",
+          "enabled": true,
+          "templateId": "template.taiyo.job.lifecycle",
+          "config": {
+            "description": "Event node for template template.taiyo.job.lifecycle",
+            "bindings": {
+              "activeJob": {
+                "source": "attribute",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order"
+              },
+              "mesData": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+              },
+              "mesMeta": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+              },
+              "offsetPrinterAsset": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+              }
+            },
+            "templateOverrides": {},
+            "openNotes": "",
+            "closeNotes": ""
+          }
+        },
+        {
+          "id": "event.close.evt_kh9ymm63",
+          "kind": "event_close",
+          "refId": "evt_kh9ymm63",
+          "label": "Close JobLifecycle Event",
+          "enabled": true,
+          "templateId": "template.taiyo.job.lifecycle",
+          "config": {
+            "description": "Event node for template template.taiyo.job.lifecycle",
+            "bindings": {
+              "activeJob": {
+                "source": "attribute",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order"
+              },
+              "mesData": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+              },
+              "mesMeta": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+              },
+              "offsetPrinterAsset": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+              }
+            },
+            "templateOverrides": {},
+            "closeNotes": "",
+            "openNotes": ""
+          }
+        },
+        {
+          "id": "event.open.evt_26x3uvjr",
+          "kind": "event_open",
+          "refId": "evt_26x3uvjr",
+          "label": "Open JobActivity Event",
+          "enabled": true,
+          "templateId": "template.taiyo.job.activity.production",
+          "config": {
+            "description": "Event node for template template.taiyo.job.activity.production",
+            "bindings": {
+              "activeJob": {
+                "source": "attribute",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2.Work Order"
+              },
+              "activityDetail": {
+                "source": "msg_path",
+                "staticValue": "",
+                "attributePath": "payload.activityDetail"
+              },
+              "mesData": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+              },
+              "mesMeta": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+              },
+              "offsetPrinterAsset": {
+                "source": "asset",
+                "staticValue": "",
+                "attributePath": "Jasuindo.OffsetPrinter.Taiyo2"
+              }
+            },
+            "templateOverrides": {},
+            "openNotes": "",
+            "closeNotes": ""
+          }
+        }
+      ],
+      "links": [
+        {
+          "from": "act_h7a2huxz",
+          "to": "act_kqz63n0a",
+          "fromPort": "out",
+          "enabled": true
+        },
+        {
+          "from": "act_potgd362",
+          "to": "act_7mt52ha7",
+          "fromPort": "out",
+          "enabled": true
+        },
+        {
+          "from": "act_xbimncoj",
+          "to": "act_unezz2y0",
+          "fromPort": "out",
+          "enabled": true
+        },
+        {
+          "from": "trg00817eba",
+          "to": "act_pl0l5mbb",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "trg953d3e18",
+          "to": "act_potgd362",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "trgec80dda2",
+          "to": "act_h7a2huxz",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "trg27d4af76",
+          "to": "act_dlgwztd0",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "trg76cb39f4",
+          "to": "act_9yue80v9",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "act_dlgwztd0",
+          "to": "event.open.evt_mi7efnj6",
+          "fromPort": "open event",
+          "enabled": true
+        },
+        {
+          "from": "event.open.evt_mi7efnj6",
+          "to": "act_jg01wnrl",
+          "fromPort": "onSuccess",
+          "enabled": true
+        },
+        {
+          "from": "event.open.evt_mi7efnj6",
+          "to": "act_z1kdf1oo",
+          "fromPort": "onSuccess",
+          "enabled": true
+        },
+        {
+          "from": "event.open.evt_mi7efnj6",
+          "to": "act_z1kdf1oo",
+          "fromPort": "onFail",
+          "enabled": true
+        },
+        {
+          "from": "act_dlgwztd0",
+          "to": "event.close.evt_kh9ymm63",
+          "fromPort": "close event",
+          "enabled": true
+        },
+        {
+          "from": "event.close.evt_kh9ymm63",
+          "to": "act_9elon898",
+          "fromPort": "onSuccess",
+          "enabled": true
+        },
+        {
+          "from": "event.close.evt_kh9ymm63",
+          "to": "act_z1kdf1oo",
+          "fromPort": "onFail",
+          "enabled": true
+        },
+        {
+          "from": "event.close.evt_kh9ymm63",
+          "to": "act_z1kdf1oo",
+          "fromPort": "onSuccess",
+          "enabled": true
+        },
+        {
+          "from": "event.open.evt_26x3uvjr",
+          "to": "act_z1kdf1oo",
+          "fromPort": "onSuccess",
+          "enabled": true
+        },
+        {
+          "from": "event.open.evt_26x3uvjr",
+          "to": "act_z1kdf1oo",
+          "fromPort": "onFail",
+          "enabled": true
+        },
+        {
+          "from": "act_9yue80v9",
+          "to": "event.open.evt_26x3uvjr",
+          "fromPort": "out",
+          "enabled": true
+        },
+        {
+          "from": "act_potgd362",
+          "to": "act_3ptblup8",
+          "fromPort": "out",
+          "enabled": true
+        },
+        {
+          "from": "act_3ptblup8",
+          "to": "act_xbimncoj",
+          "fromPort": "out",
+          "enabled": true
+        }
+      ],
+      "nodePositions": {
+        "action.multiply_ten": {
+          "x": 1360,
+          "y": 280
+        },
+        "action.add_one": {
+          "x": 760,
+          "y": 160
+        },
+        "action.script_1771507062991": {
+          "x": 1480,
+          "y": 360
+        },
+        "trigger.tick_1s": {
+          "x": 280,
+          "y": 510
+        },
+        "action.halooo": {
+          "x": 760,
+          "y": 250
+        },
+        "action.debug": {
+          "x": 1340,
+          "y": 350
+        },
+        "taiyo1.alarm.test": {
+          "x": 790,
+          "y": 400
+        },
+        "trigger.tick_1772113072548": {
+          "x": 440,
+          "y": 390
+        },
+        "Taiyo1.PLC.PaperConsupCounter": {
+          "x": 1260,
+          "y": 730
+        },
+        "Taiyo1.Events.EventDetector": {
+          "x": 1830,
+          "y": 800
+        },
+        "trigger.watch_1774493877448": {
+          "x": 380,
+          "y": 310
+        },
+        "trigger.watch_1774493897105": {
+          "x": 2520,
+          "y": 380
+        },
+        "act_unezz2y0": {
+          "x": 2240,
+          "y": 580
+        },
+        "act_h7a2huxz": {
+          "x": 840,
+          "y": 880
+        },
+        "act_potgd362": {
+          "x": 840,
+          "y": 480
+        },
+        "act_kqz63n0a": {
+          "x": 1320,
+          "y": 880
+        },
+        "act_dlgwztd0": {
+          "x": 840,
+          "y": 1060
+        },
+        "act_9yue80v9": {
+          "x": 840,
+          "y": 1280
+        },
+        "act_xbimncoj": {
+          "x": 1780,
+          "y": 560
+        },
+        "act_9elon898": {
+          "x": 1940,
+          "y": 1120
+        },
+        "act_jg01wnrl": {
+          "x": 1940,
+          "y": 1000
+        },
+        "act_z1kdf1oo": {
+          "x": 1800,
+          "y": 1420
+        },
+        "act_pl0l5mbb": {
+          "x": 840,
+          "y": 340
+        },
+        "act_7mt52ha7": {
+          "x": 1320,
+          "y": 440
+        },
+        "act_3ptblup8": {
+          "x": 1320,
+          "y": 580
+        },
+        "trg27d4af76": {
+          "x": 300,
+          "y": 1060
+        },
+        "trgec80dda2": {
+          "x": 300,
+          "y": 860
+        },
+        "trg76cb39f4": {
+          "x": 300,
+          "y": 1280
+        },
+        "trg953d3e18": {
+          "x": 300,
+          "y": 480
+        },
+        "trg00817eba": {
+          "x": 300,
+          "y": 340
+        },
+        "event.open.evt_mi7efnj6": {
+          "x": 1340,
+          "y": 1040
+        },
+        "event.close.evt_kh9ymm63": {
+          "x": 1340,
+          "y": 1160
+        },
+        "event.open.evt_26x3uvjr": {
+          "x": 1340,
+          "y": 1300
+        }
+      }
+    }
+  ],
+  "triggerTemplates": [
+    {
+      "id": "trg_y12o0byg",
+      "name": "1s trigger",
+      "description": "",
+      "type": "interval",
+      "enabled": true,
+      "intervalMs": 1000,
+      "activeFrom": "",
+      "activeTo": "",
+      "watchPath": "",
+      "message": {
+        "payload": 0
       }
     }
   ]

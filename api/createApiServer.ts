@@ -13,6 +13,7 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
   const port = options.port ?? 4000;
   const host = options.host ?? "0.0.0.0";
   const allowedCorsOrigins = [
+    "*",
     "http://192.168.68.99:3333",
     "http://192.168.68.99:3002",
     "http://192.168.68.99:3003",
@@ -28,7 +29,6 @@ export default function createApiServer(runtime: Runtime, options: { port?: numb
     "http://192.168.68.9:4000",
     "http://192.168.68.9:3002",
     "http://192.168.68.9:3003",
-    "http://192.168.68.106:3001"
   ];
 
   let nestApp: INestApplication | null = null;

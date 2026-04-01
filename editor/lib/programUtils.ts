@@ -15,7 +15,8 @@ import type {
   ScriptOutputDefinition,
   ScriptVariableBindingDefinition,
   ScriptTemplateDefinition,
-  TriggerDefinition
+  TriggerDefinition,
+  TriggerTemplateDefinition
 } from "../types/program";
 
 function normalizeScriptOutputs(raw: unknown): ScriptOutputDefinition[] {
@@ -631,6 +632,15 @@ export function normalizeProgram(program: Program): Program {
         .filter((item) => item.id.length > 0)
     : [];
 
+  const legacyTriggerTemplateIdByNodeId = new Map<string, string>();
+  const normalizedTriggerTemplates: TriggerTemplateDefinition[] = Array.isArray(program.triggerTemplates) && program.triggerTemplates.length > 0
+    ? program.triggerTemplates.map((item, index) => normalizeTriggerTemplate(item, index))
+    : (program.triggers || []).map((item, index) => {
+        const normalized = normalizeTriggerTemplate(item, index);
+        legacyTriggerTemplateIdByNodeId.set(String(item.id || "").trim(), normalized.id);
+        return normalized;
+      });
+
   const normalizeFlowNode = (node: unknown): FlowNodeDefinition | null => {
     if (!node || typeof node !== "object") return null;
     const rawNode = node as Record<string, unknown>;
@@ -696,17 +706,25 @@ export function normalizeProgram(program: Program): Program {
               cronExpression: String(rawConfig.cronExpression ?? ""),
               timezone: String(rawConfig.timezone ?? ""),
               activeFrom: String(rawConfig.activeFrom ?? ""),
-              activeTo: String(rawConfig.activeTo ?? "")
+              activeTo: String(rawConfig.activeTo ?? ""),
+              message:
+                rawConfig.message && typeof rawConfig.message === "object"
+                  ? rawConfig.message
+                  : { payload: 0 }
             };
     const id = String(rawNode.id || "").trim();
     if (!id) return null;
+    const inheritedTriggerTemplateId =
+      normalizedKind === "trigger"
+        ? String(rawNode.templateId || legacyTriggerTemplateIdByNodeId.get(id) || legacyTriggerTemplateIdByNodeId.get(String(rawNode.refId || "").trim()) || "").trim()
+        : "";
     return {
       id,
       kind: normalizedKind,
       refId: String(rawNode.refId || "").trim(),
       label: String(rawNode.label || "").trim(),
       enabled: rawNode.enabled !== false,
-      templateId: String(rawNode.templateId || "").trim(),
+      templateId: normalizedKind === "trigger" ? inheritedTriggerTemplateId : String(rawNode.templateId || "").trim(),
       config: normalizedConfig
     };
   };
@@ -779,6 +797,7 @@ export function normalizeProgram(program: Program): Program {
     activeFlowId: activeFlow.id,
     flowDefinitions: normalizedFlowDefinitions,
     eventTemplates: normalizedEventTemplates,
+    triggerTemplates: normalizedTriggerTemplates,
     triggers: (program.triggers || []).map(
       (trigger): TriggerDefinition => {
         const rawType = String((trigger as { type?: unknown }).type || "interval");
@@ -840,3 +859,49 @@ export function normalizeProgram(program: Program): Program {
     assets: normalizedAssets
   });
 }
+  const normalizeTriggerTemplate = (
+    trigger: Partial<TriggerTemplateDefinition> | Partial<TriggerDefinition>,
+    index: number
+  ): TriggerTemplateDefinition => {
+    const rawType = String((trigger as { type?: unknown }).type || "interval");
+    const normalizedType =
+      rawType === "watcher_set"
+        ? "watcher_set"
+        : rawType === "watcher_valuechange"
+          ? "watcher_valuechange"
+          : rawType === "watcher_event_open"
+            ? "watcher_event_open"
+            : rawType === "watcher_event_close" || rawType === "watcher_event_falling"
+              ? "watcher_event_close"
+              : "interval";
+    const baseName =
+      normalizedType === "interval"
+        ? "Interval Trigger"
+        : normalizedType === "watcher_set"
+          ? "Attribute Set Trigger"
+          : normalizedType === "watcher_valuechange"
+            ? "Attribute Value Change Trigger"
+            : normalizedType === "watcher_event_open"
+              ? "Event Open Trigger"
+              : "Event Close Trigger";
+    return {
+      id: String((trigger as { id?: unknown }).id || `trigger_template_${index + 1}`).trim() || `trigger_template_${index + 1}`,
+      name: String((trigger as { name?: unknown; label?: unknown }).name ?? (trigger as { label?: unknown }).label ?? baseName).trim() || baseName,
+      description: String((trigger as { description?: unknown }).description || ""),
+      type: normalizedType,
+      enabled: (trigger as { enabled?: unknown }).enabled !== false,
+      intervalMs: Math.max(1, Number((trigger as { intervalMs?: unknown }).intervalMs) || 1000),
+      activeFrom: String((trigger as { activeFrom?: unknown }).activeFrom || "").trim(),
+      activeTo: String((trigger as { activeTo?: unknown }).activeTo || "").trim(),
+      watchPath:
+        normalizedType === "watcher_set" || normalizedType === "watcher_valuechange"
+          ? String((trigger as { watchPath?: unknown }).watchPath || "").trim() || "*.*.*"
+          : normalizedType === "watcher_event_open" || normalizedType === "watcher_event_close"
+            ? String((trigger as { watchPath?: unknown }).watchPath || "").trim() || "*"
+            : String((trigger as { watchPath?: unknown }).watchPath || "").trim(),
+      message:
+        (trigger as { message?: unknown }).message && typeof (trigger as { message?: unknown }).message === "object"
+          ? (((trigger as { message?: unknown }).message as Record<string, unknown>) || { payload: 0 })
+          : { payload: 0 }
+    };
+  };

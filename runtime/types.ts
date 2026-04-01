@@ -510,6 +510,7 @@ export interface EventStore {
 export interface ProgramDefinition {
   assets?: unknown;
   scriptTemplates?: unknown[];
+  triggerTemplates?: unknown[];
   activeFlowId?: unknown;
   flowDefinitions?: unknown[];
   flows?: { id?: unknown; name?: unknown; enabled?: unknown; variables?: unknown; nodes?: unknown[]; links?: unknown[]; nodePositions?: unknown };

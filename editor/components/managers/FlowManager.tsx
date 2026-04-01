@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, CircularProgress } from "@mui/material";
-import type { EventTemplateDefinition, FlowDefinition, FlowLink, FlowVariableDefinition, NodePosition, ScriptTemplateDefinition } from "../../types/program";
+import type { EventTemplateDefinition, FlowDefinition, FlowLink, FlowVariableDefinition, NodePosition, ScriptTemplateDefinition, TriggerTemplateDefinition } from "../../types/program";
 
 export type FlowPaletteItem =
   | { type: "existing-node"; nodeId: string }
+  | { type: "builtin-trigger"; triggerType: "interval" | "watcher_set" | "watcher_valuechange" | "watcher_event_open" | "watcher_event_close"; label: string }
+  | { type: "builtin-action"; actionType: "debug"; label: string }
   | { type: "script-template"; templateId: string; label: string }
   | { type: "event-template-open"; templateId: string; label: string }
   | { type: "event-template-close"; templateId: string; label: string };
@@ -13,6 +15,7 @@ interface FlowManagerProps {
   selectedFlowId?: string;
   activeFlowVariables?: FlowVariableDefinition[];
   triggerIds: string[];
+  triggerTemplates: TriggerTemplateDefinition[];
   actionIds: string[];
   eventNodeIds?: string[];
   scriptTemplates: ScriptTemplateDefinition[];
@@ -59,6 +62,7 @@ type FlowEditorNode = {
 
 type PaletteItem = {
   key: string;
+  section: "watchers" | "timed" | "actions" | "events";
   label: string;
   subtitle: string;
   fillColor: string;
@@ -164,27 +168,50 @@ export default function FlowManager({
     [allNodes, nodeLabels, nodeOutputs, nodeSubtitles]
   );
 
-  const placedIds = useMemo(() => new Set(Object.keys(nodePositions || {})), [nodePositions]);
-
   const paletteItems = useMemo<PaletteItem[]>(() => {
     const items: PaletteItem[] = [];
 
-    for (const node of diagramNodes) {
-      if (node.kind !== "trigger") continue;
-      if (placedIds.has(node.id)) continue;
+    items.push({
+      key: "builtin-trigger:interval",
+      section: "timed",
+      label: "Timed Trigger",
+      subtitle: "Built-in interval trigger",
+      fillColor: "#4b5563",
+      borderColor: "#22d3ee",
+      payload: { type: "builtin-trigger", triggerType: "interval", label: "Timed Trigger" }
+    });
+
+    [
+      { type: "watcher_set" as const, label: "Watcher Set", subtitle: "Built-in attribute set watcher" },
+      { type: "watcher_valuechange" as const, label: "Watcher Value Change", subtitle: "Built-in attribute value change watcher" },
+      { type: "watcher_event_open" as const, label: "Watcher Event Open", subtitle: "Built-in event open watcher" },
+      { type: "watcher_event_close" as const, label: "Watcher Event Close", subtitle: "Built-in event close watcher" }
+    ].forEach((item) => {
       items.push({
-        key: `trigger:${node.id}`,
-        label: node.label,
-        subtitle: node.id,
-        fillColor: node.fillColor,
-        borderColor: node.borderColor,
-        payload: { type: "existing-node", nodeId: node.id }
+        key: `builtin-trigger:${item.type}`,
+        section: "watchers",
+        label: item.label,
+        subtitle: item.subtitle,
+        fillColor: "#4b5563",
+        borderColor: "#22d3ee",
+        payload: { type: "builtin-trigger", triggerType: item.type, label: item.label }
       });
-    }
+    });
+
+    items.push({
+      key: "builtin-action:debug",
+      section: "actions",
+      label: "Debug",
+      subtitle: "Built-in debug action",
+      fillColor: "#475569",
+      borderColor: "#94a3b8",
+      payload: { type: "builtin-action", actionType: "debug", label: "Debug" }
+    });
 
     for (const template of scriptTemplates) {
       items.push({
         key: `script-template:${template.id}`,
+        section: "actions",
         label: template.name,
         subtitle: template.id,
         fillColor: "#01806b",
@@ -196,6 +223,7 @@ export default function FlowManager({
     for (const template of eventTemplates) {
       items.push({
         key: `event-template-open:${template.id}`,
+        section: "events",
         label: `OPEN ${template.id}`,
         subtitle: template.eventPathTemplate || template.id,
         fillColor: "#3366e8",
@@ -204,6 +232,7 @@ export default function FlowManager({
       });
       items.push({
         key: `event-template-close:${template.id}`,
+        section: "events",
         label: `CLOSE ${template.id}`,
         subtitle: template.eventPathTemplate || template.id,
         fillColor: "#3366e8",
@@ -213,7 +242,7 @@ export default function FlowManager({
     }
 
     return items;
-  }, [diagramNodes, eventTemplates, placedIds, scriptTemplates]);
+  }, [eventTemplates, scriptTemplates]);
 
   const syncToIframe = () => {
     const target = iframeRef.current?.contentWindow;

@@ -30,12 +30,14 @@ import type {
   AssetFrameworkDefinition,
   EventActionBindingDefinition,
   EventTemplateDefinition,
+  EventTemplateInputBindingDefinition,
   FlowNodeDefinition,
   ScriptTemplateDefinition,
   ScriptVariableBindingDefinition
 } from "../../types/program";
 
 type InspectorTarget =
+  | { kind: "trigger"; id: string }
   | { kind: "action"; id: string }
   | { kind: "event"; id: string }
   | null;
@@ -47,6 +49,8 @@ interface FlowNodeInspectorDrawerProps {
   scriptTemplates: ScriptTemplateDefinition[];
   eventTemplates: EventTemplateDefinition[];
   assets: AssetFrameworkDefinition;
+  watchPathOptions?: string[];
+  eventWatchPathOptions?: string[];
   flowVariableNames?: string[];
   onOpenScriptTemplateManager?: (templateId: string) => void;
   onOpenEventTemplateManager?: (templateId: string) => void;
@@ -135,6 +139,198 @@ function defaultEventBindingForVariable(name: string): EventActionBindingDefinit
     return { source: "msg_path", attributePath: "ts" };
   }
   return { source: "msg_path", attributePath: `payload.${name}` };
+}
+
+function normalizeEventBinding(
+  binding: EventActionBindingDefinition,
+  fallbackName?: string
+): EventActionBindingDefinition {
+  const source = binding.source || defaultEventBindingForVariable(fallbackName || "").source;
+  if (source === "asset" || source === "attribute" || source === "flow_variable" || source === "msg_path") {
+    return {
+      source,
+      attributePath:
+        typeof binding.attributePath === "string"
+          ? binding.attributePath
+          : defaultEventBindingForVariable(fallbackName || "").attributePath ?? ""
+    };
+  }
+  if (source === "static_boolean") {
+    return {
+      source,
+      staticValue: binding.staticValue === true
+    };
+  }
+  if (source === "static_number") {
+    return {
+      source,
+      staticValue: Number(binding.staticValue ?? 0)
+    };
+  }
+  if (source === "static_array" || source === "static_object") {
+    return {
+      source,
+      staticValue: binding.staticValue
+    };
+  }
+  return {
+    source: source || "static_string",
+    staticValue: binding.staticValue ?? ""
+  };
+}
+
+function eventTemplateBindingToActionBinding(
+  binding: EventTemplateInputBindingDefinition
+): EventActionBindingDefinition {
+  const fallback = defaultEventBindingForVariable(binding.name);
+  const source = binding.source || fallback.source;
+  if (source === "asset" || source === "attribute" || source === "flow_variable" || source === "msg_path") {
+    return {
+      source,
+      attributePath:
+        typeof binding.defaultValue === "string"
+          ? binding.defaultValue
+          : fallback.attributePath ?? ""
+    };
+  }
+  if (source === "static_boolean") {
+    return {
+      source,
+      staticValue: binding.defaultValue === true
+    };
+  }
+  if (source === "static_number") {
+    return {
+      source,
+      staticValue: Number(binding.defaultValue ?? 0)
+    };
+  }
+  return {
+    source,
+    staticValue: binding.defaultValue ?? ""
+  };
+}
+
+function TriggerNodeInspector({
+  node,
+  watchPathOptions,
+  eventWatchPathOptions,
+  onUpdateNode
+}: {
+  node: FlowNodeDefinition;
+  watchPathOptions: string[];
+  eventWatchPathOptions: string[];
+  onUpdateNode: (id: string, patch: Partial<FlowNodeDefinition>) => void;
+}) {
+  const config = (node.config || {}) as Record<string, unknown>;
+  const triggerType = String(config.type || "interval");
+  const message = config.message && typeof config.message === "object" ? (config.message as Record<string, unknown>) : { payload: 0 };
+
+  return (
+    <Box sx={{ display: "grid", gap: 1.25 }}>
+      <Typography variant="h6">Trigger Detail</Typography>
+      <TextField label="Node ID" value={node.id} disabled helperText="Internal ID is generated automatically and cannot be edited." />
+      <TextField label="Label" value={node.label ?? ""} onChange={(e) => onUpdateNode(node.id, { label: e.target.value })} />
+      <TextField
+        label="Description"
+        value={String(config.description ?? "")}
+        onChange={(e) =>
+          onUpdateNode(node.id, {
+            config: {
+              ...config,
+              description: e.target.value
+            }
+          })
+        }
+      />
+      <FormControlLabel
+        control={<Switch checked={node.enabled !== false} onChange={(_e, checked) => onUpdateNode(node.id, { enabled: checked })} />}
+        label="Trigger Enabled"
+      />
+      <TextField label="Trigger Type" value={triggerType} disabled />
+      {triggerType === "interval" && (
+        <TextField
+          label="Interval (ms)"
+          type="number"
+          value={Math.max(1, Number(config.intervalMs) || 1000)}
+          onChange={(e) =>
+            onUpdateNode(node.id, {
+              config: {
+                ...config,
+                intervalMs: Math.max(1, Number(e.target.value) || 1)
+              }
+            })
+          }
+        />
+      )}
+      {triggerType === "interval" && (
+        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
+          <TextField
+            label="Active From (HH:mm)"
+            value={String(config.activeFrom ?? "")}
+            onChange={(e) =>
+              onUpdateNode(node.id, {
+                config: {
+                  ...config,
+                  activeFrom: e.target.value
+                }
+              })
+            }
+          />
+          <TextField
+            label="Active To (HH:mm)"
+            value={String(config.activeTo ?? "")}
+            onChange={(e) =>
+              onUpdateNode(node.id, {
+                config: {
+                  ...config,
+                  activeTo: e.target.value
+                }
+              })
+            }
+          />
+        </Box>
+      )}
+      {(triggerType === "watcher_set" ||
+        triggerType === "watcher_valuechange" ||
+        triggerType === "watcher_event_open" ||
+        triggerType === "watcher_event_close") && (
+        <Autocomplete
+          freeSolo
+          options={
+            triggerType === "watcher_event_open" || triggerType === "watcher_event_close"
+              ? eventWatchPathOptions
+              : watchPathOptions
+          }
+          value={String(config.watchPath ?? ((triggerType === "watcher_event_open" || triggerType === "watcher_event_close") ? "*" : "*.*.*"))}
+          onInputChange={(_e, value) =>
+            onUpdateNode(node.id, {
+              config: {
+                ...config,
+                watchPath: value
+              }
+            })
+          }
+          renderInput={(params) => <TextField {...params} label="Watch Path (wildcard supported)" />}
+        />
+      )}
+      <TextField
+        label="Initial Payload"
+        value={serializeValue(message.payload ?? 0)}
+        onChange={(e) =>
+          onUpdateNode(node.id, {
+            config: {
+              ...config,
+              message: {
+                ...message,
+                payload: parseMaybeJson(e.target.value)
+              }
+            }
+          })
+        }
+      />
+    </Box>
+  );
 }
 
 function collectEventTemplateVariables(template: EventTemplateDefinition | undefined): string[] {
@@ -504,6 +700,29 @@ function EventNodeInspector({
   const primaryConfig = ((primaryNode.config || {}) as Record<string, unknown>);
   const selectedTemplate = eventTemplates.find((item) => item.id === (openNode?.templateId || closeNode?.templateId || primaryNode.templateId));
   const templateVariables = useMemo(() => collectEventTemplateVariables(selectedTemplate), [selectedTemplate]);
+  const templateBindingMap = useMemo(
+    () =>
+      Object.fromEntries(
+        ((selectedTemplate?.bindings || []) as EventTemplateInputBindingDefinition[])
+          .filter((item) => String(item.name || "").trim())
+          .map((item) => [String(item.name).trim(), eventTemplateBindingToActionBinding(item)])
+      ) as Record<string, EventActionBindingDefinition>,
+    [selectedTemplate]
+  );
+  const openBindings = useMemo(
+    () => ((openConfig.bindings || {}) as Record<string, EventActionBindingDefinition>),
+    [openConfig.bindings]
+  );
+  const closeBindings = useMemo(
+    () => ((closeConfig.bindings || {}) as Record<string, EventActionBindingDefinition>),
+    [closeConfig.bindings]
+  );
+  const mergedBindings = useMemo(() => {
+    const next: Record<string, EventActionBindingDefinition> = {};
+    for (const [key, value] of Object.entries(closeBindings)) next[key] = normalizeEventBinding(value, key);
+    for (const [key, value] of Object.entries(openBindings)) next[key] = normalizeEventBinding(value, key);
+    return next;
+  }, [closeBindings, openBindings]);
 
   const updateBoth = (patchForOpen: Partial<FlowNodeDefinition> | null, patchForClose?: Partial<FlowNodeDefinition> | null) => {
     if (openNode && patchForOpen) onUpdateNode(openNode.id, patchForOpen);
@@ -609,20 +828,25 @@ function EventNodeInspector({
                   <TableCell sx={{ minWidth: 320 }}>Value</TableCell>
                 </TableRow>
               </TableHead>
-              <TableBody>
-                {templateVariables.map((name) => {
-                  const openBindings = ((openConfig.bindings || {}) as Record<string, EventActionBindingDefinition>);
-                  const closeBindings = ((closeConfig.bindings || {}) as Record<string, EventActionBindingDefinition>);
-                  const binding = openBindings?.[name] || closeBindings?.[name] || defaultEventBindingForVariable(name);
+                <TableBody>
+                  {templateVariables.map((name) => {
+                  const binding =
+                    mergedBindings[name] ||
+                    templateBindingMap[name] ||
+                    defaultEventBindingForVariable(name);
                   const effectiveSource = binding.source;
 
                   const commitBinding = (patch: Partial<EventActionBindingDefinition>) => {
-                    const nextBindings = {
-                      ...openBindings,
-                      [name]: {
+                    const nextBinding = normalizeEventBinding(
+                      {
                         ...binding,
                         ...patch
-                      }
+                      },
+                      name
+                    );
+                    const nextBindings = {
+                      ...mergedBindings,
+                      [name]: nextBinding
                     };
                     if (openNode) {
                       onUpdateNode(openNode.id, {
@@ -650,7 +874,11 @@ function EventNodeInspector({
                           size="small"
                           fullWidth
                           value={effectiveSource}
-                          onChange={(e) => commitBinding({ source: e.target.value as EventActionBindingDefinition["source"] })}
+                          onChange={(e) =>
+                            commitBinding({
+                              source: e.target.value as EventActionBindingDefinition["source"]
+                            })
+                          }
                         >
                           <MenuItem value="asset">asset</MenuItem>
                           <MenuItem value="attribute">attribute</MenuItem>
@@ -666,8 +894,12 @@ function EventNodeInspector({
                           <Autocomplete
                             freeSolo
                             options={effectiveSource === "asset" ? assetPaths : effectiveSource === "attribute" ? assetAttributePaths : flowVariableNames}
-                            value={binding.attributePath ?? ""}
-                            onInputChange={(_e, value) => commitBinding({ attributePath: value })}
+                            inputValue={binding.attributePath ?? ""}
+                            onInputChange={(_e, value, reason) => {
+                              if (reason === "reset") return;
+                              commitBinding({ attributePath: value });
+                            }}
+                            onChange={(_e, value) => commitBinding({ attributePath: typeof value === "string" ? value : "" })}
                             renderInput={(params) => <TextField {...params} size="small" />}
                           />
                         ) : effectiveSource === "static_boolean" ? (
@@ -723,6 +955,8 @@ export default function FlowNodeInspectorDrawer(props: FlowNodeInspectorDrawerPr
     scriptTemplates,
     eventTemplates,
     assets,
+    watchPathOptions = [],
+    eventWatchPathOptions = ["*"],
     flowVariableNames = [],
     onOpenScriptTemplateManager,
     onOpenEventTemplateManager,
@@ -731,6 +965,7 @@ export default function FlowNodeInspectorDrawer(props: FlowNodeInspectorDrawerPr
     onUpdateNode
   } = props;
 
+  const triggerNode = target?.kind === "trigger" ? nodes.find((item) => item.kind === "trigger" && item.id === target.id) || null : null;
   const actionNode = target?.kind === "action" ? nodes.find((item) => item.id === target.id) || null : null;
   const exactEventNode =
     target?.kind === "event"
@@ -762,6 +997,14 @@ export default function FlowNodeInspectorDrawer(props: FlowNodeInspectorDrawerPr
       </Box>
       <Box sx={{ p: 1.5, overflow: "auto", ...scrollBothOverflowSx }}>
         {!target && <Typography variant="body2" color="text.secondary">Select a node.</Typography>}
+        {target?.kind === "trigger" && triggerNode && (
+          <TriggerNodeInspector
+            node={triggerNode}
+            watchPathOptions={watchPathOptions}
+            eventWatchPathOptions={eventWatchPathOptions}
+            onUpdateNode={onUpdateNode}
+          />
+        )}
         {target?.kind === "action" && actionNode && (
           <ScriptNodeInspector
             node={actionNode}
