@@ -342,9 +342,6 @@ export default function ActionManager({
   const selectedAction = actions.find((item) => item.id === selectedActionId);
   const selectedTemplate = scriptTemplates.find((item) => item.id === selectedTemplateId);
   const selectedActionTemplate = scriptTemplates.find((item) => item.id === selectedAction?.templateId);
-  const isTemplateDuplicationBlocked =
-    !!selectedActionTemplate && selectedActionTemplate.allowTemplateReuse === false;
-  const isSelectedActionDuplicationBlocked = isTemplateDuplicationBlocked;
   const selectedActionBindingNames = useMemo(
     () =>
       Array.from(
@@ -519,7 +516,7 @@ export default function ActionManager({
                 <Button
                   fullWidth
                   variant="outlined"
-                  disabled={!selectedAction || isSelectedActionDuplicationBlocked}
+                  disabled={!selectedAction}
                   onClick={() => selectedAction && onDuplicateAction(selectedAction.id)}
                 >
                   Duplicate
@@ -811,7 +808,6 @@ export default function ActionManager({
                   <Button
                     size="small"
                     variant="outlined"
-                    disabled={isSelectedActionDuplicationBlocked}
                     onClick={() => onDuplicateAction(selectedAction.id)}
                   >
                     Duplicate Action
@@ -1068,21 +1064,6 @@ export default function ActionManager({
                     </Table>
                   </TableContainer>
                 </Box>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={selectedTemplate.allowTemplateReuse !== false}
-                      onChange={(_event, checked) =>
-                        onUpdateScriptTemplate(selectedTemplate.id, { allowTemplateReuse: checked })
-                      }
-                    />
-                  }
-                  label="Allow Template Reuse"
-                />
-                <Typography variant="caption" color="text.secondary">
-                  If disabled, this template becomes singleton: only one action instance can use it.
-                </Typography>
-
                 <Box sx={{ display: "grid", gap: 0.75 }}>
                   <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <Typography variant="subtitle2">Variable Bindings</Typography>

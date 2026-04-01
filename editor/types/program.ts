@@ -248,8 +248,6 @@ export interface ScriptTemplateDefinition {
   description?: string;
   script: string;
   outputs?: ScriptOutputDefinition[];
-  allowTemplateReuse?: boolean;
-  allowActionDuplication?: boolean;
   variableBindings?: ScriptVariableBindingDefinition[];
 }
 

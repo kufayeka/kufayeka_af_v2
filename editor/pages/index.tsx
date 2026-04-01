@@ -506,7 +506,7 @@ function historyReducer(state: HistoryState, action: HistoryAction): HistoryStat
 }
 
 export default function HomePage() {
-  const [tab, setTab] = useState(2);
+  const [tab, setTab] = useState(0);
   const [history, dispatch] = useReducer(historyReducer, {
     past: [],
     present: EMPTY_PROGRAM,
@@ -1280,13 +1280,6 @@ export default function HomePage() {
   const duplicateAction = (id: string): void => {
     const source = flowNodes.find((item) => item.kind === "action" && item.id === id);
     if (!source) return;
-    const sourceTemplate = source.templateId
-      ? program.scriptTemplates.find((item) => item.id === source.templateId)
-      : null;
-    if (sourceTemplate && sourceTemplate.allowTemplateReuse === false) {
-      setStatus(`Duplicate blocked: template "${sourceTemplate.name}" does not allow template reuse`);
-      return;
-    }
 
     const segments = source.id.split(".").filter(Boolean);
     const leaf = segments.length > 0 ? segments[segments.length - 1] : source.id;
@@ -1575,15 +1568,6 @@ export default function HomePage() {
       const template = nextTemplateId
         ? program.scriptTemplates.find((item) => item.id === nextTemplateId)
         : null;
-      if (
-        nextTemplateId &&
-        template &&
-        template.allowTemplateReuse === false &&
-        flowNodes.some((item) => item.kind === "action" && item.id !== id && item.templateId === nextTemplateId)
-      ) {
-        setStatus(`Template "${template.name}" is singleton and already used by another action`);
-        return;
-      }
       const currentConfig = (current.config || {}) as Record<string, unknown>;
       resolvedPatch.script = template ? template.script : patch.script ?? String(currentConfig.script ?? "");
       const templateOutputs =
@@ -1702,7 +1686,6 @@ export default function HomePage() {
       description: "",
       script: "send(msg);",
       outputs: [{ name: "out", order: 1, description: "" }],
-      allowTemplateReuse: true,
       variableBindings: []
     };
     applyProgramUpdate((prev) => ({
@@ -1869,17 +1852,6 @@ export default function HomePage() {
     id: string,
     patch: Partial<ScriptTemplateDefinition>
   ): void => {
-    if (patch.allowTemplateReuse === false) {
-      const usageCount = (program.flowDefinitions || []).reduce(
-        (sum, flow) => sum + (flow.nodes || []).filter((node) => node.kind === "action" && node.templateId === id).length,
-        0
-      );
-      if (usageCount > 1) {
-        const templateName = program.scriptTemplates.find((item) => item.id === id)?.name || id;
-        setStatus(`Cannot disable template reuse: template "${templateName}" is used by ${usageCount} actions`);
-        return;
-      }
-    }
     applyProgramUpdate((prev) => {
       const nextScriptTemplates = upsertById(prev.scriptTemplates, id, patch);
       const updatedTemplate = nextScriptTemplates.find((item) => item.id === id);
@@ -2345,12 +2317,12 @@ export default function HomePage() {
         onOpenScriptTemplateManager={(templateId) => {
           setSelectedScriptTemplateId(templateId);
           setInspectorTarget(null);
-          setTab(3);
+          setTab(2);
         }}
         onOpenEventTemplateManager={(templateId) => {
           setSelectedEventTemplateId(templateId);
           setInspectorTarget(null);
-          setTab(4);
+          setTab(3);
         }}
         onClose={() => setInspectorTarget(null)}
         onRenameNode={(oldId, newId) => {

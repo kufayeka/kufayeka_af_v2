@@ -837,7 +837,6 @@ export function normalizeProgram(program: Program): Program {
         description: template.description ?? "",
         script: template.script ?? "send(msg);",
         outputs: normalizeScriptOutputs((template as { outputs?: unknown[] }).outputs),
-        allowTemplateReuse: (template.allowTemplateReuse ?? template.allowActionDuplication) !== false,
         variableBindings: Array.isArray(template.variableBindings)
           ? template.variableBindings.map((binding) =>
               normalizeBinding(binding as ScriptVariableBindingDefinition)
