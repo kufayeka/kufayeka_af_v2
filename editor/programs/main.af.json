@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "Kufayeka AF Program",
+    "version": 1
+  },
+  "eventTemplates": [],
+  "triggers": [],
+  "scriptTemplates": [],
+  "flows": {
+    "nodes": [],
+    "links": []
+  },
+  "assets": {
+    "assets": [],
+    "attributeTemplates": []
+  }
+}

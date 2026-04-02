@@ -3,7 +3,7 @@ import {
   filterSerializableGlobalEntries,
   isInternalGlobalKey,
   toSerializableJsonValue
-} from "../../runtime/globalStoreUtils";
+} from "../../runtime/persistence/globalStoreUtils";
 import { RuntimeApiService } from "../runtime-api.service";
 
 @Injectable()

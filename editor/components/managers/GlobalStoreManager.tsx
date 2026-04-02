@@ -38,13 +38,14 @@ export default function GlobalStoreManager({ onStatus }: GlobalStoreManagerProps
   const [newKey, setNewKey] = useState("");
   const [valueDraft, setValueDraft] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const runtimeGlobalApiBase = useMemo(() => "/api/runtime/global", []);
 
   const keys = useMemo(() => Object.keys(entries).sort((a, b) => a.localeCompare(b)), [entries]);
 
   const refresh = async (): Promise<void> => {
     setIsBusy(true);
     try {
-      const res = await fetch("/api/runtime-global");
+      const res = await fetch(runtimeGlobalApiBase);
       const data = (await res.json()) as { data?: Record<string, unknown>; error?: string };
       if (!res.ok) {
         onStatus(`Global load error: ${data.error || `HTTP ${res.status}`}`);
@@ -66,7 +67,7 @@ export default function GlobalStoreManager({ onStatus }: GlobalStoreManagerProps
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [runtimeGlobalApiBase]);
 
   useEffect(() => {
     if (!selectedKey) return;
@@ -82,7 +83,7 @@ export default function GlobalStoreManager({ onStatus }: GlobalStoreManagerProps
     setIsBusy(true);
     try {
       const value = parseMaybeJson(valueText);
-      const res = await fetch(`/api/runtime-global/${encodeURIComponent(normalizedKey)}`, {
+      const res = await fetch(`${runtimeGlobalApiBase}/${encodeURIComponent(normalizedKey)}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ value })
@@ -112,7 +113,7 @@ export default function GlobalStoreManager({ onStatus }: GlobalStoreManagerProps
     setIsBusy(true);
     try {
       const keyToDelete = selectedKey;
-      const res = await fetch(`/api/runtime-global/${encodeURIComponent(keyToDelete)}`, {
+      const res = await fetch(`${runtimeGlobalApiBase}/${encodeURIComponent(keyToDelete)}`, {
         method: "DELETE"
       });
       const data = (await res.json()) as { deleted?: boolean; error?: string };
@@ -162,6 +163,9 @@ export default function GlobalStoreManager({ onStatus }: GlobalStoreManagerProps
 
       <Paper variant="outlined" sx={{ p: 1.25, display: "grid", gap: 1 }}>
         <Typography variant="h6">Global Store</Typography>
+        <Typography variant="caption" sx={{ color: "#64748b" }}>
+          Live runtime state. Perubahan di sini langsung mengubah global store runtime aktif.
+        </Typography>
         <TextField
           size="small"
           label="New Key"

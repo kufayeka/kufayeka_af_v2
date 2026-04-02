@@ -1,16 +1,19 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type Runtime from "../runtime/Runtime";
-import { ensureAssetStorage } from "../runtime/assetStorage";
-import { ensureEventStore } from "../runtime/eventStore";
 import {
   closeEventFromTemplate,
   closeEventsWithAutoCapture,
-  normalizeEventTemplates,
   openEventFromTemplate
-} from "../runtime/eventTemplateRuntime";
-import { computeTagID } from "../runtime/historianBridge";
-import type { DbConnectionManager } from "../runtime/dbConnectionManager";
-import type { AttributeQueryMatch, EventTemplateDefinition, HistorianTarget } from "../runtime/types";
+} from "../runtime/event/template/EventTemplateExports";
+import { computeTagID } from "../runtime/historian/HistorianBridgeFactory";
+import type { DbConnectionManager } from "../runtime/db/dbConnectionManager";
+import type {
+  AssetStore,
+  AttributeQueryMatch,
+  EventStore,
+  EventTemplateDefinition,
+  HistorianTarget
+} from "../runtime/core/runtimeTypes";
 import { RUNTIME_INSTANCE } from "./runtime-api.constants";
 import { getErrorMessage } from "./runtime-api.utils";
 
@@ -73,20 +76,22 @@ export type ResolvedPathMatch = {
 
 @Injectable()
 export class RuntimeApiService {
-  readonly assetStore: ReturnType<typeof ensureAssetStorage>;
-  readonly eventStore: ReturnType<typeof ensureEventStore>;
+  readonly assetStore: AssetStore;
+  readonly eventStore: EventStore;
   readonly eventTemplateMap: Map<string, EventTemplateDefinition>;
   readonly historianStore: HistorianStore | null;
   readonly dbConnectionManager: DbConnectionManager | null;
 
   constructor(@Inject(RUNTIME_INSTANCE) private readonly runtime: Runtime) {
-    this.assetStore = ensureAssetStorage(runtime, runtime.getGlobal("assetFramework", {}));
-    this.eventStore = ensureEventStore(runtime);
-    this.eventTemplateMap = new Map<string, EventTemplateDefinition>(
-      normalizeEventTemplates(runtime.getGlobal("eventTemplates", [])).map((item) => [item.id, item])
-    );
+    const composition = runtime.getProgramComposition();
+    if (!composition) {
+      throw new Error("Runtime program composition is not initialized");
+    }
+    this.assetStore = composition.assetStore;
+    this.eventStore = composition.eventStore;
+    this.eventTemplateMap = composition.eventTemplatesById;
     this.historianStore = runtime.getGlobal<HistorianStore | null>("historianStore", null);
-    this.dbConnectionManager = runtime.getGlobal<DbConnectionManager | null>("dbConnectionManager", null);
+    this.dbConnectionManager = composition.dbConnectionManager;
   }
 
   getRuntime(): Runtime {

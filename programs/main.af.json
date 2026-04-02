@@ -282,9 +282,9 @@
         }
       },
       {
-        "id": "event.close.evt_7dqnflgl",
+        "id": "event.close.evt_jrezt6wa",
         "kind": "event_close",
-        "refId": "evt_7dqnflgl",
+        "refId": "evt_jrezt6wa",
         "label": "CLOSE Taiyo2.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -501,9 +501,9 @@
         }
       },
       {
-        "id": "event.open.evt_q89y6ygj",
+        "id": "event.open.evt_z47k07ux",
         "kind": "event_open",
-        "refId": "evt_q89y6ygj",
+        "refId": "evt_z47k07ux",
         "label": "Open JobLifecycle Event",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -537,9 +537,9 @@
         }
       },
       {
-        "id": "event.close.evt_vfyn05gn",
+        "id": "event.close.evt_qdz7l05b",
         "kind": "event_close",
-        "refId": "evt_vfyn05gn",
+        "refId": "evt_qdz7l05b",
         "label": "Close JobLifecycle Event",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -573,9 +573,9 @@
         }
       },
       {
-        "id": "event.open.evt_gdadlo6o",
+        "id": "event.open.evt_kb2indwj",
         "kind": "event_open",
-        "refId": "evt_gdadlo6o",
+        "refId": "evt_kb2indwj",
         "label": "Open JobActivity Event",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -665,67 +665,67 @@
       },
       {
         "from": "act_dlgwztd0",
-        "to": "event.open.evt_q89y6ygj",
+        "to": "event.open.evt_z47k07ux",
         "fromPort": "open event",
         "enabled": true
       },
       {
-        "from": "event.open.evt_q89y6ygj",
+        "from": "event.open.evt_z47k07ux",
         "to": "act_jg01wnrl",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_q89y6ygj",
+        "from": "event.open.evt_z47k07ux",
         "to": "act_z1kdf1oo",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_q89y6ygj",
+        "from": "event.open.evt_z47k07ux",
         "to": "act_z1kdf1oo",
         "fromPort": "onFail",
         "enabled": true
       },
       {
         "from": "act_dlgwztd0",
-        "to": "event.close.evt_vfyn05gn",
+        "to": "event.close.evt_qdz7l05b",
         "fromPort": "close event",
         "enabled": true
       },
       {
-        "from": "event.close.evt_vfyn05gn",
+        "from": "event.close.evt_qdz7l05b",
         "to": "act_9elon898",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.close.evt_vfyn05gn",
+        "from": "event.close.evt_qdz7l05b",
         "to": "act_z1kdf1oo",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "event.close.evt_vfyn05gn",
+        "from": "event.close.evt_qdz7l05b",
         "to": "act_z1kdf1oo",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_gdadlo6o",
+        "from": "event.open.evt_kb2indwj",
         "to": "act_z1kdf1oo",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_gdadlo6o",
+        "from": "event.open.evt_kb2indwj",
         "to": "act_z1kdf1oo",
         "fromPort": "onFail",
         "enabled": true
       },
       {
         "from": "act_9yue80v9",
-        "to": "event.open.evt_gdadlo6o",
+        "to": "event.open.evt_kb2indwj",
         "fromPort": "out",
         "enabled": true
       },
@@ -857,21 +857,21 @@
       },
       "trg953d3e18": {
         "x": 300,
-        "y": 480
+        "y": 540
       },
       "trg00817eba": {
         "x": 300,
-        "y": 340
+        "y": 380
       },
-      "event.open.evt_q89y6ygj": {
+      "event.open.evt_z47k07ux": {
         "x": 1340,
         "y": 1040
       },
-      "event.close.evt_vfyn05gn": {
+      "event.close.evt_qdz7l05b": {
         "x": 1340,
         "y": 1160
       },
-      "event.open.evt_gdadlo6o": {
+      "event.open.evt_kb2indwj": {
         "x": 1340,
         "y": 1300
       }
@@ -886,12 +886,7 @@
         "templateIds": [
           "template_1771647476970_319"
         ],
-        "attributes": {
-          "Timestamp": {
-            "value": "2026-04-01T15:40:29.528Z",
-            "ts": "2026-04-01T15:40:29.529Z"
-          }
-        }
+        "attributes": {}
       },
       {
         "id": "asset_1771561995737_511",
@@ -903,172 +898,7 @@
           "template_1772297957808_540",
           "template_1773204375581_992"
         ],
-        "attributes": {
-          "Machine Speed": {
-            "value": 0,
-            "ts": "2026-04-01T07:57:09.532Z"
-          },
-          "Work Order": {
-            "value": "WO-999",
-            "ts": "2026-04-01T15:30:39.402Z"
-          },
-          "Job Lifecycle": {
-            "value": "load",
-            "ts": "2026-04-01T15:30:51.102Z"
-          },
-          "Machine Operator": {
-            "value": {
-              "value": "90efaa37-9275-41d5-bb90-06352d055f1b",
-              "lable": "Alice Operator"
-            },
-            "ts": "2026-03-31T02:22:20.252Z"
-          },
-          "Job Lifecycle Alarm": {
-            "value": "-",
-            "ts": "2026-04-01T15:30:51.104Z"
-          },
-          "Job Activity": {
-            "value": "Setup/1",
-            "ts": "2026-04-01T15:37:50.611Z"
-          },
-          "Paper Consumed Setup": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.122Z"
-          },
-          "Job Activity Category": {
-            "value": "Setup",
-            "ts": "2026-04-01T15:40:29.326Z"
-          },
-          "Paper Consumed Production": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.125Z"
-          },
-          "Paper Consumed Idle": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.123Z"
-          },
-          "Total Production Time": {
-            "value": 0,
-            "ts": "2026-04-01T15:40:29.331Z"
-          },
-          "Total Setup Time": {
-            "value": 158,
-            "ts": "2026-04-01T15:40:29.330Z"
-          },
-          "Total Idle Time": {
-            "value": 0,
-            "ts": "2026-04-01T15:40:29.331Z"
-          },
-          "Material Barcode": {
-            "value": "KertasG001",
-            "ts": "2026-03-17T03:32:05.371Z"
-          },
-          "Job Activity Alarm": {
-            "value": "-",
-            "ts": "2026-04-01T15:40:29.327Z"
-          },
-          "Total Paper Waste": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.126Z"
-          },
-          "Product Count Per Fold": {
-            "value": 4,
-            "ts": "2026-03-17T03:32:05.371Z"
-          },
-          "Running Hour": {
-            "value": 49111,
-            "ts": "2026-04-01T15:40:29.332Z"
-          },
-          "Product Good Count": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.136Z"
-          },
-          "Product Reject Count": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.138Z"
-          },
-          "Availability": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.140Z"
-          },
-          "Performance": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.141Z"
-          },
-          "Quality": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.142Z"
-          },
-          "OEE": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.143Z"
-          },
-          "Ply": {
-            "value": "1/8",
-            "ts": "2026-03-17T03:32:05.371Z"
-          },
-          "Assigned Operator Shift 1": {
-            "value": {
-              "value": "90efaa37-9275-41d5-bb90-06352d055f1b",
-              "label": "Alice Operator - alice2"
-            },
-            "ts": "2026-03-13T10:28:52.894Z"
-          },
-          "Assigned Operator Shift 3": {
-            "value": {
-              "value": "-",
-              "label": "No Operator"
-            },
-            "ts": "2026-03-13T10:28:52.897Z"
-          },
-          "Assigned Operator Shift 2": {
-            "value": {
-              "value": "3dbfbb76-c229-4bd5-b75a-41a735ca4ea4",
-              "label": "Parjo Stevenson - parjo"
-            },
-            "ts": "2026-03-13T10:28:52.895Z"
-          },
-          "Product Total Count": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.139Z"
-          },
-          "Job Loader": {
-            "value": {},
-            "ts": "2026-04-01T12:08:02.608Z"
-          },
-          "Ideal Speed": {
-            "value": 9,
-            "ts": "2026-03-13T09:23:18.803Z"
-          },
-          "Paper/Fold Size": {
-            "value": 20,
-            "ts": "2026-03-31T08:58:02.187Z"
-          },
-          "Job Progress": {
-            "value": 0,
-            "ts": "2026-04-01T12:08:02.606Z"
-          },
-          "Product Count Target": {
-            "value": 0,
-            "ts": "2026-04-01T12:08:02.640Z"
-          },
-          "Total Paper Consumed Input": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.128Z"
-          },
-          "Total Paper Consumed Output": {
-            "value": 0,
-            "ts": "2026-04-01T15:30:51.129Z"
-          },
-          "Encoder Input Raw Value": {
-            "value": 791,
-            "ts": "2026-04-01T07:57:09.529Z"
-          },
-          "Encoder Input Prev Value": {
-            "value": 791,
-            "ts": "2026-04-01T07:57:09.530Z"
-          }
-        }
+        "attributes": {}
       },
       {
         "id": "asset_1771562520927_537",
@@ -1080,168 +910,7 @@
           "template_1772291867711_154",
           "template_1772297957808_540"
         ],
-        "attributes": {
-          "Assigned Operator Shift 1": {
-            "value": {
-              "value": "-",
-              "label": "No Operator"
-            },
-            "ts": "2026-03-26T02:13:08.155Z"
-          },
-          "Assigned Operator Shift 2": {
-            "value": {
-              "value": "3dbfbb76-c229-4bd5-b75a-41a735ca4ea4",
-              "label": "Parjo Stevenson - parjo"
-            },
-            "ts": "2026-03-26T02:13:08.157Z"
-          },
-          "Assigned Operator Shift 3": {
-            "value": {
-              "value": "-",
-              "label": "No Operator"
-            },
-            "ts": "2026-03-26T02:13:08.159Z"
-          },
-          "Machine Operator": {
-            "value": {
-              "label": "Parjo Stevenson",
-              "value": "3dbfbb76-c229-4bd5-b75a-41a735ca4ea4"
-            },
-            "ts": "2026-03-25T08:29:13.755Z"
-          },
-          "Job Activity Category": {
-            "value": "-",
-            "ts": "2026-04-01T15:40:29.328Z"
-          },
-          "Job Activity Alarm": {
-            "value": "-",
-            "ts": "2026-04-01T15:40:29.329Z"
-          },
-          "Total Setup Time": {
-            "value": 0,
-            "ts": "2026-04-01T15:40:29.335Z"
-          },
-          "Total Idle Time": {
-            "value": 0,
-            "ts": "2026-04-01T15:40:29.335Z"
-          },
-          "Total Production Time": {
-            "value": 0,
-            "ts": "2026-04-01T15:40:29.336Z"
-          },
-          "Running Hour": {
-            "value": 3691,
-            "ts": "2026-04-01T15:40:29.337Z"
-          },
-          "Product Good Count": {
-            "value": 0,
-            "ts": "2026-04-01T07:57:09.546Z"
-          },
-          "Job Progress": {
-            "value": 0,
-            "ts": "2026-04-01T07:57:09.547Z"
-          },
-          "Product Total Count": {
-            "value": 0,
-            "ts": "2026-04-01T07:57:09.544Z"
-          },
-          "Machine Speed": {
-            "value": 0,
-            "ts": "2026-04-01T07:57:09.543Z"
-          },
-          "Material Barcode": {
-            "value": "MaterialB001",
-            "ts": "2026-03-25T08:26:12.584Z"
-          },
-          "Ply": {
-            "value": "1/8",
-            "ts": "2026-03-25T08:26:12.586Z"
-          },
-          "Product Count Per Fold": {
-            "value": 4,
-            "ts": "2026-03-25T08:26:12.589Z"
-          },
-          "Paper/Fold Size": {
-            "value": 20,
-            "ts": "2026-03-25T08:26:12.591Z"
-          },
-          "Product Reject Count": {
-            "value": 0,
-            "ts": "2026-04-01T07:50:21.221Z"
-          },
-          "Work Order": {
-            "value": "No Work Order",
-            "ts": "2026-04-01T07:56:00.899Z"
-          },
-          "Job Lifecycle": {
-            "value": "-",
-            "ts": "2026-04-01T07:56:00.902Z"
-          },
-          "Product Count Target": {
-            "value": 0,
-            "ts": "2026-04-01T07:56:00.949Z"
-          },
-          "Job Loader": {
-            "value": {},
-            "ts": "2026-04-01T07:56:00.897Z"
-          },
-          "Job Lifecycle Alarm": {
-            "value": "-",
-            "ts": "2026-04-01T07:56:00.805Z"
-          },
-          "Paper Consumed Setup": {
-            "value": 0,
-            "ts": "2026-04-01T07:56:00.904Z"
-          },
-          "Paper Consumed Idle": {
-            "value": 0,
-            "ts": "2026-04-01T07:56:00.905Z"
-          },
-          "Paper Consumed Production": {
-            "value": 0,
-            "ts": "2026-04-01T07:56:00.907Z"
-          },
-          "Total Paper Waste": {
-            "value": 0,
-            "ts": "2026-04-01T07:56:00.909Z"
-          },
-          "Availability": {
-            "value": 0,
-            "ts": "2026-04-01T07:56:00.941Z"
-          },
-          "Performance": {
-            "value": 0,
-            "ts": "2026-04-01T07:56:00.945Z"
-          },
-          "Quality": {
-            "value": 0,
-            "ts": "2026-04-01T07:56:00.946Z"
-          },
-          "OEE": {
-            "value": 0,
-            "ts": "2026-04-01T07:56:00.948Z"
-          },
-          "Job Activity": {
-            "value": "-",
-            "ts": "2026-04-01T07:56:00.901Z"
-          },
-          "Encoder Input Raw Value": {
-            "value": 430,
-            "ts": "2026-04-01T07:57:09.539Z"
-          },
-          "Total Paper Consumed Input": {
-            "value": 0,
-            "ts": "2026-04-01T07:56:00.911Z"
-          },
-          "Encoder Input Prev Value": {
-            "value": 430,
-            "ts": "2026-04-01T07:57:09.542Z"
-          },
-          "Total Paper Consumed Output": {
-            "value": 0,
-            "ts": "2026-04-01T07:56:00.913Z"
-          }
-        }
+        "attributes": {}
       },
       {
         "id": "asset_1772088636848_239",
@@ -4205,9 +3874,9 @@
           }
         },
         {
-          "id": "event.close.evt_7xy6ydf6",
+          "id": "event.close.evt_nejsvejs",
           "kind": "event_close",
-          "refId": "evt_7xy6ydf6",
+          "refId": "evt_nejsvejs",
           "label": "CLOSE Taiyo1.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4424,9 +4093,9 @@
           }
         },
         {
-          "id": "event.open.evt_rkiub8td",
+          "id": "event.open.evt_z1evgit6",
           "kind": "event_open",
-          "refId": "evt_rkiub8td",
+          "refId": "evt_z1evgit6",
           "label": "Open JobLifecycle Event",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -4460,9 +4129,9 @@
           }
         },
         {
-          "id": "event.close.evt_4bmxrdxc",
+          "id": "event.close.evt_ln99zgbe",
           "kind": "event_close",
-          "refId": "evt_4bmxrdxc",
+          "refId": "evt_ln99zgbe",
           "label": "Close JobLifecycle Event",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -4496,9 +4165,9 @@
           }
         },
         {
-          "id": "event.open.evt_gpwzqcee",
+          "id": "event.open.evt_tzgyx4tc",
           "kind": "event_open",
-          "refId": "evt_gpwzqcee",
+          "refId": "evt_tzgyx4tc",
           "label": "Open JobActivity Event",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4588,67 +4257,67 @@
         },
         {
           "from": "act_o750buzm",
-          "to": "event.open.evt_rkiub8td",
+          "to": "event.open.evt_z1evgit6",
           "fromPort": "open event",
           "enabled": true
         },
         {
-          "from": "event.open.evt_rkiub8td",
+          "from": "event.open.evt_z1evgit6",
           "to": "act_o8dbxj0x",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_rkiub8td",
+          "from": "event.open.evt_z1evgit6",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_rkiub8td",
+          "from": "event.open.evt_z1evgit6",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
           "from": "act_o750buzm",
-          "to": "event.close.evt_4bmxrdxc",
+          "to": "event.close.evt_ln99zgbe",
           "fromPort": "close event",
           "enabled": true
         },
         {
-          "from": "event.close.evt_4bmxrdxc",
+          "from": "event.close.evt_ln99zgbe",
           "to": "act_nad2xse9",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.close.evt_4bmxrdxc",
+          "from": "event.close.evt_ln99zgbe",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
-          "from": "event.close.evt_4bmxrdxc",
+          "from": "event.close.evt_ln99zgbe",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_gpwzqcee",
+          "from": "event.open.evt_tzgyx4tc",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_gpwzqcee",
+          "from": "event.open.evt_tzgyx4tc",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
           "from": "act_pqgrrjup",
-          "to": "event.open.evt_gpwzqcee",
+          "to": "event.open.evt_tzgyx4tc",
           "fromPort": "out",
           "enabled": true
         },
@@ -4786,15 +4455,15 @@
           "x": 220,
           "y": 1200
         },
-        "event.open.evt_rkiub8td": {
+        "event.open.evt_z1evgit6": {
           "x": 1260,
           "y": 960
         },
-        "event.close.evt_4bmxrdxc": {
+        "event.close.evt_ln99zgbe": {
           "x": 1260,
           "y": 1080
         },
-        "event.open.evt_gpwzqcee": {
+        "event.open.evt_tzgyx4tc": {
           "x": 1260,
           "y": 1220
         }
@@ -5061,9 +4730,9 @@
           }
         },
         {
-          "id": "event.close.evt_7dqnflgl",
+          "id": "event.close.evt_jrezt6wa",
           "kind": "event_close",
-          "refId": "evt_7dqnflgl",
+          "refId": "evt_jrezt6wa",
           "label": "CLOSE Taiyo2.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -5280,9 +4949,9 @@
           }
         },
         {
-          "id": "event.open.evt_q89y6ygj",
+          "id": "event.open.evt_z47k07ux",
           "kind": "event_open",
-          "refId": "evt_q89y6ygj",
+          "refId": "evt_z47k07ux",
           "label": "Open JobLifecycle Event",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -5316,9 +4985,9 @@
           }
         },
         {
-          "id": "event.close.evt_vfyn05gn",
+          "id": "event.close.evt_qdz7l05b",
           "kind": "event_close",
-          "refId": "evt_vfyn05gn",
+          "refId": "evt_qdz7l05b",
           "label": "Close JobLifecycle Event",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -5352,9 +5021,9 @@
           }
         },
         {
-          "id": "event.open.evt_gdadlo6o",
+          "id": "event.open.evt_kb2indwj",
           "kind": "event_open",
-          "refId": "evt_gdadlo6o",
+          "refId": "evt_kb2indwj",
           "label": "Open JobActivity Event",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -5444,67 +5113,67 @@
         },
         {
           "from": "act_dlgwztd0",
-          "to": "event.open.evt_q89y6ygj",
+          "to": "event.open.evt_z47k07ux",
           "fromPort": "open event",
           "enabled": true
         },
         {
-          "from": "event.open.evt_q89y6ygj",
+          "from": "event.open.evt_z47k07ux",
           "to": "act_jg01wnrl",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_q89y6ygj",
+          "from": "event.open.evt_z47k07ux",
           "to": "act_z1kdf1oo",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_q89y6ygj",
+          "from": "event.open.evt_z47k07ux",
           "to": "act_z1kdf1oo",
           "fromPort": "onFail",
           "enabled": true
         },
         {
           "from": "act_dlgwztd0",
-          "to": "event.close.evt_vfyn05gn",
+          "to": "event.close.evt_qdz7l05b",
           "fromPort": "close event",
           "enabled": true
         },
         {
-          "from": "event.close.evt_vfyn05gn",
+          "from": "event.close.evt_qdz7l05b",
           "to": "act_9elon898",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.close.evt_vfyn05gn",
+          "from": "event.close.evt_qdz7l05b",
           "to": "act_z1kdf1oo",
           "fromPort": "onFail",
           "enabled": true
         },
         {
-          "from": "event.close.evt_vfyn05gn",
+          "from": "event.close.evt_qdz7l05b",
           "to": "act_z1kdf1oo",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_gdadlo6o",
+          "from": "event.open.evt_kb2indwj",
           "to": "act_z1kdf1oo",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_gdadlo6o",
+          "from": "event.open.evt_kb2indwj",
           "to": "act_z1kdf1oo",
           "fromPort": "onFail",
           "enabled": true
         },
         {
           "from": "act_9yue80v9",
-          "to": "event.open.evt_gdadlo6o",
+          "to": "event.open.evt_kb2indwj",
           "fromPort": "out",
           "enabled": true
         },
@@ -5636,21 +5305,21 @@
         },
         "trg953d3e18": {
           "x": 300,
-          "y": 480
+          "y": 540
         },
         "trg00817eba": {
           "x": 300,
-          "y": 340
+          "y": 380
         },
-        "event.open.evt_q89y6ygj": {
+        "event.open.evt_z47k07ux": {
           "x": 1340,
           "y": 1040
         },
-        "event.close.evt_vfyn05gn": {
+        "event.close.evt_qdz7l05b": {
           "x": 1340,
           "y": 1160
         },
-        "event.open.evt_gdadlo6o": {
+        "event.open.evt_kb2indwj": {
           "x": 1340,
           "y": 1300
         }

@@ -1,129 +1,171 @@
 import Runtime from "../Runtime";
-import { RuntimeServiceRegistry } from "../composition/RuntimeServiceRegistry";
+import type { ProgramRuntimeComposition } from "../composition/RuntimeComposition";
 import type {
   EventActionBinding,
   RuntimeNodeHandler,
-} from "../types";
+} from "../core/runtimeTypes";
 import type {
   ProgramAction,
   ProgramEventAction,
-  ProgramFlowDefinition,
   ProgramFlowNode,
   ProgramLink,
-} from "./programFlowTypes";
+} from "./ProgramFlowContracts";
 
 function createActionHandler(
   action: ProgramAction,
-  context: Record<string, unknown> = {}
+  composition: ProgramRuntimeComposition
 ): RuntimeNodeHandler {
-  const services = context.services as RuntimeServiceRegistry | undefined;
-  if (action.type === "script" && services) {
-    return services.action.createScriptHandler(action as any, context as any);
+  if (action.type === "script") {
+    return composition.services.action.createScriptHandler(action as any, {
+      templateById: composition.scriptTemplatesById as any,
+      flowById: composition.flowDefinitionsById as any,
+    });
   }
   throw new Error(`Unsupported action type "${action.type}"`);
 }
 
-export function registerFlowNodes(runtime: Runtime, nodes: unknown[] = []): void {
-  const services = runtime.getGlobal<RuntimeServiceRegistry | null>("serviceRegistry", null);
-  const scriptTemplates = runtime.getGlobal("scriptTemplates", []);
-  const templateById = new Map(
-    (Array.isArray(scriptTemplates) ? scriptTemplates : []).map((template) => [
-      String((template as { id?: unknown }).id || ""),
-      template,
-    ])
-  );
-  const eventTemplateList = runtime.getGlobal("eventTemplates", []);
-  const eventTemplateById = new Map(
-    (Array.isArray(eventTemplateList) ? eventTemplateList : []).map((template) => [
-      String((template as { id?: unknown }).id || ""),
-      template as any,
-    ])
-  );
-  const flowDefinitionsById = new Map(
-    Object.entries(runtime.getGlobal<Record<string, ProgramFlowDefinition>>("flowDefinitionsById", {}))
-  );
+function readNodeConfig(node: ProgramFlowNode): Record<string, unknown> {
+  return node.config && typeof node.config === "object"
+    ? (node.config as Record<string, unknown>)
+    : {};
+}
 
+function buildNodeConfigById(nodes: ProgramFlowNode[]): Record<string, Record<string, unknown>> {
   const nodeConfigById: Record<string, Record<string, unknown>> = {};
+  for (const node of nodes) {
+    nodeConfigById[node.id] = readNodeConfig(node);
+  }
+  return nodeConfigById;
+}
+
+function validateUniqueNodeIds(nodes: ProgramFlowNode[]): void {
   const seenNodeIds = new Set<string>();
-  for (const rawNode of nodes) {
-    const node = rawNode as ProgramFlowNode;
+  for (const node of nodes) {
     if (!node.id) throw new Error("Flow node must have an id");
     if (seenNodeIds.has(node.id)) {
       const flowId = String((node.config as Record<string, unknown> | undefined)?.__flowId || "").trim();
       throw new Error(`Duplicate flow node id "${node.id}" detected${flowId ? ` in flow "${flowId}"` : ""}`);
     }
     seenNodeIds.add(node.id);
-    nodeConfigById[node.id] =
-      node.config && typeof node.config === "object"
-        ? (node.config as Record<string, unknown>)
-        : {};
-    if (node.enabled === false) {
-      runtime.addNode(node.id, async (_msg, _send) => {});
-      continue;
-    }
-    if (node.kind === "trigger") {
-      runtime.addNode(node.id, async (msg, send) => {
-        send(msg);
-      });
-      continue;
-    }
-    if (node.kind === "action") {
-      const handler = createActionHandler(
-        {
-          id: node.id,
-          type: "script",
-          templateId: node.templateId,
-          eventTemplateId: String(node.config?.eventTemplateId || ""),
-          eventTemplateOverrides:
-            node.config?.eventTemplateOverrides && typeof node.config.eventTemplateOverrides === "object"
-              ? (node.config.eventTemplateOverrides as Record<string, unknown>)
-              : ({} as Record<string, unknown>),
-          script: String(node.config?.script || ""),
-          config:
-            node.config && typeof node.config === "object"
-              ? (node.config as Record<string, unknown>)
-              : ({} as Record<string, unknown>),
-          templateBindingOverrides:
-            node.config?.templateBindingOverrides && typeof node.config.templateBindingOverrides === "object"
-              ? (node.config.templateBindingOverrides as Record<string, unknown>)
-              : {},
-        },
-        { templateById, flowById: flowDefinitionsById as any, services }
-      );
-      runtime.addNode(node.id, handler);
-      continue;
-    }
-    if (node.kind === "event_open" || node.kind === "event_close") {
-      const item: ProgramEventAction = {
-        id: String(node.refId || node.id),
-        enabled: true,
-        label: node.label || "",
-        description: String(node.config?.description || ""),
-        templateId: node.templateId || "",
-        templateOverrides:
-          node.config?.templateOverrides && typeof node.config.templateOverrides === "object"
-            ? (node.config.templateOverrides as Record<string, unknown>)
-            : {},
-        bindings:
-          node.config?.bindings && typeof node.config.bindings === "object"
-            ? (node.config.bindings as Record<string, EventActionBinding>)
-            : ({} as Record<string, EventActionBinding>),
-        openNotes: String(node.config?.openNotes || ""),
-        closeNotes: String(node.config?.closeNotes || ""),
-      };
-      if (!services) throw new Error("Runtime service registry is not available");
-      runtime.addNode(
-        node.id,
-        services.action.createEventHandler(
-          item,
-          node.kind === "event_open" ? "open" : "close",
-          { eventTemplateById }
-        )
-      );
-      continue;
-    }
-    runtime.addNode(node.id, async (_msg, _send) => {});
   }
+}
+
+function registerDisabledNode(runtime: Runtime, node: ProgramFlowNode): void {
+  runtime.addNode(node.id, async (_msg, _send) => {});
+}
+
+function registerTriggerNode(runtime: Runtime, node: ProgramFlowNode): void {
+  runtime.addNode(node.id, async (msg, send) => {
+    send(msg);
+  });
+}
+
+function createScriptActionDefinition(node: ProgramFlowNode): ProgramAction {
+  const config = readNodeConfig(node);
+  return {
+    id: node.id,
+    type: "script",
+    templateId: node.templateId,
+    eventTemplateId: String(config.eventTemplateId || ""),
+    eventTemplateOverrides:
+      config.eventTemplateOverrides && typeof config.eventTemplateOverrides === "object"
+        ? (config.eventTemplateOverrides as Record<string, unknown>)
+        : {},
+    script: String(config.script || ""),
+    config,
+    templateBindingOverrides:
+      config.templateBindingOverrides && typeof config.templateBindingOverrides === "object"
+        ? (config.templateBindingOverrides as Record<string, unknown>)
+        : {},
+  };
+}
+
+function registerScriptActionNode(
+  runtime: Runtime,
+  node: ProgramFlowNode,
+  composition: ProgramRuntimeComposition
+): void {
+  const action = createScriptActionDefinition(node);
+  const handler = createActionHandler(action, composition);
+  runtime.addNode(node.id, handler);
+}
+
+function createEventActionDefinition(node: ProgramFlowNode): ProgramEventAction {
+  const config = readNodeConfig(node);
+  return {
+    id: String(node.refId || node.id),
+    enabled: true,
+    label: node.label || "",
+    description: String(config.description || ""),
+    templateId: node.templateId || "",
+    templateOverrides:
+      config.templateOverrides && typeof config.templateOverrides === "object"
+        ? (config.templateOverrides as Record<string, unknown>)
+        : {},
+    bindings:
+      config.bindings && typeof config.bindings === "object"
+        ? (config.bindings as Record<string, EventActionBinding>)
+        : {},
+    openNotes: String(config.openNotes || ""),
+    closeNotes: String(config.closeNotes || ""),
+  };
+}
+
+function registerEventActionNode(
+  runtime: Runtime,
+  node: ProgramFlowNode,
+  composition: ProgramRuntimeComposition
+): void {
+  const action = createEventActionDefinition(node);
+  const mode = node.kind === "event_open" ? "open" : "close";
+  const handler = composition.services.action.createEventHandler(action, mode, {
+    eventTemplateById: composition.eventTemplatesById,
+  });
+  runtime.addNode(node.id, handler);
+}
+
+function registerSingleFlowNode(
+  runtime: Runtime,
+  node: ProgramFlowNode,
+  composition: ProgramRuntimeComposition
+): void {
+  if (node.enabled === false) {
+    registerDisabledNode(runtime, node);
+    return;
+  }
+
+  if (node.kind === "trigger") {
+    registerTriggerNode(runtime, node);
+    return;
+  }
+
+  if (node.kind === "action") {
+    registerScriptActionNode(runtime, node, composition);
+    return;
+  }
+
+  if (node.kind === "event_open" || node.kind === "event_close") {
+    registerEventActionNode(runtime, node, composition);
+    return;
+  }
+
+  registerDisabledNode(runtime, node);
+}
+
+export function registerFlowNodes(
+  runtime: Runtime,
+  nodes: unknown[] = [],
+  composition: ProgramRuntimeComposition
+): void {
+  const typedNodes = nodes as ProgramFlowNode[];
+  const nodeConfigById = buildNodeConfigById(typedNodes);
+  validateUniqueNodeIds(typedNodes);
+
+  for (const node of typedNodes) {
+    registerSingleFlowNode(runtime, node, composition);
+  }
+
+  composition.flowNodeConfigById = nodeConfigById;
   runtime.setGlobal("flowNodeConfigById", nodeConfigById);
 }
 

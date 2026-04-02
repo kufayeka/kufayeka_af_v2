@@ -77,8 +77,8 @@ function ensureProgramFile(programPath: string) {
 }
 
 type ProgramResponse =
-  | { program: Program; path: string; runtimeRead?: boolean }
-  | { ok: true; path: string; runtimeSynced?: boolean; runtimeError?: string }
+  | { program: Program; path: string; workspace: true }
+  | { ok: true; path: string; workspaceSaved: true }
   | { error: string };
 
 function containsPersistedAttributeValues(program: Program): boolean {
@@ -114,73 +114,6 @@ function setOpenCors(res: NextApiResponse): void {
   res.setHeader("Access-Control-Max-Age", "86400");
 }
 
-function getRuntimeAssetApiUrl() {
-  return (
-    process.env.KUFAYEKA_RUNTIME_ASSET_API?.trim() ||
-    "http://127.0.0.1:4000/api/assets/system"
-  );
-}
-
-async function fetchRuntimeAssets(): Promise<Program["assets"] | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1500);
-  try {
-    const res = await fetch(getRuntimeAssetApiUrl(), {
-      method: "GET",
-      signal: controller.signal
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { data?: Program["assets"] };
-    if (!data.data || typeof data.data !== "object") return null;
-    return data.data;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function mergeProgramAssetsPreserveRuntimeValues(
-  incoming: Program["assets"],
-  runtimeCurrent: Program["assets"]
-): Program["assets"] {
-  const runtimeAttributesByAssetId = new Map<
-    string,
-    Program["assets"]["assets"][number]["attributes"]
-  >();
-  for (const asset of runtimeCurrent.assets || []) {
-    runtimeAttributesByAssetId.set(asset.id, { ...(asset.attributes || {}) });
-  }
-
-  return {
-    ...incoming,
-    assets: (incoming.assets || []).map((asset) => ({
-      ...asset,
-      attributes: runtimeAttributesByAssetId.get(asset.id) || {}
-    }))
-  };
-}
-
-async function pushRuntimeAssets(
-  assets: Program["assets"]
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  try {
-    const res = await fetch(getRuntimeAssetApiUrl(), {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(assets)
-    });
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      return { ok: false, error: data.error || `Runtime API error ${res.status}` };
-    }
-    return { ok: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, error: message };
-  }
-}
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ProgramResponse>
@@ -197,11 +130,7 @@ export default async function handler(
   if (req.method === "GET") {
     const raw = fs.readFileSync(programPath, "utf8");
     const program = JSON.parse(raw) as Program;
-    const runtimeAssets = await fetchRuntimeAssets();
-    const nextProgram = runtimeAssets
-      ? { ...program, assets: runtimeAssets }
-      : program;
-    res.status(200).json({ program: nextProgram, path: programPath, runtimeRead: Boolean(runtimeAssets) });
+    res.status(200).json({ program, path: programPath, workspace: true });
     return;
   }
 
@@ -219,29 +148,8 @@ export default async function handler(
       return;
     }
 
-    const runtimeCurrentAssets = await fetchRuntimeAssets();
-    const runtimeAssetsForSync = runtimeCurrentAssets
-      ? mergeProgramAssetsPreserveRuntimeValues(body.program.assets, runtimeCurrentAssets)
-      : body.program.assets;
-    const runtimeResult = await pushRuntimeAssets(runtimeAssetsForSync);
-    if (!runtimeResult.ok) {
-      fs.writeFileSync(programPath, JSON.stringify(body.program, null, 2));
-      res.status(200).json({
-        ok: true,
-        path: programPath,
-        runtimeSynced: false,
-        runtimeError: runtimeResult.error
-      });
-      return;
-    }
-
-    const runtimeAssets = await fetchRuntimeAssets();
-    const programForSave: Program = runtimeAssets
-      ? { ...body.program, assets: runtimeAssets }
-      : body.program;
-    fs.writeFileSync(programPath, JSON.stringify(programForSave, null, 2));
-
-    res.status(200).json({ ok: true, path: programPath, runtimeSynced: true });
+    fs.writeFileSync(programPath, JSON.stringify(body.program, null, 2));
+    res.status(200).json({ ok: true, path: programPath, workspaceSaved: true });
     return;
   }
 

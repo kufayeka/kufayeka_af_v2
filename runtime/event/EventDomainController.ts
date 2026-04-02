@@ -1,14 +1,19 @@
 import type Runtime from "../Runtime";
-import type { EventStore, EventTemplateDefinition } from "../types";
+import type { DbConnectionManager } from "../db/dbConnectionManager";
+import type { EventStore, EventTemplateDefinition } from "../core/runtimeTypes";
 import { EventDomainService } from "./EventDomainService";
-import type { EventStoreMeta } from "./contracts";
+import type { EventStoreMeta } from "./EventContracts";
+
+interface EventDomainControllerDeps {
+  dbConnectionManager?: DbConnectionManager | null;
+}
 
 export class EventDomainController {
   readonly domain = "event" as const;
   private readonly service: EventDomainService;
 
-  constructor(runtime: Runtime) {
-    this.service = new EventDomainService(runtime);
+  constructor(runtime: Runtime, deps: EventDomainControllerDeps = {}) {
+    this.service = new EventDomainService(runtime, deps);
   }
 
   bindRuntime(runtime: Runtime): void {

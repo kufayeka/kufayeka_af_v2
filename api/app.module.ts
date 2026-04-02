@@ -6,6 +6,7 @@ import { DocsModule } from "./docs/docs.module";
 import { EventsModule } from "./events/events.module";
 import { GlobalApiModule } from "./global/global.module";
 import { HistorianModule } from "./historian/historian.module";
+import { ProgramModule } from "./program/program.module";
 import { RuntimeApiModule } from "./runtime-api.module";
 
 @Module({})
@@ -18,6 +19,7 @@ export class AppModule {
         AssetsModule,
         GlobalApiModule,
         HistorianModule,
+        ProgramModule,
         EventsModule,
         DbModule,
         DocsModule

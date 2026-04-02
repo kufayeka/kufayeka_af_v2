@@ -32,13 +32,11 @@ import type { SelectChangeEvent } from "@mui/material/Select";
 import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
 import { ArrowRight, Building2, RefreshCcw } from "lucide-react";
-import { normalizeProgram } from "../../lib/programUtils";
 import type {
   AssetAttributeType,
   AssetDefinition,
   AssetFrameworkDefinition,
   HistorianTargetDefinition,
-  Program
 } from "../../types/program";
 
 const ATTRIBUTE_TYPES: AssetAttributeType[] = [
@@ -291,11 +289,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [queryResult, setQueryResult] = useState<HistorianQueryResponse | null>(null);
   const [queryError, setQueryError] = useState("");
   const runtimeApiBase = useMemo(() => {
-    if (process.env.NEXT_PUBLIC_RUNTIME_API_BASE) return process.env.NEXT_PUBLIC_RUNTIME_API_BASE;
-    if (typeof window !== "undefined") {
-      return `${window.location.protocol}//${window.location.hostname}:4000`;
-    }
-    return "http://127.0.0.1:4000";
+    return "/api/runtime";
   }, []);
 
   const assetById = useMemo(() => new Map(assets.assets.map((asset) => [asset.id, asset])), [assets.assets]);
@@ -526,24 +520,26 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const reloadFromRuntime = async () => {
     setLoadingRuntime(true);
     try {
-      const res = await fetch("/api/program");
-      const data = (await res.json()) as { program?: Program };
-      const normalized = normalizeProgram(
-        data.program ?? {
-          meta: { name: "Kufayeka AF Program", version: 1 },
-          triggers: [],
-          scriptTemplates: [],
-          flows: { nodes: [], links: [] },
-          assets: { assets: [], attributeTemplates: [] }
-        }
-      );
-      onChange(normalized.assets);
-      setSelectedAssetId((prev) => {
-        if (prev && normalized.assets.assets.some((asset) => asset.id === prev)) return prev;
-        return normalized.assets.assets[0]?.id || "";
+      const runtimeRes = await fetch(`${runtimeApiBase}/assets/system`);
+      const runtimeData = (await runtimeRes.json()) as { data?: AssetFrameworkDefinition; error?: string };
+      if (!runtimeRes.ok) {
+        throw new Error(runtimeData.error || `Runtime API error ${runtimeRes.status}`);
+      }
+      const runtimeAssets = runtimeData.data;
+      if (!runtimeAssets || typeof runtimeAssets !== "object") {
+        throw new Error("Runtime API returned empty asset system");
+      }
+      onChange({
+        assets: Array.isArray(runtimeAssets.assets) ? runtimeAssets.assets : [],
+        attributeTemplates: Array.isArray(runtimeAssets.attributeTemplates) ? runtimeAssets.attributeTemplates : [],
+        historians: Array.isArray(runtimeAssets.historians) ? runtimeAssets.historians : []
       });
-      setExpandedKeys(normalized.assets.assets.map((asset) => `asset:${asset.id}`));
-      showNotice("success", `Reloaded ${normalized.assets.assets.length} assets from runtime`);
+      setSelectedAssetId((prev) => {
+        if (prev && Array.isArray(runtimeAssets.assets) && runtimeAssets.assets.some((asset) => asset.id === prev)) return prev;
+        return runtimeAssets.assets?.[0]?.id || "";
+      });
+      setExpandedKeys((runtimeAssets.assets || []).map((asset) => `asset:${asset.id}`));
+      showNotice("success", `Reloaded ${(runtimeAssets.assets || []).length} assets from runtime`);
     } catch (error) {
       showNotice("error", `Reload failed: ${(error instanceof Error ? error.message : String(error))}`);
     } finally {
@@ -594,9 +590,9 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     setMonitorError("");
     try {
       const [metricsRes, logsRes] = await Promise.all([
-        fetch(`${runtimeApiBase}/api/historian/target-metrics?targetId=${encodeURIComponent(target.id)}`),
+        fetch(`${runtimeApiBase}/historian/target-metrics?targetId=${encodeURIComponent(target.id)}`),
         fetch(
-          `${runtimeApiBase}/api/historian/target-logs?targetId=${encodeURIComponent(target.id)}&kind=${encodeURIComponent(
+          `${runtimeApiBase}/historian/target-logs?targetId=${encodeURIComponent(target.id)}&kind=${encodeURIComponent(
             kind
           )}&limit=${encodeURIComponent(String(limit))}`
         )
@@ -652,7 +648,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
         params.set("bucketMs", queryBucketMs.trim() || "1000");
         params.set("agg", queryAgg);
       }
-      const res = await fetch(`${runtimeApiBase}/api/historian/${queryMode}?${params.toString()}`);
+      const res = await fetch(`${runtimeApiBase}/historian/${queryMode}?${params.toString()}`);
       const json = (await readJsonLike(res)) as HistorianQueryResponse;
       if (!res.ok) {
         setQueryResult(json);
@@ -669,7 +665,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
 
   const deleteHistorianByPath = async (path: string) => {
     try {
-      const res = await fetch(`${runtimeApiBase}/api/historian/delete-attribute?path=${encodeURIComponent(path)}`, {
+      const res = await fetch(`${runtimeApiBase}/historian/delete-attribute?path=${encodeURIComponent(path)}`, {
         method: "DELETE"
       });
       const json = (await readJsonLike(res)) as {
@@ -693,7 +689,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const deleteHistorianByTemplateAttribute = async (templateId: string, attributeName: string) => {
     try {
       const res = await fetch(
-        `${runtimeApiBase}/api/historian/delete-template-attribute?templateId=${encodeURIComponent(templateId)}&attributeName=${encodeURIComponent(attributeName)}`,
+        `${runtimeApiBase}/historian/delete-template-attribute?templateId=${encodeURIComponent(templateId)}&attributeName=${encodeURIComponent(attributeName)}`,
         { method: "DELETE" }
       );
       const json = (await readJsonLike(res)) as {
@@ -999,7 +995,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                                             ? parseMaybeJson(draftValue)
                                             : parseByType(row.valueType, draftValue);
                                           const res = await fetch(
-                                            `${runtimeApiBase}/api/assets/value/${encodeURIComponent(fullPath)}`,
+                                            `${runtimeApiBase}/assets/value/${encodeURIComponent(fullPath)}`,
                                             {
                                               method: "PUT",
                                               headers: { "content-type": "application/json" },
@@ -1016,11 +1012,29 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                                           if (matched <= 0) {
                                             throw new Error("Runtime did not match any attribute");
                                           }
-                                        setFieldDrafts((prev) => {
-                                          const cloned = { ...prev };
-                                          delete cloned[fieldKey];
-                                          return cloned;
-                                        });
+                                          const nextMatch = Array.isArray(data.matches) && data.matches.length > 0
+                                            ? (data.matches[0] as { value?: unknown; ts?: string })
+                                            : null;
+                                          updateAssetWith(selectedAsset.id, (asset) => ({
+                                            ...asset,
+                                            attributes: {
+                                              ...(asset.attributes || {}),
+                                              [row.name]: {
+                                                value: nextMatch && Object.prototype.hasOwnProperty.call(nextMatch, "value")
+                                                  ? nextMatch.value
+                                                  : nextValue,
+                                                ts:
+                                                  nextMatch && typeof nextMatch.ts === "string" && nextMatch.ts.trim()
+                                                    ? nextMatch.ts
+                                                    : new Date().toISOString()
+                                              }
+                                            }
+                                          }));
+                                          setFieldDrafts((prev) => {
+                                            const cloned = { ...prev };
+                                            delete cloned[fieldKey];
+                                            return cloned;
+                                          });
                                           await reloadFromRuntime();
                                           showNotice("success", `Applied value for ${fullPath}`);
                                         } catch (error) {

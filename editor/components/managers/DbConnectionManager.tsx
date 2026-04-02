@@ -42,9 +42,7 @@ export default function DbConnectionManager() {
   const [sqlResult, setSqlResult] = useState<SqlTestResponse | null>(null);
 
   const runtimeApiBase = useMemo(() => {
-    if (process.env.NEXT_PUBLIC_RUNTIME_API_BASE) return process.env.NEXT_PUBLIC_RUNTIME_API_BASE;
-    if (typeof window !== "undefined") return `${window.location.protocol}//${window.location.hostname}:4000`;
-    return "http://127.0.0.1:4000";
+    return "/api/runtime";
   }, []);
 
   const loadConfig = async () => {
@@ -52,7 +50,7 @@ export default function DbConnectionManager() {
     setError("");
     setNotice("");
     try {
-      const res = await fetch(`${runtimeApiBase}/api/db/config`);
+      const res = await fetch(`${runtimeApiBase}/db/config`);
       const json = (await parseJsonOrError(res)) as DbConfigResponse;
       setConfig(json);
     } catch (err) {
@@ -67,7 +65,7 @@ export default function DbConnectionManager() {
     setError("");
     setNotice("");
     try {
-      const res = await fetch(`${runtimeApiBase}/api/db/test-connection`, {
+      const res = await fetch(`${runtimeApiBase}/db/test-connection`, {
         method: "POST"
       });
       const json = (await parseJsonOrError(res)) as { ok?: boolean; message?: string; latencyMs?: number };
@@ -85,7 +83,7 @@ export default function DbConnectionManager() {
     setError("");
     setNotice("");
     try {
-      const res = await fetch(`${runtimeApiBase}/api/db/sql-test`, {
+      const res = await fetch(`${runtimeApiBase}/db/sql-test`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ sql })

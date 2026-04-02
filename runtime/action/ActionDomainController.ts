@@ -1,16 +1,41 @@
-import createEventActionHandler from "../createEventActionHandler";
-import createScriptActionHandler from "../createScriptActionHandler";
-import type { EventActionDefinition, RuntimeNodeHandler } from "../types";
-import type { ActionDomainControllerContract } from "./contracts";
+import { createEventActionHandler } from "./EventActionHandlerFactory";
+import { createScriptActionHandler } from "./ScriptActionHandlerFactory";
+import type { EventActionDefinition, RuntimeNodeHandler } from "../core/runtimeTypes";
+import type { EventActionFactoryOptions } from "./EventActionSupport";
+import type { FlowDefinition, ScriptAction, ScriptActionRuntimeDeps, ScriptTemplate } from "./ScriptActionSupport";
+import type { ActionDomainControllerContract } from "./ActionContracts";
+
+interface ActionDomainControllerDeps {
+  createScriptHandler?: (
+    action: ScriptAction,
+    options?: { templateById?: Map<string, ScriptTemplate>; flowById?: Map<string, FlowDefinition>; runtimeDeps?: ScriptActionRuntimeDeps }
+  ) => RuntimeNodeHandler;
+  createEventHandler?: (
+    action: EventActionDefinition,
+    mode: "open" | "close",
+    options?: EventActionFactoryOptions
+  ) => RuntimeNodeHandler;
+}
 
 export class ActionDomainController implements ActionDomainControllerContract {
   readonly domain = "action" as const;
+  private readonly createScriptHandlerImpl: NonNullable<ActionDomainControllerDeps["createScriptHandler"]>;
+  private readonly createEventHandlerImpl: NonNullable<ActionDomainControllerDeps["createEventHandler"]>;
 
-  createScriptHandler(action: unknown, context: Record<string, unknown> = {}): RuntimeNodeHandler {
-    return createScriptActionHandler(action as never, context as never);
+  constructor(deps: ActionDomainControllerDeps = {}) {
+    this.createScriptHandlerImpl = deps.createScriptHandler || createScriptActionHandler;
+    this.createEventHandlerImpl = deps.createEventHandler || createEventActionHandler;
   }
 
-  createEventHandler(action: EventActionDefinition, mode: "open" | "close", context: Record<string, unknown> = {}): RuntimeNodeHandler {
-    return createEventActionHandler(action, mode, context);
+  createScriptHandler(
+    action: ScriptAction,
+    options: { templateById?: Map<string, ScriptTemplate>; flowById?: Map<string, FlowDefinition>; runtimeDeps?: ScriptActionRuntimeDeps } = {}
+  ): RuntimeNodeHandler {
+    return this.createScriptHandlerImpl(action, options);
+  }
+
+  createEventHandler(action: EventActionDefinition, mode: "open" | "close", options: EventActionFactoryOptions = {}): RuntimeNodeHandler {
+    return this.createEventHandlerImpl(action, mode, options);
   }
 }
+

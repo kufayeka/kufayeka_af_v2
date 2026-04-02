@@ -51,7 +51,7 @@ function ensureProgramFile(programPath: string) {
 }
 
 type SyncResponse =
-  | { ok: true; path: string; runtimeUrl: string; program: Program }
+  | { ok: true; path: string; runtimeUrl: string; reloadedAt?: string; flowCount?: number }
   | { error: string };
 
 function setOpenCors(res: NextApiResponse): void {
@@ -96,35 +96,34 @@ export default async function handler(
   const programPath = resolveProgramPath();
   ensureProgramFile(programPath);
 
-  const runtimeUrl =
-    process.env.KUFAYEKA_RUNTIME_ASSET_API?.trim() ||
-    "http://127.0.0.1:4000/api/assets/system";
+  const runtimeBaseUrl =
+    process.env.KUFAYEKA_RUNTIME_API_BASE?.trim() ||
+    "http://127.0.0.1:4000";
+  const runtimeUrl = `${runtimeBaseUrl}/api/program/reload`;
 
   try {
     const raw = fs.readFileSync(programPath, "utf8");
-    const program = JSON.parse(raw) as Program;
+    JSON.parse(raw) as Program;
 
-    const runtimeRes = await fetch(runtimeUrl, { method: "GET" });
+    const runtimeRes = await fetch(runtimeUrl, { method: "POST" });
     if (!runtimeRes.ok) {
-      res.status(502).json({ error: `Runtime API error ${runtimeRes.status}` });
+      const runtimeError = (await runtimeRes.json().catch(() => ({}))) as { error?: string };
+      res.status(502).json({ error: runtimeError.error || `Runtime API error ${runtimeRes.status}` });
       return;
     }
 
     const runtimeData = (await runtimeRes.json()) as {
-      data?: Program["assets"];
+      ok?: boolean;
+      reloadedAt?: string;
+      flowCount?: number;
     };
-    if (!runtimeData.data || typeof runtimeData.data !== "object") {
-      res.status(502).json({ error: "Runtime API did not return valid assets data" });
-      return;
-    }
-
-    const next: Program = {
-      ...program,
-      assets: runtimeData.data
-    };
-
-    fs.writeFileSync(programPath, JSON.stringify(next, null, 2));
-    res.status(200).json({ ok: true, path: programPath, runtimeUrl, program: next });
+    res.status(200).json({
+      ok: true,
+      path: programPath,
+      runtimeUrl,
+      reloadedAt: runtimeData.reloadedAt,
+      flowCount: runtimeData.flowCount
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ error: message });

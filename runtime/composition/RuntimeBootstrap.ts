@@ -1,6 +1,6 @@
 import type Runtime from "../Runtime";
-import type { ProgramDefinition } from "../types";
-import { normalizeAssetSection } from "../assetFramework";
+import type { ProgramDefinition } from "../core/runtimeTypes";
+import { normalizeAssetSection } from "../asset/AssetStoreFactory";
 import type { RuntimeServiceRegistry } from "./RuntimeServiceRegistry";
 
 export class RuntimeBootstrap {
@@ -14,13 +14,9 @@ export class RuntimeBootstrap {
 
   initializeProgram(program: ProgramDefinition): void {
     const assets = normalizeAssetSection(program.assets || {});
-    this.runtime.setGlobal("assetDomainController", this.services.asset);
-    this.runtime.setGlobal("eventDomainController", this.services.event);
-    this.runtime.setGlobal("historianDomainController", this.services.historian);
     this.services.asset.initialize(assets);
     this.services.event.initializeStore();
     this.services.asset.replaceState(assets);
     this.services.event.setTemplates(program.eventTemplates || []);
-    this.runtime.setGlobal("scriptTemplates", Array.isArray(program.scriptTemplates) ? program.scriptTemplates : []);
   }
 }

@@ -112,18 +112,11 @@ export default function EventManager() {
   const [meta, setMeta] = useState<EventMetaResponse | null>(null);
 
   const runtimeEventApi = useMemo(() => {
-    const explicit = process.env.NEXT_PUBLIC_KUFAYEKA_RUNTIME_EVENT_API?.trim();
-    if (explicit) return explicit;
-    const base = process.env.NEXT_PUBLIC_RUNTIME_API_BASE?.trim();
-    if (base) return `${base.replace(/\/$/, "")}/api/events`;
-    if (typeof window !== "undefined") {
-      return `${window.location.protocol}//${window.location.hostname}:4000/api/events`;
-    }
-    return "http://127.0.0.1:4000/api/events";
+    return "/api/runtime/events";
   }, []);
 
   const queryUrl = useMemo(() => {
-    const url = new URL(runtimeEventApi);
+    const url = new URL(runtimeEventApi, typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1");
     url.searchParams.set("pattern", pattern || "*");
     url.searchParams.set("status", status);
     url.searchParams.set("severity", severity);
@@ -223,8 +216,7 @@ export default function EventManager() {
   useEffect(() => {
     const loadMeta = async () => {
       try {
-        const url = new URL(runtimeEventApi);
-        url.pathname = "/api/events/meta";
+        const url = new URL("/api/runtime/events/meta", typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1");
         const response = await fetch(url.toString());
         const data = (await parseJsonOrError(response)) as EventMetaResponse;
         setMeta(data);

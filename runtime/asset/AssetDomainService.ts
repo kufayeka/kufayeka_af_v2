@@ -1,13 +1,18 @@
 import type Runtime from "../Runtime";
-import type { AssetHierarchyNode, AssetSection, AssetStore, AttributeQueryMatch, FindAttributesResult, QueryMatch } from "../types";
-import type { AssetDomainServiceContract } from "./contracts";
+import type { AssetHierarchyNode, AssetSection, AssetStore, AttributeQueryMatch, FindAttributesResult, QueryMatch } from "../core/runtimeTypes";
+import type { HistorianDomainController } from "../historian/HistorianDomainController";
+import type { AssetDomainServiceContract } from "./AssetContracts";
 import { AssetStateService } from "./AssetStateService";
+
+interface AssetDomainServiceDeps {
+  historianController?: HistorianDomainController;
+}
 
 export class AssetDomainService implements AssetDomainServiceContract {
   private readonly stateService: AssetStateService;
 
-  constructor(runtime: Runtime) {
-    this.stateService = new AssetStateService(runtime);
+  constructor(runtime: Runtime, deps: AssetDomainServiceDeps = {}) {
+    this.stateService = new AssetStateService(runtime, deps);
   }
 
   bindRuntime(runtime: Runtime): void {

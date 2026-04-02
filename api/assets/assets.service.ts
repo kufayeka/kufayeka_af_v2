@@ -1,6 +1,6 @@
 import { HttpException, Injectable } from "@nestjs/common";
-import { computeTagID } from "../../runtime/historianBridge";
-import type { AttributeQueryMatch } from "../../runtime/types";
+import { computeTagID } from "../../runtime/historian/HistorianBridgeFactory";
+import type { AttributeQueryMatch } from "../../runtime/core/runtimeTypes";
 import { matchAttributeValue, parseFinderExpectedValue } from "../runtime-api.utils";
 import { RuntimeApiService } from "../runtime-api.service";
 

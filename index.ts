@@ -1,19 +1,62 @@
 import Runtime from "./runtime/Runtime";
 import createApiServer from "./api/createApiServer";
-import { loadProgramFromFile, startProgram } from "./runtime/programEngine";
+import { loadProgramFromFile, startProgram } from "./runtime/program/ProgramEngine";
 import {
   loadPersistedValuesIntoAssets,
   startAttributeValuePersistence
-} from "./runtime/attributeValuePersistence";
+} from "./runtime/persistence/attributeValuePersistence";
 import {
   loadPersistedGlobalsIntoRuntime,
   startGlobalValuePersistence
-} from "./runtime/globalValuePersistence";
+} from "./runtime/persistence/globalValuePersistence";
 import path from "node:path";
-import { computeTagID } from "./runtime/historianBridge";
-import { loadDbConfig } from "./runtime/dbConfig";
-import { createDbConnectionManager } from "./runtime/dbConnectionManager";
-import type { AssetStore, AssetHierarchyNode } from "./runtime/types";
+import { computeTagID } from "./runtime/historian/HistorianBridgeFactory";
+import { loadDbConfig } from "./runtime/db/dbConfig";
+import { createDbConnectionManager } from "./runtime/db/dbConnectionManager";
+import type { AssetStore, AssetHierarchyNode } from "./runtime/core/runtimeTypes";
+import type { ProgramDefinition } from "./runtime/core/runtimeTypes";
+
+function mergeProgramAssetsPreserveLiveValues(
+  incomingAssets: ProgramDefinition["assets"],
+  liveAssets: AssetStore["getState"] extends () => infer T ? T : never
+): ProgramDefinition["assets"] {
+  const incoming =
+    incomingAssets && typeof incomingAssets === "object"
+      ? (incomingAssets as {
+          assets?: Array<{ id?: unknown; attributes?: Record<string, unknown> }>;
+          attributeTemplates?: unknown[];
+          historians?: unknown[];
+        })
+      : {};
+  const live =
+    liveAssets && typeof liveAssets === "object"
+      ? (liveAssets as {
+          assets?: Array<{ id?: unknown; attributes?: Record<string, unknown> }>;
+          attributeTemplates?: unknown[];
+          historians?: unknown[];
+        })
+      : {};
+
+  const liveAttributesByAssetId = new Map<string, Record<string, unknown>>();
+  for (const asset of live.assets || []) {
+    const assetId = String(asset?.id || "").trim();
+    if (!assetId) continue;
+    liveAttributesByAssetId.set(assetId, { ...((asset.attributes || {}) as Record<string, unknown>) });
+  }
+
+  return {
+    ...incoming,
+    assets: (incoming.assets || []).map((asset) => {
+      const assetId = String(asset?.id || "").trim();
+      return {
+        ...(asset as Record<string, unknown>),
+        attributes: liveAttributesByAssetId.get(assetId) || {}
+      };
+    }),
+    attributeTemplates: Array.isArray(incoming.attributeTemplates) ? incoming.attributeTemplates : [],
+    historians: Array.isArray(incoming.historians) ? incoming.historians : []
+  };
+}
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -52,11 +95,11 @@ async function bootstrap(): Promise<void> {
   console.log(`Program loaded: ${absolutePath}`);
   console.log(`[runtime] global persistence seed loaded: ${loadedGlobalCount}`);
   console.log(`[runtime] attribute persistence seed loaded: ${loadedCount}`);
-  const stopProgram = startProgram(rt, programWithPersistedValues);
-
-  const assetStore = rt.getGlobal<AssetStore | undefined>("assetStorage");
+  let currentStopProgram: () => void = () => {};
+  let currentAssetStoreUnsubscribe: () => void = () => {};
   const tagToPath = new Map<number, string>();
-  const rebuildTagPathMap = (): void => {
+
+  const rebuildTagPathMap = (assetStore?: AssetStore): void => {
     tagToPath.clear();
     if (!assetStore) return;
     const nodes = assetStore.getHierarchy({ populateAttributes: true });
@@ -71,9 +114,81 @@ async function bootstrap(): Promise<void> {
       }
     }
   };
-  rebuildTagPathMap();
 
-  const unsubscribeAssetStore = assetStore ? assetStore.subscribe(() => rebuildTagPathMap()) : () => {};
+  const attachProgramAssetObservers = (assetStore?: AssetStore): void => {
+    currentAssetStoreUnsubscribe();
+    rebuildTagPathMap(assetStore);
+    currentAssetStoreUnsubscribe = assetStore ? assetStore.subscribe(() => rebuildTagPathMap(assetStore)) : () => {};
+  };
+
+  const startLoadedProgram = (nextProgram: ProgramDefinition): void => {
+    currentStopProgram = startProgram(rt, nextProgram);
+    const nextComposition = rt.getProgramComposition();
+    if (!nextComposition) {
+      throw new Error("Program composition failed to initialize");
+    }
+    attachProgramAssetObservers(nextComposition.assetStore as AssetStore | undefined);
+  };
+
+  const stopLoadedProgram = async (): Promise<void> => {
+    const previousComposition = rt.getProgramComposition();
+    currentAssetStoreUnsubscribe();
+    currentAssetStoreUnsubscribe = () => {};
+    currentStopProgram();
+    currentStopProgram = () => {};
+
+    const historianBridge = previousComposition?.services.historian.getBridge();
+    if (historianBridge?.close) {
+      try {
+        historianBridge.close();
+      } catch (error) {
+        console.error("[runtime] historianBridge close error:", getErrorMessage(error));
+      }
+    }
+
+    const eventStore = previousComposition?.eventStore as { shutdown?: () => void | Promise<void> } | undefined;
+    if (eventStore?.shutdown) {
+      try {
+        await Promise.resolve(eventStore.shutdown());
+      } catch (error) {
+        console.error("[runtime] eventStore shutdown error:", getErrorMessage(error));
+      }
+    }
+
+    rt.resetProgramState();
+  };
+
+  startLoadedProgram(programWithPersistedValues);
+
+  rt.setGlobal("__runtime.programLifecycle", {
+    getStatus: () => {
+      const composition = rt.getProgramComposition();
+      return {
+        programPath: absolutePath,
+        loadedAt: new Date().toISOString(),
+        flowCount: composition?.flowDefinitionsById.size || 0,
+        eventTemplateCount: composition?.eventTemplatesById.size || 0,
+        scriptTemplateCount: composition?.scriptTemplatesById.size || 0,
+        triggerTemplateCount: composition?.triggerTemplates.length || 0
+      };
+    },
+    reloadFromDisk: async () => {
+      const { absolutePath: nextProgramPath, program: nextProgramRaw } = loadProgramFromFile(programPath);
+      const liveAssetState = rt.getProgramComposition()?.assetStore.getState();
+      const mergedProgram = liveAssetState
+        ? { ...nextProgramRaw, assets: mergeProgramAssetsPreserveLiveValues(nextProgramRaw.assets, liveAssetState) }
+        : nextProgramRaw;
+      await stopLoadedProgram();
+      startLoadedProgram(mergedProgram);
+      return {
+        ok: true,
+        programPath: nextProgramPath,
+        reloadedAt: new Date().toISOString(),
+        flowCount: rt.getProgramComposition()?.flowDefinitionsById.size || 0
+      };
+    }
+  });
+
   if (dbConnectionManager) {
     rt.setGlobal("historianIngestStats", {
       mode: "direct-queue-batch-flush"
@@ -108,7 +223,7 @@ async function bootstrap(): Promise<void> {
     hardExitTimer.unref?.();
 
     try {
-      stopProgram();
+      await stopLoadedProgram();
     } catch (error) {
       console.error("[runtime] stop program error:", getErrorMessage(error));
     }
@@ -145,35 +260,11 @@ async function bootstrap(): Promise<void> {
       console.error("[runtime] api stop error:", getErrorMessage(error));
     }
 
-    try {
-      unsubscribeAssetStore();
-    } catch (error) {
-      console.error("[runtime] asset store unsubscribe error:", getErrorMessage(error));
-    }
-
     if (dbConnectionManager) {
       try {
         await dbConnectionManager.shutdown();
       } catch (error) {
         console.error("[runtime] dbConnectionManager shutdown error:", getErrorMessage(error));
-      }
-    }
-
-    const historianBridge = rt.getGlobal<{ close?: () => void } | undefined>("historianBridge");
-    if (historianBridge?.close) {
-      try {
-        historianBridge.close();
-      } catch (error) {
-        console.error("[runtime] historianBridge close error:", getErrorMessage(error));
-      }
-    }
-
-    const eventStore = rt.getGlobal<{ shutdown?: () => void } | undefined>("eventStore");
-    if (eventStore?.shutdown) {
-      try {
-        await Promise.resolve(eventStore.shutdown());
-      } catch (error) {
-        console.error("[runtime] eventStore shutdown error:", getErrorMessage(error));
       }
     }
 

@@ -1,36 +1,21 @@
-import { randomUUID } from "node:crypto";
-import type {
-  RuntimeMessage,
-  RuntimeNodeHandler,
-} from "./types";
-import type { RuntimeNodeContext } from "./types";
+import type { RuntimeMessage, RuntimeNodeContext, RuntimeNodeHandler } from "./core/runtimeTypes";
+import type { ProgramRuntimeComposition } from "./composition/RuntimeComposition";
 import { RuntimeContextFactory } from "./composition/RuntimeContextFactory";
-
-interface RuntimeOptions {
-  maxInflightPerNode?: number;
-  maxQueuePerNode?: number;
-  nodeExecutionTimeoutMs?: number;
-}
-
-interface NodeExecutionState {
-  inflight: number;
-  queue: RuntimeMessage[];
-}
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
-        timer.unref?.();
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
+import {
+  createRuntimeDeps,
+  getOrCreateNodeState,
+  waitForInflightToDrain,
+  withTimeout,
+  type NodeExecutionState,
+  type RuntimeDeps,
+  type RuntimeOptions
+} from "./core/runtimeExecutionUtils";
+import {
+  buildWireKey,
+  normalizeMessage,
+  resolveOutputLabels,
+  resolvePorts
+} from "./core/runtimeMessageUtils";
 
 class Runtime {
   private readonly wires = new Map<string, string[]>();
@@ -45,12 +30,15 @@ class Runtime {
   private shuttingDown = false;
   private shutdownPromise: Promise<void> | null = null;
   private readonly contextFactory: RuntimeContextFactory;
+  private readonly deps: Required<RuntimeDeps>;
+  private programComposition: ProgramRuntimeComposition | null = null;
 
-  constructor(options: RuntimeOptions = {}) {
+  constructor(options: RuntimeOptions = {}, deps: RuntimeDeps = {}) {
     this.maxInflightPerNode = options.maxInflightPerNode ?? 50;
     this.maxQueuePerNode = options.maxQueuePerNode ?? 5000;
     this.nodeExecutionTimeoutMs = Math.max(0, Number(options.nodeExecutionTimeoutMs ?? 30000));
-    this.contextFactory = new RuntimeContextFactory(this);
+    this.deps = createRuntimeDeps(deps);
+    this.contextFactory = new RuntimeContextFactory(this, { now: this.deps.now });
   }
 
   addNode(id: string, handler: RuntimeNodeHandler): void {
@@ -58,7 +46,7 @@ class Runtime {
   }
 
   wire(from: string, to: string, fromPort = "default"): void {
-    const wireKey = `${from}::${String(fromPort || "default")}`;
+    const wireKey = buildWireKey(from, fromPort);
     if (!this.wires.has(wireKey)) this.wires.set(wireKey, []);
     this.wires.get(wireKey)?.push(to);
   }
@@ -92,6 +80,23 @@ class Runtime {
     return this.globalRevision;
   }
 
+  setProgramComposition(composition: ProgramRuntimeComposition | null): ProgramRuntimeComposition | null {
+    this.programComposition = composition;
+    return this.programComposition;
+  }
+
+  getProgramComposition(): ProgramRuntimeComposition | null {
+    return this.programComposition;
+  }
+
+  resetProgramState(): void {
+    this.wires.clear();
+    this.nodes.clear();
+    this.nodeState.clear();
+    this.programComposition = null;
+    this.deleteGlobal("flowNodeConfigById");
+  }
+
   private enqueueAssetWrite<T>(fn: () => T | Promise<T>): Promise<T> {
     const run = this.assetWriteChain.then(() => Promise.resolve(fn()));
     this.assetWriteChain = run.then(
@@ -106,10 +111,41 @@ class Runtime {
   }
 
   private getNodeState(nodeId: string): NodeExecutionState {
-    if (!this.nodeState.has(nodeId)) {
-      this.nodeState.set(nodeId, { inflight: 0, queue: [] });
-    }
-    return this.nodeState.get(nodeId) as NodeExecutionState;
+    return getOrCreateNodeState(this.nodeState, nodeId);
+  }
+
+  private getOutputLabels(nodeId: string): string[] {
+    const nodeConfig = this.getGlobal<Record<string, Record<string, unknown>>>("flowNodeConfigById", {});
+    return resolveOutputLabels(nodeConfig?.[nodeId]);
+  }
+
+  private createSend(nodeId: string) {
+    const outputLabels = this.getOutputLabels(nodeId);
+    return (msgOrPorts: RuntimeMessage | string[] | number[], msgOrPort?: RuntimeMessage | string, maybePort?: string): void => {
+      if (Array.isArray(msgOrPorts)) {
+        const ports = resolvePorts(outputLabels, msgOrPorts as Array<string | number>);
+        const outMsg = msgOrPort as RuntimeMessage;
+        for (const port of ports) {
+          this.send(nodeId, outMsg, port);
+        }
+        return;
+      }
+
+      const outMsg = msgOrPorts as RuntimeMessage;
+      if (typeof msgOrPort === "string") {
+        this.send(nodeId, outMsg, msgOrPort);
+        return;
+      }
+      if (typeof maybePort === "string") {
+        this.send(nodeId, outMsg, maybePort);
+        return;
+      }
+
+      const ports = outputLabels.length > 0 ? outputLabels : ["default"];
+      for (const port of ports) {
+        this.send(nodeId, outMsg, port);
+      }
+    };
   }
 
   private enqueueNodeMessage(nodeId: string, msg: RuntimeMessage): void {
@@ -121,6 +157,31 @@ class Runtime {
     }
     state.queue.push(msg);
     this.drainNodeQueue(nodeId);
+  }
+
+  private executeNodeMessage(nodeId: string, handler: RuntimeNodeHandler, msg: RuntimeMessage, state: NodeExecutionState): void {
+    setImmediate(async () => {
+      try {
+        const send = this.createSend(nodeId);
+        const context = this.createNodeContext(nodeId);
+        if (this.nodeExecutionTimeoutMs > 0) {
+          await withTimeout(
+            Promise.resolve(handler(msg, send, context)),
+            this.nodeExecutionTimeoutMs,
+            `Node execution timeout after ${this.nodeExecutionTimeoutMs}ms`,
+            this.deps
+          );
+        } else {
+          await handler(msg, send, context);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Error in node "${nodeId}":`, message);
+      } finally {
+        state.inflight -= 1;
+        this.drainNodeQueue(nodeId);
+      }
+    });
   }
 
   private drainNodeQueue(nodeId: string): void {
@@ -136,98 +197,17 @@ class Runtime {
       const msg = state.queue.shift();
       if (!msg) continue;
       state.inflight += 1;
-
-      setImmediate(async () => {
-        try {
-          const nodeConfig = this.getGlobal<Record<string, Record<string, unknown>>>("flowNodeConfigById", {});
-          const outputLabels = Array.isArray(nodeConfig?.[nodeId]?.outputs)
-            ? (nodeConfig[nodeId].outputs as unknown[]).map((item) => String(item || "").trim()).filter(Boolean)
-            : [];
-          const resolvePorts = (targets: Array<string | number>): string[] => {
-            const resolved = new Set<string>();
-            for (const target of targets) {
-              if (typeof target === "number" && Number.isFinite(target)) {
-                const index = Math.trunc(target) - 1;
-                const port = outputLabels[index];
-                if (port) resolved.add(port);
-                continue;
-              }
-              const raw = String(target || "").trim();
-              if (!raw) continue;
-              if (/^\d+$/.test(raw)) {
-                const index = Number(raw) - 1;
-                const port = outputLabels[index];
-                if (port) resolved.add(port);
-                continue;
-              }
-              resolved.add(raw);
-            }
-            return Array.from(resolved);
-          };
-          const send = (msgOrPorts: RuntimeMessage | string[] | number[], msgOrPort?: RuntimeMessage | string, maybePort?: string): void => {
-            if (Array.isArray(msgOrPorts)) {
-              const ports = resolvePorts(msgOrPorts as Array<string | number>);
-              const outMsg = msgOrPort as RuntimeMessage;
-              for (const port of ports) {
-                this.send(nodeId, outMsg, port);
-              }
-              return;
-            }
-            const outMsg = msgOrPorts as RuntimeMessage;
-            if (typeof msgOrPort === "string") {
-              this.send(nodeId, outMsg, msgOrPort);
-              return;
-            }
-            if (typeof maybePort === "string") {
-              this.send(nodeId, outMsg, maybePort);
-              return;
-            }
-            const ports = outputLabels.length > 0 ? outputLabels : ["default"];
-            for (const port of ports) {
-              this.send(nodeId, outMsg, port);
-            }
-          };
-          const context = this.createNodeContext(nodeId);
-          if (this.nodeExecutionTimeoutMs > 0) {
-            await withTimeout(
-              Promise.resolve(handler(msg, send, context)),
-              this.nodeExecutionTimeoutMs,
-              `Node execution timeout after ${this.nodeExecutionTimeoutMs}ms`
-            );
-          } else {
-            await handler(msg, send, context);
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          console.error(`Error in node "${nodeId}":`, message);
-        } finally {
-          state.inflight -= 1;
-          this.drainNodeQueue(nodeId);
-        }
-      });
+      this.executeNodeMessage(nodeId, handler, msg, state);
     }
-  }
-
-  private normalizeMessage(msg: unknown): RuntimeMessage {
-    const source: Record<string, unknown> =
-      msg && typeof msg === "object" && !Array.isArray(msg) ? (msg as Record<string, unknown>) : { payload: msg };
-    const normalized: Record<string, unknown> = { ...source };
-    if (typeof normalized.id !== "string" || !normalized.id.trim()) {
-      normalized.id = randomUUID();
-    }
-    if (typeof normalized.ts !== "string" || !normalized.ts.trim()) {
-      normalized.ts = new Date().toISOString();
-    }
-    return normalized as RuntimeMessage;
   }
 
   send(fromId: string, msg: unknown, fromPort = "default"): void {
     if (this.shuttingDown) return;
-    const normalized = this.normalizeMessage(msg);
-    const wireKey = `${fromId}::${String(fromPort || "default")}`;
+    const normalized = normalizeMessage(msg, this.deps);
+    const wireKey = buildWireKey(fromId, fromPort);
     const nexts = this.wires.get(wireKey) ?? [];
     for (const nextId of nexts) {
-      const msgClone = structuredClone(normalized);
+      const msgClone = this.deps.cloneMessage(normalized);
       this.enqueueNodeMessage(nextId, msgClone);
     }
   }
@@ -240,22 +220,10 @@ class Runtime {
         state.queue.length = 0;
       }
 
-      const deadlineMs = Math.max(
-        500,
-        Number(process.env.RUNTIME_SHUTDOWN_DRAIN_TIMEOUT_MS || 5000)
-      );
-      const started = Date.now();
-      while (Date.now() - started < deadlineMs) {
-        let inflight = 0;
-        for (const state of this.nodeState.values()) {
-          inflight += state.inflight;
-        }
-        if (inflight <= 0) return;
-        await new Promise<void>((resolve) => setTimeout(resolve, 25));
-      }
-      console.warn(
-        `[runtime] shutdown drain timeout (${deadlineMs}ms), forcing close with in-flight handlers`
-      );
+      const deadlineMs = Math.max(500, Number(process.env.RUNTIME_SHUTDOWN_DRAIN_TIMEOUT_MS || 5000));
+      const drained = await waitForInflightToDrain(this.nodeState, deadlineMs, this.deps);
+      if (drained) return;
+      console.warn(`[runtime] shutdown drain timeout (${deadlineMs}ms), forcing close with in-flight handlers`);
     })();
     return this.shutdownPromise;
   }

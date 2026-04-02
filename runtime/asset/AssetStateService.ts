@@ -1,23 +1,34 @@
 import type Runtime from "../Runtime";
-import type { AssetSection, AssetStore } from "../types";
-import type { AssetNormalizationServiceContract, AssetStoreRepositoryContract } from "./contracts";
+import type { AssetSection, AssetStore } from "../core/runtimeTypes";
+import type { HistorianDomainController } from "../historian/HistorianDomainController";
+import type { AssetNormalizationServiceContract, AssetStoreRepositoryContract } from "./AssetContracts";
 import { AssetNormalizationService } from "./AssetNormalizationService";
 import { AssetStoreRepository } from "./AssetStoreRepository";
+
+interface AssetStateServiceDeps {
+  historianController?: HistorianDomainController;
+}
 
 export class AssetStateService {
   private runtime: Runtime | null;
   private readonly normalizationService: AssetNormalizationServiceContract;
+  private readonly historianController?: HistorianDomainController;
   private repository: AssetStoreRepositoryContract | null = null;
 
-  constructor(runtime: Runtime) {
+  constructor(runtime: Runtime, deps: AssetStateServiceDeps = {}) {
     this.runtime = runtime;
     this.normalizationService = new AssetNormalizationService();
-    this.repository = new AssetStoreRepository(runtime, this.normalizationService);
+    this.historianController = deps.historianController;
+    this.repository = new AssetStoreRepository(runtime, this.normalizationService, {
+      historianController: this.historianController
+    });
   }
 
   bindRuntime(runtime: Runtime): void {
     this.runtime = runtime;
-    this.repository = new AssetStoreRepository(runtime, this.normalizationService);
+    this.repository = new AssetStoreRepository(runtime, this.normalizationService, {
+      historianController: this.historianController
+    });
   }
 
   initialize(initialSection: unknown = {}): AssetStore {

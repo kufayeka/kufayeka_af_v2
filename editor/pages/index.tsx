@@ -556,7 +556,7 @@ export default function HomePage() {
       notify(message, "warning");
       return;
     }
-    if (lowered.includes("saved") || lowered.includes("downloaded") || lowered.includes("imported") || lowered.includes("created") || lowered.includes("duplicated") || lowered.includes("pasted") || lowered.includes("removed")) {
+    if (lowered.includes("saved") || lowered.includes("downloaded") || lowered.includes("imported") || lowered.includes("created") || lowered.includes("duplicated") || lowered.includes("pasted") || lowered.includes("removed") || lowered.includes("applied")) {
       notify(message, "success");
       return;
     }
@@ -770,7 +770,7 @@ export default function HomePage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const saveProgram = async () => {
+  const buildWorkspaceProgramForSave = (): Program => {
     const activeFlowIdForSave = program.activeFlowId || program.flows.activeFlowId || selectedFlowId;
     const syncedFlowDefinitions = (program.flowDefinitions || []).map((flow) =>
       flow.id === activeFlowIdForSave
@@ -805,7 +805,11 @@ export default function HomePage() {
         }))
       }
     }, activeFlowIdForSave);
+    return programForSave;
+  };
 
+  const saveProgram = async (): Promise<boolean> => {
+    const programForSave = buildWorkspaceProgramForSave();
     try {
       const res = await fetch("/api/program", {
         method: "PUT",
@@ -816,23 +820,34 @@ export default function HomePage() {
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
         setStatus(`Save error: ${data.error ?? "unknown error"}`);
-        return;
+        return false;
       }
-      const data = (await res.json()) as {
-        path?: string;
-        runtimeSynced?: boolean;
-        runtimeError?: string;
-      };
-      if (data.runtimeSynced === false) {
-        setStatus(
-          `Saved file only (${data.path ?? "programs/main.af.json"}), runtime sync failed: ${data.runtimeError ?? "unknown error"}`
-        );
-      } else {
-        setStatus(`Saved to ${data.path ?? "programs/main.af.json"} (runtime synced)`);
-      }
+      const data = (await res.json()) as { path?: string };
+      setStatus(`Workspace saved to ${data.path ?? "programs/main.af.json"}`);
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(`Save error: ${message}`);
+      return false;
+    }
+  };
+
+  const applyRuntime = async (): Promise<void> => {
+    const saved = await saveProgram();
+    if (!saved) return;
+    try {
+      const res = await fetch("/api/program-sync-runtime", {
+        method: "POST"
+      });
+      const data = (await res.json()) as { error?: string; path?: string; flowCount?: number };
+      if (!res.ok) {
+        setStatus(`Runtime apply error: ${data.error ?? "unknown error"}`);
+        return;
+      }
+      setStatus(`Runtime applied from ${data.path ?? "programs/main.af.json"} (${Number(data.flowCount || 0)} flows)`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(`Runtime apply error: ${message}`);
     }
   };
 
@@ -2136,7 +2151,7 @@ export default function HomePage() {
 
   const headerActions = useMemo(
     () => (
-      <Box sx={{ display: "flex", gap: 0.75 }}>
+      <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
         <input
           ref={importInputRef}
           type="file"
@@ -2155,8 +2170,11 @@ export default function HomePage() {
         <Button disabled={!canRedo} variant="outlined" onClick={() => dispatch({ type: "REDO" })}>
           Redo
         </Button>
-        <Button variant="contained" onClick={saveProgram}>
-          Save Program
+        <Button variant="contained" onClick={() => void saveProgram()}>
+          Save Workspace
+        </Button>
+        <Button variant="outlined" onClick={() => void applyRuntime()}>
+          Apply Runtime
         </Button>
         <Button variant="outlined" onClick={() => importInputRef.current?.click()}>
           Import Program (JSON)
@@ -2166,7 +2184,7 @@ export default function HomePage() {
         </Button>
       </Box>
     ),
-    [canUndo, canRedo, program]
+    [canUndo, canRedo, program, selectedFlowId]
   );
 
   return (

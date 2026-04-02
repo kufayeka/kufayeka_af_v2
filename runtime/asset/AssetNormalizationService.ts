@@ -1,6 +1,6 @@
-import { normalizeAssetSection } from "../assetFramework";
-import type { AssetSection } from "../types";
-import type { AssetNormalizationServiceContract } from "./contracts";
+import { normalizeAssetSection } from "./AssetStoreFactory";
+import type { AssetSection } from "../core/runtimeTypes";
+import type { AssetNormalizationServiceContract } from "./AssetContracts";
 
 export class AssetNormalizationService implements AssetNormalizationServiceContract {
   normalize(input: unknown = {}): AssetSection {
