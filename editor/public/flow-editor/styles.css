@@ -121,6 +121,14 @@ input {
   display: block;
   min-height: 0;
   height: 100%;
+  overflow: hidden;
+  min-width: 0;
+}
+
+#available-list.active {
+  display: block;
+  min-height: 0;
+  height: 100%;
   overflow: auto;
   min-width: 0;
 }
@@ -129,7 +137,7 @@ input {
   display: block;
   min-height: 0;
   height: 100%;
-  overflow: auto;
+  overflow: hidden;
   min-width: 0;
 }
 
@@ -162,8 +170,8 @@ input {
   display: grid;
   gap: 12px;
   align-content: start;
-  min-width: 0;
-  width: 100%;
+  min-width: max-content;
+  width: max-content;
 }
 
 .palette-section {
@@ -197,16 +205,20 @@ input {
 
 .flows-shell {
   min-height: 0;
-  height: max-content;
+  height: 100%;
   display: grid;
-  grid-template-rows: auto minmax(220px, 0.9fr) minmax(320px, 1.1fr);
-  overflow: visible;
-  min-width: 920px;
+  grid-template-rows: minmax(220px, 0.9fr) minmax(240px, 1fr) minmax(260px, 1fr);
+  gap: 10px;
+  overflow: hidden;
+  min-width: 0;
+  padding: 10px;
 }
 
 .flows-toolbar {
-  padding: 10px;
-  border-bottom: 1px solid var(--line);
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
 }
 
 .flows-toolbar button,
@@ -218,15 +230,58 @@ input {
   cursor: pointer;
 }
 
+.flow-card {
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.82);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.flow-detail-card,
+.flow-vars-card {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.flow-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.flow-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.flow-card-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #334155;
+}
+
 .flow-list {
   min-height: 0;
-  overflow: visible;
-  padding: 10px;
+  overflow: auto;
+  padding: 2px;
   display: grid;
   gap: 8px;
   align-content: start;
-  border-bottom: 1px solid var(--line);
   min-width: 0;
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.9);
 }
 
 .flow-list-item {
@@ -255,8 +310,8 @@ input {
 
 .flow-config {
   min-height: 0;
-  overflow: visible;
-  padding: 10px;
+  overflow: auto;
+  padding: 2px;
   display: grid;
   gap: 10px;
   min-width: 0;
@@ -311,10 +366,11 @@ input {
 }
 
 .flow-table-wrap {
-  overflow: visible;
+  overflow: auto;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   background: #fff;
+  max-width: 100%;
 }
 
 .flow-table {

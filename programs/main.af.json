@@ -282,9 +282,9 @@
         }
       },
       {
-        "id": "event.close.evt_jrezt6wa",
+        "id": "event.close.evt_o27exb7y",
         "kind": "event_close",
-        "refId": "evt_jrezt6wa",
+        "refId": "evt_o27exb7y",
         "label": "CLOSE Taiyo2.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -501,9 +501,9 @@
         }
       },
       {
-        "id": "event.open.evt_z47k07ux",
+        "id": "event.open.evt_7gma4m13",
         "kind": "event_open",
-        "refId": "evt_z47k07ux",
+        "refId": "evt_7gma4m13",
         "label": "Open JobLifecycle Event",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -537,9 +537,9 @@
         }
       },
       {
-        "id": "event.close.evt_qdz7l05b",
+        "id": "event.close.evt_z4bma0li",
         "kind": "event_close",
-        "refId": "evt_qdz7l05b",
+        "refId": "evt_z4bma0li",
         "label": "Close JobLifecycle Event",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -573,9 +573,9 @@
         }
       },
       {
-        "id": "event.open.evt_kb2indwj",
+        "id": "event.open.evt_69ztg0r1",
         "kind": "event_open",
-        "refId": "evt_kb2indwj",
+        "refId": "evt_69ztg0r1",
         "label": "Open JobActivity Event",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -612,15 +612,30 @@
           "openNotes": "",
           "closeNotes": ""
         }
+      },
+      {
+        "id": "trg_jw7p9nfw",
+        "kind": "trigger",
+        "refId": "trg_jw7p9nfw",
+        "label": "Jasuindo.OffsetPrinter.Taiyo2.Job Activity",
+        "enabled": true,
+        "templateId": "",
+        "config": {
+          "description": "",
+          "type": "watcher_set",
+          "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Job Activity",
+          "intervalMs": 1000,
+          "activeFrom": "",
+          "activeTo": "",
+          "message": {
+            "payload": 0
+          },
+          "cronExpression": "",
+          "timezone": ""
+        }
       }
     ],
     "links": [
-      {
-        "from": "act_h7a2huxz",
-        "to": "act_kqz63n0a",
-        "fromPort": "out",
-        "enabled": true
-      },
       {
         "from": "act_potgd362",
         "to": "act_7mt52ha7",
@@ -665,67 +680,67 @@
       },
       {
         "from": "act_dlgwztd0",
-        "to": "event.open.evt_z47k07ux",
+        "to": "event.open.evt_7gma4m13",
         "fromPort": "open event",
         "enabled": true
       },
       {
-        "from": "event.open.evt_z47k07ux",
+        "from": "event.open.evt_7gma4m13",
         "to": "act_jg01wnrl",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_z47k07ux",
+        "from": "event.open.evt_7gma4m13",
         "to": "act_z1kdf1oo",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_z47k07ux",
+        "from": "event.open.evt_7gma4m13",
         "to": "act_z1kdf1oo",
         "fromPort": "onFail",
         "enabled": true
       },
       {
         "from": "act_dlgwztd0",
-        "to": "event.close.evt_qdz7l05b",
+        "to": "event.close.evt_z4bma0li",
         "fromPort": "close event",
         "enabled": true
       },
       {
-        "from": "event.close.evt_qdz7l05b",
+        "from": "event.close.evt_z4bma0li",
         "to": "act_9elon898",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.close.evt_qdz7l05b",
+        "from": "event.close.evt_z4bma0li",
         "to": "act_z1kdf1oo",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "event.close.evt_qdz7l05b",
+        "from": "event.close.evt_z4bma0li",
         "to": "act_z1kdf1oo",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_kb2indwj",
+        "from": "event.open.evt_69ztg0r1",
         "to": "act_z1kdf1oo",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_kb2indwj",
+        "from": "event.open.evt_69ztg0r1",
         "to": "act_z1kdf1oo",
         "fromPort": "onFail",
         "enabled": true
       },
       {
         "from": "act_9yue80v9",
-        "to": "event.open.evt_kb2indwj",
+        "to": "event.open.evt_69ztg0r1",
         "fromPort": "out",
         "enabled": true
       },
@@ -739,6 +754,18 @@
         "from": "act_3ptblup8",
         "to": "act_xbimncoj",
         "fromPort": "out",
+        "enabled": true
+      },
+      {
+        "from": "trgec80dda2",
+        "to": "act_kqz63n0a",
+        "fromPort": "default",
+        "enabled": true
+      },
+      {
+        "from": "trg_jw7p9nfw",
+        "to": "act_h7a2huxz",
+        "fromPort": "default",
         "enabled": true
       }
     ],
@@ -804,8 +831,8 @@
         "y": 480
       },
       "act_kqz63n0a": {
-        "x": 1320,
-        "y": 880
+        "x": 840,
+        "y": 760
       },
       "act_dlgwztd0": {
         "x": 840,
@@ -848,8 +875,8 @@
         "y": 1060
       },
       "trgec80dda2": {
-        "x": 300,
-        "y": 860
+        "x": 320,
+        "y": 740
       },
       "trg76cb39f4": {
         "x": 300,
@@ -863,15 +890,19 @@
         "x": 300,
         "y": 380
       },
-      "event.open.evt_z47k07ux": {
+      "trg_jw7p9nfw": {
+        "x": 320,
+        "y": 880
+      },
+      "event.open.evt_7gma4m13": {
         "x": 1340,
         "y": 1040
       },
-      "event.close.evt_qdz7l05b": {
+      "event.close.evt_z4bma0li": {
         "x": 1340,
         "y": 1160
       },
-      "event.open.evt_kb2indwj": {
+      "event.open.evt_69ztg0r1": {
         "x": 1340,
         "y": 1300
       }
@@ -3874,9 +3905,9 @@
           }
         },
         {
-          "id": "event.close.evt_nejsvejs",
+          "id": "event.close.evt_9cpiuphz",
           "kind": "event_close",
-          "refId": "evt_nejsvejs",
+          "refId": "evt_9cpiuphz",
           "label": "CLOSE Taiyo1.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4093,9 +4124,9 @@
           }
         },
         {
-          "id": "event.open.evt_z1evgit6",
+          "id": "event.open.evt_ek4yiiav",
           "kind": "event_open",
-          "refId": "evt_z1evgit6",
+          "refId": "evt_ek4yiiav",
           "label": "Open JobLifecycle Event",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -4129,9 +4160,9 @@
           }
         },
         {
-          "id": "event.close.evt_ln99zgbe",
+          "id": "event.close.evt_pzmpln9h",
           "kind": "event_close",
-          "refId": "evt_ln99zgbe",
+          "refId": "evt_pzmpln9h",
           "label": "Close JobLifecycle Event",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -4165,9 +4196,9 @@
           }
         },
         {
-          "id": "event.open.evt_tzgyx4tc",
+          "id": "event.open.evt_elr9gkqq",
           "kind": "event_open",
-          "refId": "evt_tzgyx4tc",
+          "refId": "evt_elr9gkqq",
           "label": "Open JobActivity Event",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4204,15 +4235,30 @@
             "openNotes": "",
             "closeNotes": ""
           }
+        },
+        {
+          "id": "trg_y3d99szb",
+          "kind": "trigger",
+          "refId": "trg_y3d99szb",
+          "label": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo1.Job Activity",
+            "intervalMs": 1000,
+            "activeFrom": "",
+            "activeTo": "",
+            "message": {
+              "payload": 0
+            },
+            "cronExpression": "",
+            "timezone": ""
+          }
         }
       ],
       "links": [
-        {
-          "from": "act_zxdzcreb",
-          "to": "act_otya9inq",
-          "fromPort": "out",
-          "enabled": true
-        },
         {
           "from": "act_bef4hk9d",
           "to": "act_t1msp001",
@@ -4257,67 +4303,67 @@
         },
         {
           "from": "act_o750buzm",
-          "to": "event.open.evt_z1evgit6",
+          "to": "event.open.evt_ek4yiiav",
           "fromPort": "open event",
           "enabled": true
         },
         {
-          "from": "event.open.evt_z1evgit6",
+          "from": "event.open.evt_ek4yiiav",
           "to": "act_o8dbxj0x",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_z1evgit6",
+          "from": "event.open.evt_ek4yiiav",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_z1evgit6",
+          "from": "event.open.evt_ek4yiiav",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
           "from": "act_o750buzm",
-          "to": "event.close.evt_ln99zgbe",
+          "to": "event.close.evt_pzmpln9h",
           "fromPort": "close event",
           "enabled": true
         },
         {
-          "from": "event.close.evt_ln99zgbe",
+          "from": "event.close.evt_pzmpln9h",
           "to": "act_nad2xse9",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.close.evt_ln99zgbe",
+          "from": "event.close.evt_pzmpln9h",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
-          "from": "event.close.evt_ln99zgbe",
+          "from": "event.close.evt_pzmpln9h",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_tzgyx4tc",
+          "from": "event.open.evt_elr9gkqq",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_tzgyx4tc",
+          "from": "event.open.evt_elr9gkqq",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
           "from": "act_pqgrrjup",
-          "to": "event.open.evt_tzgyx4tc",
+          "to": "event.open.evt_elr9gkqq",
           "fromPort": "out",
           "enabled": true
         },
@@ -4331,6 +4377,18 @@
           "from": "act_t1pac001",
           "to": "act_uc1u4e3v",
           "fromPort": "out",
+          "enabled": true
+        },
+        {
+          "from": "trg_lkd9tb0c",
+          "to": "act_otya9inq",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "trg_y3d99szb",
+          "to": "act_zxdzcreb",
+          "fromPort": "default",
           "enabled": true
         }
       ],
@@ -4396,8 +4454,8 @@
           "y": 400
         },
         "act_otya9inq": {
-          "x": 1240,
-          "y": 800
+          "x": 760,
+          "y": 660
         },
         "act_o750buzm": {
           "x": 760,
@@ -4444,8 +4502,8 @@
           "y": 400
         },
         "trg_lkd9tb0c": {
-          "x": 220,
-          "y": 780
+          "x": 240,
+          "y": 660
         },
         "trg_qsoxfskd": {
           "x": 220,
@@ -4455,15 +4513,19 @@
           "x": 220,
           "y": 1200
         },
-        "event.open.evt_z1evgit6": {
+        "trg_y3d99szb": {
+          "x": 240,
+          "y": 800
+        },
+        "event.open.evt_ek4yiiav": {
           "x": 1260,
           "y": 960
         },
-        "event.close.evt_ln99zgbe": {
+        "event.close.evt_pzmpln9h": {
           "x": 1260,
           "y": 1080
         },
-        "event.open.evt_tzgyx4tc": {
+        "event.open.evt_elr9gkqq": {
           "x": 1260,
           "y": 1220
         }
@@ -4730,9 +4792,9 @@
           }
         },
         {
-          "id": "event.close.evt_jrezt6wa",
+          "id": "event.close.evt_o27exb7y",
           "kind": "event_close",
-          "refId": "evt_jrezt6wa",
+          "refId": "evt_o27exb7y",
           "label": "CLOSE Taiyo2.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4949,9 +5011,9 @@
           }
         },
         {
-          "id": "event.open.evt_z47k07ux",
+          "id": "event.open.evt_7gma4m13",
           "kind": "event_open",
-          "refId": "evt_z47k07ux",
+          "refId": "evt_7gma4m13",
           "label": "Open JobLifecycle Event",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -4985,9 +5047,9 @@
           }
         },
         {
-          "id": "event.close.evt_qdz7l05b",
+          "id": "event.close.evt_z4bma0li",
           "kind": "event_close",
-          "refId": "evt_qdz7l05b",
+          "refId": "evt_z4bma0li",
           "label": "Close JobLifecycle Event",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -5021,9 +5083,9 @@
           }
         },
         {
-          "id": "event.open.evt_kb2indwj",
+          "id": "event.open.evt_69ztg0r1",
           "kind": "event_open",
-          "refId": "evt_kb2indwj",
+          "refId": "evt_69ztg0r1",
           "label": "Open JobActivity Event",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -5060,15 +5122,30 @@
             "openNotes": "",
             "closeNotes": ""
           }
+        },
+        {
+          "id": "trg_jw7p9nfw",
+          "kind": "trigger",
+          "refId": "trg_jw7p9nfw",
+          "label": "Jasuindo.OffsetPrinter.Taiyo2.Job Activity",
+          "enabled": true,
+          "templateId": "",
+          "config": {
+            "description": "",
+            "type": "watcher_set",
+            "watchPath": "Jasuindo.OffsetPrinter.Taiyo2.Job Activity",
+            "intervalMs": 1000,
+            "activeFrom": "",
+            "activeTo": "",
+            "message": {
+              "payload": 0
+            },
+            "cronExpression": "",
+            "timezone": ""
+          }
         }
       ],
       "links": [
-        {
-          "from": "act_h7a2huxz",
-          "to": "act_kqz63n0a",
-          "fromPort": "out",
-          "enabled": true
-        },
         {
           "from": "act_potgd362",
           "to": "act_7mt52ha7",
@@ -5113,67 +5190,67 @@
         },
         {
           "from": "act_dlgwztd0",
-          "to": "event.open.evt_z47k07ux",
+          "to": "event.open.evt_7gma4m13",
           "fromPort": "open event",
           "enabled": true
         },
         {
-          "from": "event.open.evt_z47k07ux",
+          "from": "event.open.evt_7gma4m13",
           "to": "act_jg01wnrl",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_z47k07ux",
+          "from": "event.open.evt_7gma4m13",
           "to": "act_z1kdf1oo",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_z47k07ux",
+          "from": "event.open.evt_7gma4m13",
           "to": "act_z1kdf1oo",
           "fromPort": "onFail",
           "enabled": true
         },
         {
           "from": "act_dlgwztd0",
-          "to": "event.close.evt_qdz7l05b",
+          "to": "event.close.evt_z4bma0li",
           "fromPort": "close event",
           "enabled": true
         },
         {
-          "from": "event.close.evt_qdz7l05b",
+          "from": "event.close.evt_z4bma0li",
           "to": "act_9elon898",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.close.evt_qdz7l05b",
+          "from": "event.close.evt_z4bma0li",
           "to": "act_z1kdf1oo",
           "fromPort": "onFail",
           "enabled": true
         },
         {
-          "from": "event.close.evt_qdz7l05b",
+          "from": "event.close.evt_z4bma0li",
           "to": "act_z1kdf1oo",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_kb2indwj",
+          "from": "event.open.evt_69ztg0r1",
           "to": "act_z1kdf1oo",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_kb2indwj",
+          "from": "event.open.evt_69ztg0r1",
           "to": "act_z1kdf1oo",
           "fromPort": "onFail",
           "enabled": true
         },
         {
           "from": "act_9yue80v9",
-          "to": "event.open.evt_kb2indwj",
+          "to": "event.open.evt_69ztg0r1",
           "fromPort": "out",
           "enabled": true
         },
@@ -5187,6 +5264,18 @@
           "from": "act_3ptblup8",
           "to": "act_xbimncoj",
           "fromPort": "out",
+          "enabled": true
+        },
+        {
+          "from": "trgec80dda2",
+          "to": "act_kqz63n0a",
+          "fromPort": "default",
+          "enabled": true
+        },
+        {
+          "from": "trg_jw7p9nfw",
+          "to": "act_h7a2huxz",
+          "fromPort": "default",
           "enabled": true
         }
       ],
@@ -5252,8 +5341,8 @@
           "y": 480
         },
         "act_kqz63n0a": {
-          "x": 1320,
-          "y": 880
+          "x": 840,
+          "y": 760
         },
         "act_dlgwztd0": {
           "x": 840,
@@ -5296,8 +5385,8 @@
           "y": 1060
         },
         "trgec80dda2": {
-          "x": 300,
-          "y": 860
+          "x": 320,
+          "y": 740
         },
         "trg76cb39f4": {
           "x": 300,
@@ -5311,15 +5400,19 @@
           "x": 300,
           "y": 380
         },
-        "event.open.evt_z47k07ux": {
+        "trg_jw7p9nfw": {
+          "x": 320,
+          "y": 880
+        },
+        "event.open.evt_7gma4m13": {
           "x": 1340,
           "y": 1040
         },
-        "event.close.evt_qdz7l05b": {
+        "event.close.evt_z4bma0li": {
           "x": 1340,
           "y": 1160
         },
-        "event.open.evt_kb2indwj": {
+        "event.open.evt_69ztg0r1": {
           "x": 1340,
           "y": 1300
         }

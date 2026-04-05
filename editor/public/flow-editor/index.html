@@ -30,11 +30,30 @@
         </div>
         <div id="flows-content" class="palette-panel-content">
           <div class="flows-shell">
-            <div class="flows-toolbar">
-              <button id="flow-add" type="button">New Flow</button>
+            <div class="flow-card flow-list-card">
+              <div class="flow-card-header">
+                <div class="flow-card-title">Flows</div>
+              </div>
+              <div class="flows-toolbar">
+                <input id="flow-search" class="palette-search" type="search" placeholder="Search flow" />
+                <button id="flow-add" type="button">New Flow</button>
+              </div>
+              <div id="flow-list" class="flow-list"></div>
             </div>
-            <div id="flow-list" class="flow-list"></div>
-            <div id="flow-config" class="flow-config"></div>
+            <div class="flow-card flow-detail-card">
+              <div class="flow-card-header">
+                <div class="flow-card-title">Flow Detail</div>
+                <div id="flow-detail-actions" class="flow-card-actions"></div>
+              </div>
+              <div id="flow-detail" class="flow-config"></div>
+            </div>
+            <div class="flow-card flow-vars-card">
+              <div class="flow-card-header">
+                <div class="flow-card-title">Flow Variables</div>
+                <div id="flow-variable-actions" class="flow-card-actions"></div>
+              </div>
+              <div id="flow-variables" class="flow-config"></div>
+            </div>
           </div>
         </div>
       </aside>

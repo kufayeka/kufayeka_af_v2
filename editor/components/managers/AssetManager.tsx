@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Autocomplete,
@@ -25,13 +25,14 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Typography
+  Typography,
+  IconButton
 } from "@mui/material";
 import { scrollBothOverflowSx } from "../common/scrollSx";
 import type { SelectChangeEvent } from "@mui/material/Select";
 import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
-import { ArrowRight, Building2, RefreshCcw } from "lucide-react";
+import { Database, RefreshCcw } from "lucide-react";
 import type {
   AssetAttributeType,
   AssetDefinition,
@@ -251,14 +252,47 @@ function getEffectiveAttributes(
   return Array.from(rows.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function collectTreeKeys(nodes: DataNode[]): Key[] {
+  const keys: Key[] = [];
+  const walk = (items: DataNode[]) => {
+    for (const item of items) {
+      if (String(item.key).startsWith("asset:")) keys.push(item.key);
+      if (Array.isArray(item.children) && item.children.length > 0) {
+        walk(item.children);
+      }
+    }
+  };
+  walk(nodes);
+  return keys;
+}
+
+const TREE_BOTTOM_SPACER_KEY = "__tree-bottom-spacer__";
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebounced(value);
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debounced;
+}
+
 export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [mainTab, setMainTab] = useState(0);
-  const [search, setSearch] = useState("");
+  const [assetSearch, setAssetSearch] = useState("");
+  const [attributeSearch, setAttributeSearch] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [selectedTreeKey, setSelectedTreeKey] = useState<Key>("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
   const [loadingRuntime, setLoadingRuntime] = useState(false);
+  const [refreshingAttributeKeys, setRefreshingAttributeKeys] = useState<Record<string, boolean>>({});
+  const [refreshingSelectedAssetValues, setRefreshingSelectedAssetValues] = useState(false);
+  const [attributeTableScrollTop, setAttributeTableScrollTop] = useState(0);
   const [fieldDrafts, setFieldDrafts] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<{ open: boolean; kind: "success" | "error"; message: string }>({
     open: false,
@@ -291,6 +325,13 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const runtimeApiBase = useMemo(() => {
     return "/api/runtime";
   }, []);
+  const debouncedAssetSearch = useDebouncedValue(assetSearch, 1500);
+  const debouncedAttributeSearch = useDebouncedValue(attributeSearch, 1500);
+  const assetsViewportHeight = "calc(100vh - 190px)";
+  const attributeRefreshCooldownRef = useRef<Record<string, number>>({});
+  const assetRefreshCooldownRef = useRef<Record<string, number>>({});
+  const effectiveTableRowHeight = 57;
+  const effectiveTableViewportHeight = 560;
 
   const assetById = useMemo(() => new Map(assets.assets.map((asset) => [asset.id, asset])), [assets.assets]);
   const templateById = useMemo(
@@ -305,6 +346,13 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     if (list.some((x) => x.id === "default")) return list;
     return [DEFAULT_HISTORIAN_TARGET, ...list];
   }, [assets.historians]);
+  const effectiveAttributesByAssetId = useMemo(() => {
+    const map = new Map<string, EffectiveAttributeRow[]>();
+    for (const asset of assets.assets) {
+      map.set(asset.id, getEffectiveAttributes(asset, templateById));
+    }
+    return map;
+  }, [assets.assets, templateById]);
 
   const updateAssets = (nextAssets: AssetDefinition[]) => {
     onChange((prev) => ({ ...prev, assets: nextAssets }));
@@ -412,15 +460,22 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
 
   const selectedAssetEffectiveAttributes = useMemo(() => {
     if (!selectedAsset) return [];
-    return getEffectiveAttributes(selectedAsset, templateById);
-  }, [selectedAsset, templateById]);
+    return effectiveAttributesByAssetId.get(selectedAsset.id) || [];
+  }, [effectiveAttributesByAssetId, selectedAsset]);
+  const filteredSelectedAssetEffectiveAttributes = useMemo(() => {
+    const keyword = debouncedAttributeSearch.trim().toLowerCase();
+    if (!keyword) return selectedAssetEffectiveAttributes;
+    return selectedAssetEffectiveAttributes.filter((row) =>
+      `${row.name} ${serializeValue(row.value)} ${row.unit || ""}`.toLowerCase().includes(keyword)
+    );
+  }, [debouncedAttributeSearch, selectedAssetEffectiveAttributes]);
 
   useEffect(() => {
     if (!selectedAssetId) {
       setSelectedTreeKey("");
       return;
     }
-    setSelectedTreeKey((prev) => (String(prev).startsWith("attr:") ? prev : `asset:${selectedAssetId}`));
+    setSelectedTreeKey(`asset:${selectedAssetId}`);
   }, [selectedAssetId]);
 
   const formatAttributeTimestamp = (ts?: string): string => {
@@ -464,48 +519,44 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   }, [mainTab]);
 
   const treeData = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
+    const assetKeyword = debouncedAssetSearch.trim().toLowerCase();
+    const attributeKeyword = debouncedAttributeSearch.trim().toLowerCase();
     const childrenMap = buildChildrenMap(assets.assets);
     const result: DataNode[] = [];
 
     const includeAsset = (asset: AssetDefinition, attrs: EffectiveAttributeRow[]) => {
-      if (!keyword) return true;
       const path = getAssetPath(asset, assetById).toLowerCase();
-      const attrHit = attrs.some((attr) => `${attr.name} ${serializeValue(attr.value)}`.toLowerCase().includes(keyword));
-      return path.includes(keyword) || attrHit;
+      const assetHit = !assetKeyword || path.includes(assetKeyword);
+      const attrHit =
+        !attributeKeyword ||
+        attrs.some((attr) =>
+          `${attr.name} ${serializeValue(attr.value)} ${attr.unit || ""}`.toLowerCase().includes(attributeKeyword)
+        );
+      return assetHit && attrHit;
     };
 
     const buildNode = (asset: AssetDefinition): DataNode | null => {
-      const attrs = getEffectiveAttributes(asset, templateById);
+      const attrs = effectiveAttributesByAssetId.get(asset.id) || [];
       const childAssets = (childrenMap.get(asset.id) || []).map(buildNode).filter(Boolean) as DataNode[];
       const selfIncluded = includeAsset(asset, attrs);
       if (!selfIncluded && childAssets.length === 0) return null;
 
-      const attrNodes: DataNode[] = attrs.map((attr) => ({
-        key: `attr:${asset.id}:${attr.name}`,
-        title: (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-            <ArrowRight size={14} />
-            <Typography variant="body2" sx={{ fontFamily: "monospace", opacity: 0.75 }}>
-              {attr.name}:
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: "monospace", fontWeight: "bold" }}>
-              {serializeValue(attr.value)} {attr.unit || ""}
-            </Typography>
-          </Box>
-        ),
-        isLeaf: true
-      }));
-
       return {
         key: `asset:${asset.id}`,
         title: (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-            <Building2 size={15} />
-            <Typography variant="body2">{asset.name}</Typography>
-          </Box>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              minHeight: 24
+            }}
+          >
+            <Database size={14} />
+            <span>{asset.name}</span>
+          </span>
         ),
-        children: [...childAssets, ...attrNodes]
+        children: childAssets
       };
     };
 
@@ -514,8 +565,38 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       if (node) result.push(node);
     }
 
+    if (result.length > 0) {
+      result.push({
+        key: TREE_BOTTOM_SPACER_KEY,
+        title: <span style={{ display: "block", height: 96 }} />,
+        disabled: true,
+        selectable: false,
+        isLeaf: true
+      });
+    }
+
     return result;
-  }, [assetById, assets.assets, search, templateById]);
+  }, [assetById, assets.assets, debouncedAssetSearch, debouncedAttributeSearch, effectiveAttributesByAssetId]);
+  const autoExpandedKeys = useMemo(
+    () => (debouncedAssetSearch.trim() || debouncedAttributeSearch.trim() ? collectTreeKeys(treeData) : expandedKeys),
+    [debouncedAssetSearch, debouncedAttributeSearch, expandedKeys, treeData]
+  );
+  const visibleAttributeRows = useMemo(() => {
+    const overscan = 8;
+    const visibleCount = Math.ceil(effectiveTableViewportHeight / effectiveTableRowHeight);
+    const startIndex = Math.max(0, Math.floor(attributeTableScrollTop / effectiveTableRowHeight) - overscan);
+    const endIndex = Math.min(
+      filteredSelectedAssetEffectiveAttributes.length,
+      startIndex + visibleCount + overscan * 2
+    );
+    return {
+      startIndex,
+      endIndex,
+      rows: filteredSelectedAssetEffectiveAttributes.slice(startIndex, endIndex),
+      topSpacerHeight: startIndex * effectiveTableRowHeight,
+      bottomSpacerHeight: Math.max(0, (filteredSelectedAssetEffectiveAttributes.length - endIndex) * effectiveTableRowHeight)
+    };
+  }, [attributeTableScrollTop, filteredSelectedAssetEffectiveAttributes]);
 
   const reloadFromRuntime = async () => {
     setLoadingRuntime(true);
@@ -551,6 +632,37 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     setNotice({ open: true, kind, message });
   };
 
+  const isAttributeRefreshCoolingDown = (path: string): boolean => {
+    const until = attributeRefreshCooldownRef.current[path] || 0;
+    return until > Date.now();
+  };
+
+  const markAttributeRefreshCooldown = (path: string, delayMs = 1200): void => {
+    attributeRefreshCooldownRef.current[path] = Date.now() + delayMs;
+  };
+
+  const isAssetRefreshCoolingDown = (assetId: string): boolean => {
+    const until = assetRefreshCooldownRef.current[assetId] || 0;
+    return until > Date.now();
+  };
+
+  const markAssetRefreshCooldown = (assetId: string, delayMs = 1500): void => {
+    assetRefreshCooldownRef.current[assetId] = Date.now() + delayMs;
+  };
+
+  const syncSelectedAssetAttribute = (assetId: string, attributeName: string, value: unknown, ts?: string) => {
+    updateAssetWith(assetId, (asset) => ({
+      ...asset,
+      attributes: {
+        ...(asset.attributes || {}),
+        [attributeName]: {
+          value,
+          ts: ts && ts.trim() ? ts : new Date().toISOString()
+        }
+      }
+    }));
+  };
+
   const readJsonLike = async (res: Response): Promise<Record<string, unknown>> => {
     const text = await res.text();
     try {
@@ -579,6 +691,99 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       return merged;
     }
     return [];
+  };
+
+  const refreshSingleAttributeValue = async (asset: AssetDefinition, attributeName: string): Promise<void> => {
+    const assetPath = getAssetPath(asset, assetById);
+    const fullPath = `${assetPath}.${attributeName}`;
+    if (isAttributeRefreshCoolingDown(fullPath)) return;
+    markAttributeRefreshCooldown(fullPath);
+    setRefreshingAttributeKeys((prev) => ({ ...prev, [fullPath]: true }));
+    try {
+      const res = await fetch(`${runtimeApiBase}/assets/value/${encodeURIComponent(fullPath)}`);
+      const data = await readJsonLike(res);
+      if (!res.ok) {
+        throw new Error(String(data.error || `Runtime API error ${res.status}`));
+      }
+      const matches = Array.isArray(data.matches) ? data.matches : [];
+      const match = matches.find(
+        (item) =>
+          item &&
+          typeof item === "object" &&
+          String((item as { assetId?: unknown }).assetId || "") === asset.id &&
+          String((item as { attributeName?: unknown }).attributeName || "") === attributeName
+      ) as { value?: unknown; ts?: string } | undefined;
+      if (!match) {
+        throw new Error("Runtime did not return the requested attribute");
+      }
+      syncSelectedAssetAttribute(asset.id, attributeName, match.value, match.ts);
+      showNotice("success", `Refreshed ${fullPath}`);
+    } catch (error) {
+      showNotice("error", `Refresh failed for ${fullPath}: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setRefreshingAttributeKeys((prev) => {
+        const next = { ...prev };
+        delete next[fullPath];
+        return next;
+      });
+    }
+  };
+
+  const refreshSelectedAssetValues = async (): Promise<void> => {
+    if (!selectedAsset || !selectedAssetPath || selectedAssetEffectiveAttributes.length === 0) return;
+    if (isAssetRefreshCoolingDown(selectedAsset.id)) return;
+    markAssetRefreshCooldown(selectedAsset.id);
+    setRefreshingSelectedAssetValues(true);
+    try {
+      const paths = selectedAssetEffectiveAttributes.map((row) => ({
+        name: row.name,
+        fullPath: `${selectedAssetPath}.${row.name}`
+      }));
+      const nextAttributes = { ...(selectedAsset.attributes || {}) };
+      let updatedCount = 0;
+      for (let index = 0; index < paths.length; index += 8) {
+        const chunk = paths.slice(index, index + 8);
+        const chunkResults = await Promise.all(
+          chunk.map(async (item) => {
+            const res = await fetch(`${runtimeApiBase}/assets/value/${encodeURIComponent(item.fullPath)}`);
+            const data = await readJsonLike(res);
+            if (!res.ok) {
+              throw new Error(String(data.error || `Runtime API error ${res.status}`));
+            }
+            const matches = Array.isArray(data.matches) ? data.matches : [];
+            const match = matches.find(
+              (entry) =>
+                entry &&
+                typeof entry === "object" &&
+                String((entry as { assetId?: unknown }).assetId || "") === selectedAsset.id &&
+                String((entry as { attributeName?: unknown }).attributeName || "") === item.name
+            ) as { value?: unknown; ts?: string } | undefined;
+            return { item, match };
+          })
+        );
+
+        for (const result of chunkResults) {
+          if (!result.match) continue;
+          nextAttributes[result.item.name] = {
+            value: Object.prototype.hasOwnProperty.call(result.match, "value") ? result.match.value : null,
+            ts:
+              typeof result.match.ts === "string" && result.match.ts.trim()
+                ? result.match.ts
+                : new Date().toISOString()
+          };
+          updatedCount += 1;
+        }
+      }
+      updateAssetWith(selectedAsset.id, (asset) => ({
+        ...asset,
+        attributes: nextAttributes
+      }));
+      showNotice("success", `Refreshed ${updatedCount} attributes for "${selectedAsset.name}"`);
+    } catch (error) {
+      showNotice("error", `Bulk refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setRefreshingSelectedAssetValues(false);
+    }
   };
 
   const loadMonitorData = async (
@@ -728,8 +933,8 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       </Paper>
 
       {mainTab === 0 && (
-        <Box sx={{ display: "grid", gridTemplateColumns: "500px 1fr", gap: 1.25 }}>
-          <Paper sx={{ p: 1.25, maxHeight: "74vh", ...scrollBothOverflowSx }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: "500px 1fr", gap: 1.25, height: assetsViewportHeight }}>
+          <Paper sx={{ p: 1.25, height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
             <Box sx={{ display: "flex", gap: 0.75, mb: 1 }}>
               <Button
                 size="small"
@@ -764,51 +969,78 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
               >
                 {loadingRuntime ? "Loading..." : "Reload Runtime"}
               </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() =>
+                  setExpandedKeys(collectTreeKeys(treeData).filter((key) => String(key).startsWith("asset:")))
+                }
+                disabled={treeData.length === 0}
+              >
+                Expand All
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setExpandedKeys([])}
+                disabled={treeData.length === 0}
+              >
+                Collapse All
+              </Button>
             </Box>
             <TextField
               size="small"
               fullWidth
-              placeholder="Search asset/attribute"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search asset"
+              value={assetSearch}
+              onChange={(e) => setAssetSearch(e.target.value)}
               sx={{ mb: 1 }}
             />
-            <Tree
-              treeData={treeData}
-              expandedKeys={expandedKeys}
-              onExpand={(keys) => setExpandedKeys(keys)}
-              selectedKeys={selectedTreeKey ? [selectedTreeKey] : []}
-              onSelect={(keys) => {
-                const key = String(keys[0] ?? "");
-                if (!key) return;
-                setSelectedTreeKey(key);
-                if (key.startsWith("asset:")) {
-                  setSelectedAssetId(key.slice("asset:".length));
-                  return;
-                }
-                if (key.startsWith("attr:")) {
-                  const [, assetId] = key.split(":");
-                  if (assetId) {
-                    setSelectedAssetId(assetId);
+            <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+              <Tree
+                treeData={treeData}
+                expandedKeys={autoExpandedKeys}
+                onExpand={(keys) => setExpandedKeys(keys)}
+                selectedKeys={selectedTreeKey ? [selectedTreeKey] : []}
+                virtual
+                height={Math.max(240, 800)}
+                itemHeight={30}
+                onSelect={(keys) => {
+                  const key = String(keys[0] ?? "");
+                  if (!key) return;
+                  setSelectedTreeKey(key);
+                  if (key.startsWith("asset:")) {
+                    setSelectedAssetId(key.slice("asset:".length));
                   }
-                }
-              }}
-            />
+                }}
+              />
+            </Box>
           </Paper>
 
-          <Paper sx={{ p: 1.25, minHeight: "74vh", ...scrollBothOverflowSx }}>
+          <Paper sx={{ p: 1.25, height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
             {!selectedAsset ? (
               <Typography variant="body2" color="text.secondary">
                 Select an asset from the left panel.
               </Typography>
             ) : (
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, height: "100%", minHeight: 0 }}>
 
                 <Box sx={{ display: "flex", justifyContent: "space-between", gap: 0.75, mb: 1 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                     Asset Detail
                   </Typography>
-                    
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                    <IconButton
+                      size="small"
+                      aria-label={`Refresh effective attributes for asset ${selectedAsset.name} from assigned templates`}
+                      title={`Refresh effective attributes for asset ${selectedAsset.name} from assigned templates`}
+                      onClick={() => {
+                        refreshAssetTemplateAttributes(selectedAsset.id);
+                        showNotice("success", `Effective attributes refreshed for "${selectedAsset.name}"`);
+                      }}
+                    >
+                      <RefreshCcw size={16} />
+                    </IconButton>
                     <Button
                       variant="contained"
                       size="small"
@@ -824,6 +1056,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                     >
                       Remove
                     </Button>
+                  </Box>
                 </Box>
 
                 <Box sx={{ display: "flex", gap: 0.75, mb: 1 }}>
@@ -897,54 +1130,77 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                   
                 </Box>
           
-              <Box
-                sx={{
-                  display: "flex",
+                <Box
+                  sx={{
+                    display: "flex",
                   flexWrap: "wrap",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  gap: 1.25
+                  gap: 1.25,
+                  flexShrink: 0
                 }}
               >
                 <Box>
                   <Typography variant="subtitle2">
                     Effective Attributes ({selectedAssetEffectiveAttributes.length})
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Klik attribute di tree untuk langsung fokus ke asset pemiliknya.
-                  </Typography>
                 </Box>
                   <Button
                     variant="outlined"
                     size="small"
                     startIcon={<RefreshCcw size={16} />}
-                    aria-label={`Refresh effective attributes for asset ${selectedAsset.name} from assigned templates`}
-                    title={`Refresh effective attributes for asset ${selectedAsset.name} from assigned templates`}
-                    onClick={() => {
-                      refreshAssetTemplateAttributes(selectedAsset.id);
-                      showNotice("success", `Attributes refreshed for "${selectedAsset.name}"`);
-                    }}
+                    aria-label={`Refresh runtime values for all visible attributes on asset ${selectedAsset.name}`}
+                    title={`Refresh runtime values for all visible attributes on asset ${selectedAsset.name}`}
+                    onClick={() => void refreshSelectedAssetValues()}
+                    disabled={refreshingSelectedAssetValues}
                   >
-                    Refresh Effective Attributes
+                    {refreshingSelectedAssetValues ? "Refreshing..." : "Refresh Visible Values"}
                   </Button>
               </Box>
 
-                <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1, ...scrollBothOverflowSx }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Search effective attributes"
+                  value={attributeSearch}
+                  onChange={(e) => setAttributeSearch(e.target.value)}
+                  sx={{ flexShrink: 0 }}
+                />
+
+                <TableContainer
+                  sx={{
+                    border: "1px solid #dbe3ef",
+                    borderRadius: 1,
+                    flex: 1,
+                    minHeight: 0,
+                    maxHeight: "100%",
+                    overflow: "auto",
+                    ...scrollBothOverflowSx
+                  }}
+                  onScroll={(event) => {
+                    setAttributeTableScrollTop(event.currentTarget.scrollTop);
+                  }}
+                >
                   <Table size="small" stickyHeader>
                     <TableHead>
                       <TableRow>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Name</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Value</TableCell>
+                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 150 }}>Action</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Type</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Unit</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 180 }}>Updated</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Historian</TableCell>
                         <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>Source</TableCell>
-                        <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 140 }}>Action</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {selectedAssetEffectiveAttributes.map((row) => (
+                      {visibleAttributeRows.topSpacerHeight > 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} sx={{ p: 0, border: 0, height: `${visibleAttributeRows.topSpacerHeight}px` }} />
+                        </TableRow>
+                      ) : null}
+                      {visibleAttributeRows.rows.map((row) => (
                         <TableRow key={row.name}>
                           <TableCell sx={{ fontFamily: "monospace" }}>{row.name}</TableCell>
                           <TableCell sx={{ minWidth: 280 }}>
@@ -965,20 +1221,27 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                               );
                             })()}
                           </TableCell>
-                          <TableCell>{row.valueType}</TableCell>
-                          <TableCell>{row.unit || "-"}</TableCell>
-                          <TableCell>{formatAttributeTimestamp(row.ts)}</TableCell>
-                          <TableCell>{row.historianEnabled ? "enabled" : "-"}</TableCell>
-                          <TableCell>{row.source}{row.overridden ? " (override)" : ""}</TableCell>
                           <TableCell>
                             {(() => {
                               const fieldKey = `asset-attr:${selectedAsset.id}:${row.name}`;
                               const currentValue = serializeValue(row.value);
                               const draftValue = getDraft(fieldKey, currentValue);
                               const hasDraft = Object.prototype.hasOwnProperty.call(fieldDrafts, fieldKey);
+                              const fullPath = `${selectedAssetPath}.${row.name}`;
+                              const isRefreshingThisAttribute =
+                                refreshingAttributeKeys[fullPath] === true || isAttributeRefreshCoolingDown(fullPath);
 
                               return (
                                 <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
+                                  <IconButton
+                                    size="small"
+                                    aria-label={`Refresh runtime value for ${fullPath}`}
+                                    title={`Refresh runtime value for ${fullPath}`}
+                                    disabled={isRefreshingThisAttribute}
+                                    onClick={() => void refreshSingleAttributeValue(selectedAsset, row.name)}
+                                  >
+                                    <RefreshCcw size={15} />
+                                  </IconButton>
                                   <Button
                                     size="small"
                                     variant="contained"
@@ -989,7 +1252,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                                           if (!selectedAssetPath) {
                                             throw new Error("Asset path is empty");
                                           }
-                                          const fullPath = `${selectedAssetPath}.${row.name}`;
                                         const nextValue =
                                           row.valueType === "custom"
                                             ? parseMaybeJson(draftValue)
@@ -1035,7 +1297,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                                             delete cloned[fieldKey];
                                             return cloned;
                                           });
-                                          await reloadFromRuntime();
                                           showNotice("success", `Applied value for ${fullPath}`);
                                         } catch (error) {
                                           showNotice(
@@ -1074,8 +1335,18 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                               );
                             })()}
                           </TableCell>
+                          <TableCell>{row.valueType}</TableCell>
+                          <TableCell>{row.unit || "-"}</TableCell>
+                          <TableCell>{formatAttributeTimestamp(row.ts)}</TableCell>
+                          <TableCell>{row.historianEnabled ? "enabled" : "-"}</TableCell>
+                          <TableCell>{row.source}{row.overridden ? " (override)" : ""}</TableCell>
                         </TableRow>
                       ))}
+                      {visibleAttributeRows.bottomSpacerHeight > 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} sx={{ p: 0, border: 0, height: `${visibleAttributeRows.bottomSpacerHeight}px` }} />
+                        </TableRow>
+                      ) : null}
                     </TableBody>
                   </Table>
                 </TableContainer>

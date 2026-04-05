@@ -1,8 +1,6 @@
 import type { AssetChangeMeta, AssetSection, AssetStore, AttributeQueryMatch } from "../core/runtimeTypes";
-import { AssetTreeService } from "./AssetTreeService";
-import { AssetWriteService } from "./AssetWriteService";
-import { AssetReadService } from "./AssetReadService";
 import { AssetSchemaService } from "./AssetSchemaService";
+import { AssetStoreIndex } from "./AssetStoreIndex";
 
 export function normalizeAssetSection(input: unknown = {}): AssetSection {
   return new AssetSchemaService().normalizeSection(input);
@@ -14,33 +12,24 @@ export function createAssetStore(initialSection: unknown = {}): AssetStore {
   let revision = 0;
   let updatedAt = new Date().toISOString();
   const listeners = new Set<(state: AssetSection, meta: AssetChangeMeta) => void>();
+  let index = new AssetStoreIndex(state, templateService);
 
   const getState = (): AssetSection => structuredClone(state);
 
   const emitChange = (change: AssetChangeMeta["change"] = { type: "state.replace", changes: [] }): void => {
     revision += 1;
     updatedAt = new Date().toISOString();
-    const snapshot = getState();
+    const shouldCaptureSnapshot = listeners.size > 0;
+    const snapshot = shouldCaptureSnapshot ? getState() : null;
     for (const listener of listeners) {
       try {
+        if (!snapshot) continue;
         listener(snapshot, { revision, updatedAt, change });
       } catch (error) {
         console.error("asset store listener error:", error);
       }
     }
   };
-
-  const queryService = new AssetReadService(() => state, templateService);
-  const mutationService = new AssetWriteService(
-    () => state,
-    (nextState) => {
-      state = nextState;
-    },
-    emitChange,
-    queryService,
-    templateService
-  );
-  const hierarchyService = new AssetTreeService(() => state, templateService);
 
   return {
     getState,
@@ -58,47 +47,57 @@ export function createAssetStore(initialSection: unknown = {}): AssetStore {
       return () => listeners.delete(listener);
     },
     replace(nextState) {
-      const previousState = state;
       const normalizedNext = templateService.normalizeSection(nextState);
-      const prevMap = templateService.collectEffectiveAttributeMatches(previousState);
-      const nextMap = templateService.collectEffectiveAttributeMatches(normalizedNext);
-      const changed: AttributeQueryMatch[] = [];
-
-      for (const [key, nextAttr] of nextMap.entries()) {
-        const prevAttr = prevMap.get(key);
-        if (templateService.attributeMatchChanged(prevAttr, nextAttr)) {
-          changed.push(nextAttr);
-        }
-      }
-
-      state = normalizedNext;
+      const replaced = index.replaceState(normalizedNext);
+      state = replaced.state;
+      index = new AssetStoreIndex(state, templateService);
+      const changed = replaced.changedMatches;
       if (changed.length > 0) emitChange({ type: "attribute.set", pattern: "*", changes: changed });
       else emitChange({ type: "state.replace", changes: [] });
       return getState();
     },
     query(pathValue: string) {
-      return queryService.resolve(pathValue);
+      return index.query(pathValue);
     },
     getAttribute(pathValue, defaultValue = undefined) {
-      return queryService.getValue(pathValue, defaultValue);
+      return index.getValue(pathValue, defaultValue);
     },
     getValue(pathValue, defaultValue = undefined) {
-      return queryService.getValue(pathValue, defaultValue);
+      return index.getValue(pathValue, defaultValue);
     },
     getAttributes(pathValue) {
-      return queryService.getAttributes(pathValue);
+      return index.getAttributes(pathValue);
     },
     setAttribute(pathValue, value) {
-      return mutationService.setAttributeByPath(pathValue, value);
+      const changedMatches = index.setAttribute(pathValue, value);
+      if (changedMatches.length > 0) {
+        state = index.getState();
+        emitChange({
+          type: "attribute.set",
+          pattern: pathValue,
+          changes: changedMatches.map((item) => ({ ...item }))
+        });
+      }
+      return changedMatches;
     },
     setAttributes(items: Array<{ path: string; value: unknown }> = []) {
-      return mutationService.setAttributesByPathBatch(items);
+      const results = index.setAttributes(items);
+      const changedMatches = results.flatMap((result) => result.matches);
+      if (changedMatches.length > 0) {
+        state = index.getState();
+        emitChange({
+          type: "attribute.set",
+          pattern: results.length === 1 ? results[0].path : "__batch__",
+          changes: changedMatches.map((item) => ({ ...item }))
+        });
+      }
+      return results;
     },
     findAttributesByValue(pathValue, expectedValue, options = {}) {
-      return queryService.findAttributesByValue(pathValue, expectedValue, options);
+      return index.findAttributesByValue(pathValue, expectedValue, options);
     },
     getHierarchy(options) {
-      return hierarchyService.buildHierarchy(options);
+      return index.getHierarchy(options);
     }
   };
 }
