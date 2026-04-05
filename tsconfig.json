@@ -19,6 +19,7 @@
     "index.ts",
     "api/**/*.ts",
     "runtime/**/*.ts",
+    "tests/**/*.ts",
     "flow/**/*.ts",
     "nodes/**/*.ts",
     "templates/**/*.ts",

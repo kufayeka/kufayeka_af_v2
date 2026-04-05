@@ -14,49 +14,6 @@ import { computeTagID } from "./runtime/historian/HistorianBridgeFactory";
 import { loadDbConfig } from "./runtime/db/dbConfig";
 import { createDbConnectionManager } from "./runtime/db/dbConnectionManager";
 import type { AssetStore, AssetHierarchyNode } from "./runtime/core/runtimeTypes";
-import type { ProgramDefinition } from "./runtime/core/runtimeTypes";
-
-function mergeProgramAssetsPreserveLiveValues(
-  incomingAssets: ProgramDefinition["assets"],
-  liveAssets: AssetStore["getState"] extends () => infer T ? T : never
-): ProgramDefinition["assets"] {
-  const incoming =
-    incomingAssets && typeof incomingAssets === "object"
-      ? (incomingAssets as {
-          assets?: Array<{ id?: unknown; attributes?: Record<string, unknown> }>;
-          attributeTemplates?: unknown[];
-          historians?: unknown[];
-        })
-      : {};
-  const live =
-    liveAssets && typeof liveAssets === "object"
-      ? (liveAssets as {
-          assets?: Array<{ id?: unknown; attributes?: Record<string, unknown> }>;
-          attributeTemplates?: unknown[];
-          historians?: unknown[];
-        })
-      : {};
-
-  const liveAttributesByAssetId = new Map<string, Record<string, unknown>>();
-  for (const asset of live.assets || []) {
-    const assetId = String(asset?.id || "").trim();
-    if (!assetId) continue;
-    liveAttributesByAssetId.set(assetId, { ...((asset.attributes || {}) as Record<string, unknown>) });
-  }
-
-  return {
-    ...incoming,
-    assets: (incoming.assets || []).map((asset) => {
-      const assetId = String(asset?.id || "").trim();
-      return {
-        ...(asset as Record<string, unknown>),
-        attributes: liveAttributesByAssetId.get(assetId) || {}
-      };
-    }),
-    attributeTemplates: Array.isArray(incoming.attributeTemplates) ? incoming.attributeTemplates : [],
-    historians: Array.isArray(incoming.historians) ? incoming.historians : []
-  };
-}
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -95,8 +52,6 @@ async function bootstrap(): Promise<void> {
   console.log(`Program loaded: ${absolutePath}`);
   console.log(`[runtime] global persistence seed loaded: ${loadedGlobalCount}`);
   console.log(`[runtime] attribute persistence seed loaded: ${loadedCount}`);
-  let currentStopProgram: () => void = () => {};
-  let currentAssetStoreUnsubscribe: () => void = () => {};
   const tagToPath = new Map<number, string>();
 
   const rebuildTagPathMap = (assetStore?: AssetStore): void => {
@@ -115,79 +70,16 @@ async function bootstrap(): Promise<void> {
     }
   };
 
-  const attachProgramAssetObservers = (assetStore?: AssetStore): void => {
-    currentAssetStoreUnsubscribe();
-    rebuildTagPathMap(assetStore);
-    currentAssetStoreUnsubscribe = assetStore ? assetStore.subscribe(() => rebuildTagPathMap(assetStore)) : () => {};
-  };
-
-  const startLoadedProgram = (nextProgram: ProgramDefinition): void => {
-    currentStopProgram = startProgram(rt, nextProgram);
-    const nextComposition = rt.getProgramComposition();
-    if (!nextComposition) {
-      throw new Error("Program composition failed to initialize");
-    }
-    attachProgramAssetObservers(nextComposition.assetStore as AssetStore | undefined);
-  };
-
-  const stopLoadedProgram = async (): Promise<void> => {
-    const previousComposition = rt.getProgramComposition();
-    currentAssetStoreUnsubscribe();
-    currentAssetStoreUnsubscribe = () => {};
-    currentStopProgram();
-    currentStopProgram = () => {};
-
-    const historianBridge = previousComposition?.services.historian.getBridge();
-    if (historianBridge?.close) {
-      try {
-        historianBridge.close();
-      } catch (error) {
-        console.error("[runtime] historianBridge close error:", getErrorMessage(error));
-      }
-    }
-
-    const eventStore = previousComposition?.eventStore as { shutdown?: () => void | Promise<void> } | undefined;
-    if (eventStore?.shutdown) {
-      try {
-        await Promise.resolve(eventStore.shutdown());
-      } catch (error) {
-        console.error("[runtime] eventStore shutdown error:", getErrorMessage(error));
-      }
-    }
-
-    rt.resetProgramState();
-  };
-
-  startLoadedProgram(programWithPersistedValues);
-
-  rt.setGlobal("__runtime.programLifecycle", {
-    getStatus: () => {
-      const composition = rt.getProgramComposition();
-      return {
-        programPath: absolutePath,
-        loadedAt: new Date().toISOString(),
-        flowCount: composition?.flowDefinitionsById.size || 0,
-        eventTemplateCount: composition?.eventTemplatesById.size || 0,
-        scriptTemplateCount: composition?.scriptTemplatesById.size || 0,
-        triggerTemplateCount: composition?.triggerTemplates.length || 0
-      };
-    },
-    reloadFromDisk: async () => {
-      const { absolutePath: nextProgramPath, program: nextProgramRaw } = loadProgramFromFile(programPath);
-      const liveAssetState = rt.getProgramComposition()?.assetStore.getState();
-      const mergedProgram = liveAssetState
-        ? { ...nextProgramRaw, assets: mergeProgramAssetsPreserveLiveValues(nextProgramRaw.assets, liveAssetState) }
-        : nextProgramRaw;
-      await stopLoadedProgram();
-      startLoadedProgram(mergedProgram);
-      return {
-        ok: true,
-        programPath: nextProgramPath,
-        reloadedAt: new Date().toISOString(),
-        flowCount: rt.getProgramComposition()?.flowDefinitionsById.size || 0
-      };
-    }
-  });
+  const stopProgram = startProgram(rt, programWithPersistedValues);
+  const programComposition = rt.getProgramComposition();
+  if (!programComposition) {
+    throw new Error("Program composition failed to initialize");
+  }
+  const assetStore = programComposition.assetStore as AssetStore | undefined;
+  rebuildTagPathMap(assetStore);
+  const unsubscribeAssetStore = assetStore
+    ? assetStore.subscribe(() => rebuildTagPathMap(assetStore))
+    : () => {};
 
   if (dbConnectionManager) {
     rt.setGlobal("historianIngestStats", {
@@ -223,7 +115,8 @@ async function bootstrap(): Promise<void> {
     hardExitTimer.unref?.();
 
     try {
-      await stopLoadedProgram();
+      unsubscribeAssetStore();
+      stopProgram();
     } catch (error) {
       console.error("[runtime] stop program error:", getErrorMessage(error));
     }
@@ -246,6 +139,24 @@ async function bootstrap(): Promise<void> {
         "[runtime] global persistence shutdown error:",
         getErrorMessage(error)
       );
+    }
+
+    try {
+      const historianBridge = programComposition.services.historian.getBridge();
+      if (historianBridge?.close) {
+        historianBridge.close();
+      }
+    } catch (error) {
+      console.error("[runtime] historianBridge close error:", getErrorMessage(error));
+    }
+
+    try {
+      const eventStore = programComposition.eventStore as { shutdown?: () => void | Promise<void> } | undefined;
+      if (eventStore?.shutdown) {
+        await Promise.resolve(eventStore.shutdown());
+      }
+    } catch (error) {
+      console.error("[runtime] eventStore shutdown error:", getErrorMessage(error));
     }
 
     try {

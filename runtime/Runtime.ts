@@ -89,14 +89,6 @@ class Runtime {
     return this.programComposition;
   }
 
-  resetProgramState(): void {
-    this.wires.clear();
-    this.nodes.clear();
-    this.nodeState.clear();
-    this.programComposition = null;
-    this.deleteGlobal("flowNodeConfigById");
-  }
-
   private enqueueAssetWrite<T>(fn: () => T | Promise<T>): Promise<T> {
     const run = this.assetWriteChain.then(() => Promise.resolve(fn()));
     this.assetWriteChain = run.then(

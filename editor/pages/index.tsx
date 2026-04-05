@@ -556,7 +556,7 @@ export default function HomePage() {
       notify(message, "warning");
       return;
     }
-    if (lowered.includes("saved") || lowered.includes("downloaded") || lowered.includes("imported") || lowered.includes("created") || lowered.includes("duplicated") || lowered.includes("pasted") || lowered.includes("removed") || lowered.includes("applied")) {
+    if (lowered.includes("saved") || lowered.includes("downloaded") || lowered.includes("imported") || lowered.includes("created") || lowered.includes("duplicated") || lowered.includes("pasted") || lowered.includes("removed")) {
       notify(message, "success");
       return;
     }
@@ -808,7 +808,7 @@ export default function HomePage() {
     return programForSave;
   };
 
-  const saveProgram = async (): Promise<boolean> => {
+  const saveProgram = async (): Promise<void> => {
     const programForSave = buildWorkspaceProgramForSave();
     try {
       const res = await fetch("/api/program", {
@@ -820,34 +820,13 @@ export default function HomePage() {
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
         setStatus(`Save error: ${data.error ?? "unknown error"}`);
-        return false;
+        return;
       }
       const data = (await res.json()) as { path?: string };
-      setStatus(`Workspace saved to ${data.path ?? "programs/main.af.json"}`);
-      return true;
+      setStatus(`Program saved to ${data.path ?? "programs/main.af.json"}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(`Save error: ${message}`);
-      return false;
-    }
-  };
-
-  const applyRuntime = async (): Promise<void> => {
-    const saved = await saveProgram();
-    if (!saved) return;
-    try {
-      const res = await fetch("/api/program-sync-runtime", {
-        method: "POST"
-      });
-      const data = (await res.json()) as { error?: string; path?: string; flowCount?: number };
-      if (!res.ok) {
-        setStatus(`Runtime apply error: ${data.error ?? "unknown error"}`);
-        return;
-      }
-      setStatus(`Runtime applied from ${data.path ?? "programs/main.af.json"} (${Number(data.flowCount || 0)} flows)`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setStatus(`Runtime apply error: ${message}`);
     }
   };
 
@@ -2171,10 +2150,7 @@ export default function HomePage() {
           Redo
         </Button>
         <Button variant="contained" onClick={() => void saveProgram()}>
-          Save Workspace
-        </Button>
-        <Button variant="outlined" onClick={() => void applyRuntime()}>
-          Apply Runtime
+          Save Program
         </Button>
         <Button variant="outlined" onClick={() => importInputRef.current?.click()}>
           Import Program (JSON)

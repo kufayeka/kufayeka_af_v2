@@ -92,15 +92,7 @@ export function createAssetStore(initialSection: unknown = {}): AssetStore {
       return mutationService.setAttributeByPath(pathValue, value);
     },
     setAttributes(items: Array<{ path: string; value: unknown }> = []) {
-      const results: Array<{ path: string; count: number; matches: AttributeQueryMatch[] }> = [];
-      for (const item of items) {
-        if (!item || typeof item !== "object") continue;
-        if (!Object.prototype.hasOwnProperty.call(item, "path")) continue;
-        if (!Object.prototype.hasOwnProperty.call(item, "value")) continue;
-        const matches = mutationService.setAttributeByPath(item.path, item.value);
-        results.push({ path: item.path, count: matches.length, matches });
-      }
-      return results;
+      return mutationService.setAttributesByPathBatch(items);
     },
     findAttributesByValue(pathValue, expectedValue, options = {}) {
       return queryService.findAttributesByValue(pathValue, expectedValue, options);
