@@ -32,6 +32,7 @@ export class AssetStoreIndex {
   private readonly templateService: AssetSchemaService;
   private templateById = new Map<string, AttributeTemplate>();
   private assetById = new Map<string, AssetDefinition>();
+  private assetIndexById = new Map<string, number>();
   private assetPathEntries: AssetPathEntry[] = [];
   private assetPathById = new Map<string, string>();
   private assetPathEntryById = new Map<string, AssetPathEntry>();
@@ -230,29 +231,35 @@ export class AssetStoreIndex {
       return resolvedTargetsByItem.map((item) => ({ path: item.path, count: 0, matches: [] }));
     }
 
-    const nextAssets = this.state.assets.map((asset) => {
-      const updates = updatesByAssetId.get(asset.id);
-      if (!updates || updates.size === 0) return asset;
-      const nextAttributes = { ...(asset.attributes || {}) };
+    const nextAssets = [...this.state.assets];
+
+    for (const [assetId, updates] of updatesByAssetId.entries()) {
+      const assetIndex = this.assetIndexById.get(assetId);
+      if (assetIndex === undefined) continue;
+      const currentAsset = nextAssets[assetIndex];
+      if (!currentAsset) continue;
+
+      const nextAttributes = { ...(currentAsset.attributes || {}) };
       for (const [attributeName, nextValue] of updates.entries()) {
         nextAttributes[attributeName] = nextValue;
       }
-      return { ...asset, attributes: nextAttributes };
-    });
 
-    this.state = {
-      ...this.state,
-      assets: nextAssets
-    };
+      const updatedAsset: AssetDefinition = {
+        ...currentAsset,
+        attributes: nextAttributes
+      };
+      nextAssets[assetIndex] = updatedAsset;
 
-    for (const [assetId] of updatesByAssetId.entries()) {
-      const updatedAsset = nextAssets.find((asset) => asset.id === assetId);
-      if (!updatedAsset) continue;
       this.assetById.set(assetId, updatedAsset);
       const assetPath = this.assetPathById.get(assetId) || "";
       this.assetByPath.set(assetPath, updatedAsset);
       this.rebuildAttributeIndexForAsset(updatedAsset, assetPath);
     }
+
+    this.state = {
+      ...this.state,
+      assets: nextAssets
+    };
 
     const changedByKey = new Map<string, AttributeQueryMatch>();
     for (const item of resolvedTargetsByItem) {
@@ -318,6 +325,7 @@ export class AssetStoreIndex {
   private rebuildAllIndexes(): void {
     this.templateById = new Map((this.state.attributeTemplates || []).map((template) => [template.id, template]));
     this.assetById = new Map((this.state.assets || []).map((asset) => [asset.id, asset]));
+    this.assetIndexById = new Map((this.state.assets || []).map((asset, index) => [asset.id, index]));
     this.assetPathEntries = [];
     this.assetPathById = new Map();
     this.assetPathEntryById = new Map();
