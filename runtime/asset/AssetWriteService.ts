@@ -1,4 +1,5 @@
 import type { AssetChangeMeta, AssetDefinition, AssetSection, AttributeQueryMatch, AttributeTemplate } from "../core/runtimeTypes";
+import { normalizeRuntimeNumber, normalizeRuntimeValue } from "../core/runtimeNumberUtils";
 import { getAssetPath, matches, splitPath } from "./assetDataUtils";
 import { AssetReadService } from "./AssetReadService";
 import { AssetSchemaService } from "./AssetSchemaService";
@@ -7,6 +8,9 @@ interface ResolvedAttributeTarget {
   assetId: string;
   assetPath: string;
   attributeName: string;
+  valueType?: string;
+  numberAllowDecimal?: boolean;
+  numberPrecision?: number;
 }
 
 interface AssetPathEntry {
@@ -14,6 +18,10 @@ interface AssetPathEntry {
   path: string;
   pathSegments: string[];
 }
+
+type EffectiveAttributeValue = ReturnType<AssetSchemaService["buildEffectiveAttributeMap"]> extends Map<string, infer TValue>
+  ? TValue
+  : never;
 
 export class AssetWriteService {
   private readonly getState: () => AssetSection;
@@ -58,18 +66,21 @@ export class AssetWriteService {
       path: getAssetPath(asset.id, assetById),
       pathSegments: splitPath(getAssetPath(asset.id, assetById))
     }));
-    const effectiveNamesCache = new Map<string, Set<string>>();
+    const effectiveMapCache = new Map<string, Map<string, EffectiveAttributeValue>>();
     const finalValueByKey = new Map<string, { value: unknown; ts: string }>();
     const resolvedTargetsByItem = normalizedItems.map((item) => ({
       path: item.path,
       value: item.value,
-      targets: this.resolveTargetsForPath(String(item.path || ""), assetEntries, templateById, effectiveNamesCache)
+      targets: this.resolveTargetsForPath(String(item.path || ""), assetEntries, templateById, effectiveMapCache)
     }));
 
     for (const item of resolvedTargetsByItem) {
       const ts = new Date().toISOString();
       for (const target of item.targets) {
-        finalValueByKey.set(`${target.assetId}:${target.attributeName}`, { value: item.value, ts });
+        finalValueByKey.set(`${target.assetId}:${target.attributeName}`, {
+          value: this.normalizeValueForTarget(item.value, target),
+          ts
+        });
       }
     }
 
@@ -160,12 +171,22 @@ export class AssetWriteService {
 
       const templateById = new Map((state.attributeTemplates || []).map((template) => [template.id, template]));
       const updatesByAssetId = new Map<string, string[]>();
+      const normalizedValueByKey = new Map<string, unknown>();
       for (const item of assetMatches) {
         const targetAsset = state.assets.find((asset) => asset.id === item.assetId);
         if (!targetAsset) continue;
         const effectiveMap = this.templateService.buildEffectiveAttributeMap(targetAsset, templateById);
-        if (!effectiveMap.has(attrName)) continue;
+        const attribute = effectiveMap.get(attrName);
+        if (!attribute) continue;
         updatesByAssetId.set(item.assetId, [attrName]);
+        normalizedValueByKey.set(
+          `${item.assetId}:${attrName}`,
+          this.normalizeValueForTarget(value, {
+            valueType: attribute.valueType,
+            numberAllowDecimal: attribute.numberAllowDecimal,
+            numberPrecision: attribute.numberPrecision
+          })
+        );
       }
       if (updatesByAssetId.size === 0) return [];
 
@@ -176,7 +197,7 @@ export class AssetWriteService {
           if (!names || names.length === 0) return asset;
           const nextAttributes = { ...(asset.attributes || {}) };
           for (const name of names) {
-            nextAttributes[name] = { value, ts: new Date().toISOString() };
+            nextAttributes[name] = { value: normalizedValueByKey.get(`${asset.id}:${name}`), ts: new Date().toISOString() };
           }
           return { ...asset, attributes: nextAttributes };
         })
@@ -194,9 +215,17 @@ export class AssetWriteService {
     }
 
     const updatesByAssetId = new Map<string, string[]>();
+    const normalizedValueByKey = new Map<string, unknown>();
     for (const item of pathMatches) {
       if (!updatesByAssetId.has(item.assetId)) updatesByAssetId.set(item.assetId, []);
       updatesByAssetId.get(item.assetId)?.push(item.attributeName);
+      normalizedValueByKey.set(
+        `${item.assetId}:${item.attributeName}`,
+        this.normalizeValueForTarget(value, {
+          valueType: item.type,
+          numberAllowDecimal: item.type === "float32" || item.type === "float64"
+        })
+      );
     }
 
     this.setState({
@@ -206,7 +235,7 @@ export class AssetWriteService {
         if (!names || names.length === 0) return asset;
         const nextAttributes = { ...(asset.attributes || {}) };
         for (const name of names) {
-          nextAttributes[name] = { value, ts: new Date().toISOString() };
+          nextAttributes[name] = { value: normalizedValueByKey.get(`${asset.id}:${name}`), ts: new Date().toISOString() };
         }
         return { ...asset, attributes: nextAttributes };
       })
@@ -230,7 +259,7 @@ export class AssetWriteService {
     pathValue: string,
     assetEntries: AssetPathEntry[],
     templateById: Map<string, AttributeTemplate>,
-    effectiveNamesCache: Map<string, Set<string>>
+    effectiveMapCache: Map<string, Map<string, EffectiveAttributeValue>>
   ): ResolvedAttributeTarget[] {
     const segments = splitPath(pathValue);
     if (segments.length < 2) return [];
@@ -243,51 +272,61 @@ export class AssetWriteService {
       if (assetPatternSegments.length !== entry.pathSegments.length) continue;
       if (!assetPatternSegments.every((segment, index) => matches(segment, entry.pathSegments[index]))) continue;
 
-      const effectiveNames = this.getEffectiveAttributeNames(entry.asset, templateById, effectiveNamesCache);
+      const effectiveMap = this.getEffectiveAttributeMap(entry.asset, templateById, effectiveMapCache);
       if (attributePattern === "*") {
-        for (const attributeName of effectiveNames) {
+        for (const [attributeName, attribute] of effectiveMap.entries()) {
           targets.push({
             assetId: entry.asset.id,
             assetPath: entry.path,
-            attributeName
+            attributeName,
+            valueType: attribute.valueType,
+            numberAllowDecimal: attribute.numberAllowDecimal,
+            numberPrecision: attribute.numberPrecision
           });
         }
         continue;
       }
 
-      if (!effectiveNames.has(attributePattern)) continue;
+      const attribute = effectiveMap.get(attributePattern);
+      if (!attribute) continue;
       targets.push({
         assetId: entry.asset.id,
         assetPath: entry.path,
-        attributeName: attributePattern
+        attributeName: attributePattern,
+        valueType: attribute.valueType,
+        numberAllowDecimal: attribute.numberAllowDecimal,
+        numberPrecision: attribute.numberPrecision
       });
     }
 
     return targets;
   }
 
-  private getEffectiveAttributeNames(
-    asset: AssetDefinition,
-    templateById: Map<string, AttributeTemplate>,
-    effectiveNamesCache: Map<string, Set<string>>
-  ): Set<string> {
-    const cached = effectiveNamesCache.get(asset.id);
-    if (cached) return cached;
-    const effectiveMap = this.templateService.buildEffectiveAttributeMap(asset, templateById);
-    const names = new Set<string>(effectiveMap.keys());
-    effectiveNamesCache.set(asset.id, names);
-    return names;
-  }
-
   private getEffectiveAttributeMap(
     asset: AssetDefinition,
     templateById: Map<string, AttributeTemplate>,
-    cache: Map<string, Map<string, ReturnType<AssetSchemaService["buildEffectiveAttributeMap"]> extends Map<string, infer TValue> ? TValue : never>>
+    cache: Map<string, Map<string, EffectiveAttributeValue>>
   ) {
     const cached = cache.get(asset.id);
     if (cached) return cached;
     const effectiveMap = this.templateService.buildEffectiveAttributeMap(asset, templateById);
     cache.set(asset.id, effectiveMap);
     return effectiveMap;
+  }
+
+  private normalizeValueForTarget(value: unknown, target: Pick<ResolvedAttributeTarget, "valueType" | "numberAllowDecimal" | "numberPrecision">): unknown {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return normalizeRuntimeValue(value);
+    }
+
+    const valueType = String(target.valueType || "").toLowerCase();
+    const integerTypes = new Set(["int8", "uint8", "int16", "uint16", "int32", "uint32"]);
+    if (integerTypes.has(valueType)) {
+      return normalizeRuntimeNumber(value, { maxDecimals: 0 });
+    }
+
+    const allowDecimal = target.numberAllowDecimal !== false;
+    const precision = Math.max(0, Number(target.numberPrecision ?? 0) || 0);
+    return normalizeRuntimeNumber(value, { maxDecimals: allowDecimal ? precision : 0 });
   }
 }

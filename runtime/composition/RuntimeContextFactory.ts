@@ -38,7 +38,10 @@ export class RuntimeContextFactory {
       },
       asset: createAssetApi(resolvers, enqueueAssetWrite),
       eventSys: createEventApi(resolvers, this.deps),
-      db: createDbApi(resolvers)
+      db: createDbApi(resolvers),
+      action: {
+        status: (status) => this.runtime.setNodeStatus(nodeId, status)
+      }
     } as RuntimeNodeContext;
 
     context.flow = resolveFlowContext(

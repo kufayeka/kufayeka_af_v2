@@ -424,12 +424,30 @@ export interface RuntimeDbApi {
   testConnection(): Promise<{ ok: boolean; message: string; latencyMs: number }>;
 }
 
+export type RuntimeNodeStatusLevel = "idle" | "running" | "success" | "warn" | "error";
+export type RuntimeNodeStatusPosition = "top" | "bottom";
+
+export interface RuntimeNodeStatusItem {
+  level: RuntimeNodeStatusLevel;
+  text?: string;
+  position?: RuntimeNodeStatusPosition;
+  ts?: string;
+}
+
+export type RuntimeNodeStatus = RuntimeNodeStatusItem[];
+export type RuntimeNodeStatusInput = RuntimeNodeStatusItem | RuntimeNodeStatusItem[];
+
+export interface RuntimeActionApi {
+  status(status: RuntimeNodeStatusInput): RuntimeNodeStatus;
+}
+
 export interface RuntimeNodeContext {
   nodeId: string;
   global: RuntimeGlobalApi;
   asset: RuntimeAssetApi;
   eventSys: RuntimeEventApi;
   db: RuntimeDbApi;
+  action: RuntimeActionApi;
   flow?: {
     id: string;
     name: string;

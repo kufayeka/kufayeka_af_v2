@@ -119,6 +119,8 @@ export class AssetSchemaService {
         nullable?: boolean;
         unit?: string;
         ts?: string;
+        numberAllowDecimal?: boolean;
+        numberPrecision?: number;
         historianEnabled?: boolean;
         historianTimeSourcePath?: string;
         historianTargetId?: string;
@@ -140,6 +142,8 @@ export class AssetSchemaService {
             defaultValue: attribute.default,
             nullable: attribute.nullable === true,
             unit: attribute.unit ?? "",
+            numberAllowDecimal: attribute.numberAllowDecimal !== false,
+            numberPrecision: Math.max(0, Number(attribute.numberPrecision ?? 0) || 0),
             historianEnabled: attribute.historianEnabled === true,
             historianTimeSourcePath: String(attribute.historianTimeSourcePath ?? ""),
             historianTargetId: String(attribute.historianTargetId ?? "default")

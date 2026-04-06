@@ -71,6 +71,8 @@ interface EffectiveAttributeRow {
   source: string;
   overridden: boolean;
   historianEnabled: boolean;
+  numberAllowDecimal?: boolean;
+  numberPrecision?: number;
 }
 
 interface AssetManagerProps {
@@ -159,7 +161,27 @@ function parseByType(type: AssetAttributeType, raw: string): unknown {
   return parseMaybeJson(raw);
 }
 
-function serializeValue(value: unknown): string {
+function normalizeNumberForDisplay(
+  value: number,
+  options: { numberAllowDecimal?: boolean; numberPrecision?: number } = {}
+): number {
+  if (!Number.isFinite(value)) return value;
+  const allowDecimal = options.numberAllowDecimal !== false;
+  const precision = Math.max(0, Math.min(10, Number(options.numberPrecision ?? 6) || 0));
+  const maxDecimals = allowDecimal ? precision : 0;
+  const factor = 10 ** maxDecimals;
+  const rounded = Math.round((value + Math.sign(value || 1) * Number.EPSILON) * factor) / factor;
+  if (Math.abs(rounded) < 1e-9) return 0;
+  return rounded;
+}
+
+function serializeValue(
+  value: unknown,
+  options: { numberAllowDecimal?: boolean; numberPrecision?: number } = {}
+): string {
+  if (typeof value === "number") {
+    return String(normalizeNumberForDisplay(value, options));
+  }
   if (typeof value === "string") return value;
   return JSON.stringify(value);
 }
@@ -225,7 +247,9 @@ function getEffectiveAttributes(
           ts: undefined,
           source: template.name,
           overridden: false,
-          historianEnabled: attr.historianEnabled === true
+          historianEnabled: attr.historianEnabled === true,
+          numberAllowDecimal: attr.numberAllowDecimal !== false,
+          numberPrecision: Math.max(0, Number(attr.numberPrecision ?? 0) || 0)
         });
       }
     }
@@ -244,7 +268,9 @@ function getEffectiveAttributes(
         ts: val.ts,
         source: "Custom",
         overridden: true,
-        historianEnabled: false
+        historianEnabled: false,
+        numberAllowDecimal: true,
+        numberPrecision: 6
       });
     }
   }
@@ -466,7 +492,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     const keyword = debouncedAttributeSearch.trim().toLowerCase();
     if (!keyword) return selectedAssetEffectiveAttributes;
     return selectedAssetEffectiveAttributes.filter((row) =>
-      `${row.name} ${serializeValue(row.value)} ${row.unit || ""}`.toLowerCase().includes(keyword)
+      `${row.name} ${serializeValue(row.value, row)} ${row.unit || ""}`.toLowerCase().includes(keyword)
     );
   }, [debouncedAttributeSearch, selectedAssetEffectiveAttributes]);
 
@@ -530,7 +556,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       const attrHit =
         !attributeKeyword ||
         attrs.some((attr) =>
-          `${attr.name} ${serializeValue(attr.value)} ${attr.unit || ""}`.toLowerCase().includes(attributeKeyword)
+          `${attr.name} ${serializeValue(attr.value, attr)} ${attr.unit || ""}`.toLowerCase().includes(attributeKeyword)
         );
       return assetHit && attrHit;
     };
@@ -1206,7 +1232,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           <TableCell sx={{ minWidth: 280 }}>
                             {(() => {
                               const fieldKey = `asset-attr:${selectedAsset.id}:${row.name}`;
-                              const currentValue = serializeValue(row.value);
+                              const currentValue = serializeValue(row.value, row);
                               const draftValue = getDraft(fieldKey, currentValue);
                               return (
                                 <TextField
@@ -1224,7 +1250,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                           <TableCell>
                             {(() => {
                               const fieldKey = `asset-attr:${selectedAsset.id}:${row.name}`;
-                              const currentValue = serializeValue(row.value);
+                              const currentValue = serializeValue(row.value, row);
                               const draftValue = getDraft(fieldKey, currentValue);
                               const hasDraft = Object.prototype.hasOwnProperty.call(fieldDrafts, fieldKey);
                               const fullPath = `${selectedAssetPath}.${row.name}`;
@@ -2144,3 +2170,4 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     </>
   );
 }
+

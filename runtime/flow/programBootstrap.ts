@@ -14,6 +14,7 @@ import { registerFlowNodes, registerLinks } from "./ProgramNodeRegistration";
 import { startTriggers } from "./ProgramTriggerStarter";
 
 export function startProgram(runtime: Runtime, program: ProgramDefinition): () => void {
+  runtime.clearAllNodeStatuses();
   const assets = normalizeAssetSection(program.assets || {});
   const dbConnectionManager = runtime.getGlobal<DbConnectionManager | null>("dbConnectionManager", null);
   const services = new RuntimeServiceRegistry({ runtime, dbConnectionManager });

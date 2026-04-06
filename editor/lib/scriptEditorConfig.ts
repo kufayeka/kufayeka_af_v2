@@ -253,6 +253,25 @@ declare interface ScriptContext {
     executeSafe: (sql: string) => Promise<{ rows: Array<Record<string, any>>; rowCount: number }>;
     testConnection: () => Promise<{ ok: boolean; message: string; latencyMs: number }>;
   };
+  action: {
+    status: (status:
+      | {
+          level: "idle" | "running" | "success" | "warn" | "error";
+          text?: string;
+          position?: "top" | "bottom";
+        }
+      | Array<{
+          level: "idle" | "running" | "success" | "warn" | "error";
+          text?: string;
+          position?: "top" | "bottom";
+        }>
+    ) => Array<{
+      level: "idle" | "running" | "success" | "warn" | "error";
+      text?: string;
+      position?: "top" | "bottom";
+      ts?: string;
+    }>;
+  };
 }
 
 declare interface ScriptHelpers {
@@ -298,6 +317,7 @@ declare const global: ScriptContext["global"];
 declare const asset: ScriptContext["asset"];
 declare const eventSys: ScriptContext["eventSys"];
 declare const db: ScriptContext["db"];
+declare const action: ScriptContext["action"];
 `
   },
   completion: {
@@ -337,6 +357,12 @@ declare const db: ScriptContext["db"];
         insertText: "helpers.now()",
         detail: "ISO timestamp now",
         documentation: "Returns current timestamp in ISO format."
+      },
+      {
+        label: "action.status",
+        insertText: 'action.status([{ level: "$1", text: "$2", position: "$3" }]);',
+        detail: "Update node status",
+        documentation: "Set one or many live node status badges in flow workspace. Pass an object or an array; items are stacked vertically per position."
       },
       {
         label: "eventSys.open",

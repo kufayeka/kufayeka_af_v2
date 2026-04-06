@@ -1,4 +1,11 @@
-import type { RuntimeMessage, RuntimeNodeContext, RuntimeNodeHandler } from "./core/runtimeTypes";
+import type {
+  RuntimeMessage,
+  RuntimeNodeContext,
+  RuntimeNodeHandler,
+  RuntimeNodeStatus,
+  RuntimeNodeStatusInput,
+  RuntimeNodeStatusItem
+} from "./core/runtimeTypes";
 import type { ProgramRuntimeComposition } from "./composition/RuntimeComposition";
 import { RuntimeContextFactory } from "./composition/RuntimeContextFactory";
 import {
@@ -16,6 +23,7 @@ import {
   resolveOutputLabels,
   resolvePorts
 } from "./core/runtimeMessageUtils";
+import { formatRuntimeDisplayText } from "./core/runtimeNumberUtils";
 
 class Runtime {
   private readonly wires = new Map<string, string[]>();
@@ -32,6 +40,12 @@ class Runtime {
   private readonly contextFactory: RuntimeContextFactory;
   private readonly deps: Required<RuntimeDeps>;
   private programComposition: ProgramRuntimeComposition | null = null;
+  private readonly nodeStatuses = new Map<string, RuntimeNodeStatus>();
+  private nodeStatusRevision = 0;
+  private nodeStatusMonitoringEnabled = false;
+  private readonly nodeStatusListeners = new Set<
+    (event: { revision: number; nodeId: string; status: RuntimeNodeStatus | null }) => void
+  >();
 
   constructor(options: RuntimeOptions = {}, deps: RuntimeDeps = {}) {
     this.maxInflightPerNode = options.maxInflightPerNode ?? 50;
@@ -87,6 +101,94 @@ class Runtime {
 
   getProgramComposition(): ProgramRuntimeComposition | null {
     return this.programComposition;
+  }
+
+  setNodeStatus(nodeId: string, status: RuntimeNodeStatusInput): RuntimeNodeStatus {
+    if (!this.nodeStatusMonitoringEnabled) return [];
+    const sourceItems = Array.isArray(status) ? status : [status];
+    const normalized: RuntimeNodeStatus = sourceItems
+      .filter((item): item is RuntimeNodeStatusItem => !!item && typeof item === "object" && typeof item.level === "string")
+      .map((item) => ({
+        level: item.level,
+        text: formatRuntimeDisplayText(String(item.text || "").trim()),
+        position: item.position === "top" ? "top" : "bottom",
+        ts: String(item.ts || this.deps.now())
+      }));
+    if (normalized.length === 0) {
+      this.clearNodeStatus(nodeId);
+      return [];
+    }
+    this.nodeStatuses.set(nodeId, normalized);
+    this.nodeStatusRevision += 1;
+    this.emitNodeStatusChange(nodeId, normalized);
+    return normalized;
+  }
+
+  clearNodeStatus(nodeId: string): boolean {
+    const deleted = this.nodeStatuses.delete(nodeId);
+    if (deleted) {
+      this.nodeStatusRevision += 1;
+      this.emitNodeStatusChange(nodeId, null);
+    }
+    return deleted;
+  }
+
+  clearAllNodeStatuses(): void {
+    if (this.nodeStatuses.size === 0) return;
+    const previousNodeIds = Array.from(this.nodeStatuses.keys());
+    this.nodeStatuses.clear();
+    this.nodeStatusRevision += 1;
+    for (const nodeId of previousNodeIds) {
+      this.emitNodeStatusChange(nodeId, null);
+    }
+  }
+
+  getNodeStatus(nodeId: string): RuntimeNodeStatus | null {
+    return this.nodeStatuses.get(nodeId) || null;
+  }
+
+  getNodeStatuses(): Record<string, RuntimeNodeStatus> {
+    return Object.fromEntries(this.nodeStatuses.entries());
+  }
+
+  getNodeStatusRevision(): number {
+    return this.nodeStatusRevision;
+  }
+
+  setNodeStatusMonitoringEnabled(enabled: boolean): boolean {
+    const nextValue = enabled === true;
+    if (this.nodeStatusMonitoringEnabled === nextValue) return this.nodeStatusMonitoringEnabled;
+    this.nodeStatusMonitoringEnabled = nextValue;
+    if (!nextValue) {
+      this.clearAllNodeStatuses();
+    }
+    return this.nodeStatusMonitoringEnabled;
+  }
+
+  isNodeStatusMonitoringEnabled(): boolean {
+    return this.nodeStatusMonitoringEnabled;
+  }
+
+  subscribeNodeStatus(
+    listener: (event: { revision: number; nodeId: string; status: RuntimeNodeStatus | null }) => void
+  ): () => void {
+    this.nodeStatusListeners.add(listener);
+    return () => this.nodeStatusListeners.delete(listener);
+  }
+
+  private emitNodeStatusChange(nodeId: string, status: RuntimeNodeStatus | null): void {
+    const event = {
+      revision: this.nodeStatusRevision,
+      nodeId,
+      status
+    };
+    for (const listener of this.nodeStatusListeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        console.error(`[runtime] node status listener error for "${nodeId}":`, error);
+      }
+    }
   }
 
   private enqueueAssetWrite<T>(fn: () => T | Promise<T>): Promise<T> {
@@ -168,6 +270,11 @@ class Runtime {
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        this.setNodeStatus(nodeId, {
+          level: "error",
+          text: message,
+          position: "bottom"
+        });
         console.error(`Error in node "${nodeId}":`, message);
       } finally {
         state.inflight -= 1;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, CircularProgress } from "@mui/material";
+import { Box, CircularProgress, FormControlLabel, Paper, Switch } from "@mui/material";
 import type { EventTemplateDefinition, FlowDefinition, FlowLink, FlowVariableDefinition, NodePosition, ScriptTemplateDefinition, TriggerTemplateDefinition } from "../../types/program";
 
 export type FlowPaletteItem =
@@ -58,6 +58,13 @@ type FlowEditorNode = {
   fillColor: string;
   borderColor: string;
   textColor: string;
+};
+
+type FlowNodeStatusItem = {
+  level: "idle" | "running" | "success" | "warn" | "error";
+  text?: string;
+  position?: "top" | "bottom";
+  ts?: string;
 };
 
 type PaletteItem = {
@@ -145,6 +152,10 @@ export default function FlowManager({
 }: FlowManagerProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
+  const [nodeStatuses, setNodeStatuses] = useState<Record<string, FlowNodeStatusItem[]>>({});
+  const [statusMonitorEnabled, setStatusMonitorEnabled] = useState(false);
+  const [statusMonitorLoaded, setStatusMonitorLoaded] = useState(false);
+  const lastStatusRevisionRef = useRef<number>(-1);
 
   const allNodes = useMemo(
     () => [
@@ -277,9 +288,133 @@ export default function FlowManager({
     );
   };
 
+  const syncNodeStatusesToIframe = () => {
+    const target = iframeRef.current?.contentWindow;
+    if (!target) return;
+    target.postMessage(
+      {
+        source: "kufayeka-flow:message",
+        type: "node-status-sync",
+        payload: {
+          nodeStatuses
+        }
+      },
+      "*"
+    );
+  };
+
   useEffect(() => {
     syncToIframe();
-  }, [diagramNodes, iframeReady, links, nodePositions, paletteItems, zoom]);
+  }, [activeFlowVariables, diagramNodes, flows, iframeReady, links, nodePositions, paletteItems, selectedFlowId, zoom]);
+
+  useEffect(() => {
+    if (!iframeReady) return;
+    syncNodeStatusesToIframe();
+  }, [iframeReady, nodeStatuses]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadConfig = async () => {
+      try {
+        const res = await fetch("/api/runtime/node-status/config");
+        const data = (await res.json()) as { enabled?: boolean };
+        if (!res.ok || cancelled) return;
+        setStatusMonitorEnabled(data.enabled === true);
+      } catch {
+        if (!cancelled) setStatusMonitorEnabled(false);
+      } finally {
+        if (!cancelled) setStatusMonitorLoaded(true);
+      }
+    };
+    void loadConfig();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!statusMonitorEnabled) {
+      setNodeStatuses({});
+      lastStatusRevisionRef.current = -1;
+      return;
+    }
+
+    const eventSource = new EventSource("/api/runtime-events/node-status");
+
+    eventSource.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as {
+          enabled?: boolean;
+          revision?: number;
+          nodeId?: string;
+          status?: FlowNodeStatusItem[];
+          items?: Record<string, FlowNodeStatusItem[]>;
+        };
+        if (payload.enabled === false) {
+          setNodeStatuses({});
+          return;
+        }
+        const revision = Number(payload.revision ?? 0);
+        if (revision === lastStatusRevisionRef.current) return;
+        lastStatusRevisionRef.current = revision;
+
+        if (payload.items && typeof payload.items === "object") {
+          setNodeStatuses(payload.items);
+          return;
+        }
+
+        if (payload.nodeId) {
+          setNodeStatuses((current) => {
+            const next = { ...current };
+            if (Array.isArray(payload.status) && payload.status.length > 0) {
+              next[payload.nodeId as string] = payload.status;
+            } else {
+              delete next[payload.nodeId as string];
+            }
+            return next;
+          });
+        }
+      } catch {
+        // ignore malformed events
+      }
+    };
+
+    eventSource.onerror = () => {
+      // browser EventSource will reconnect automatically
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [statusMonitorEnabled]);
+
+  const handleToggleStatusMonitor = async (enabled: boolean) => {
+    setStatusMonitorEnabled(enabled);
+    if (!enabled) {
+      setNodeStatuses({});
+      lastStatusRevisionRef.current = -1;
+    }
+    try {
+      const res = await fetch("/api/runtime/node-status/config", {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ enabled })
+      });
+      const data = (await res.json()) as { enabled?: boolean };
+      if (!res.ok) {
+        throw new Error("Failed to update monitor mode");
+      }
+      setStatusMonitorEnabled(data.enabled === true);
+      if (data.enabled !== true) {
+        setNodeStatuses({});
+        lastStatusRevisionRef.current = -1;
+      }
+    } catch {
+      setStatusMonitorEnabled((current) => !enabled);
+    }
+  };
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -425,6 +560,33 @@ export default function FlowManager({
 
   return (
     <Box sx={{ width: "100%", height: "calc(100vh - 120px)", position: "relative", borderRadius: 1, overflow: "hidden", border: "1px solid #dbe4ee", background: "#fff" }}>
+      <Paper
+        elevation={0}
+        sx={{
+          position: "absolute",
+          top: 10,
+          right: 10,
+          zIndex: 2,
+          px: 1.25,
+          py: 0.5,
+          borderRadius: 2,
+          border: "1px solid #dbe4ee",
+          background: "rgba(255,255,255,0.92)"
+        }}
+      >
+        <FormControlLabel
+          sx={{ m: 0 }}
+          control={
+            <Switch
+              size="small"
+              checked={statusMonitorEnabled}
+              onChange={(_, checked) => void handleToggleStatusMonitor(checked)}
+              disabled={!statusMonitorLoaded}
+            />
+          }
+          label="Monitor Status"
+        />
+      </Paper>
       {!iframeReady && (
         <Box
           sx={{

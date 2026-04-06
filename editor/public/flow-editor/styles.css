@@ -539,6 +539,84 @@ input {
   overflow: visible;
 }
 
+.node-status-stack {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  display: grid;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.node-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 24px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+}
+
+.node-status-stack.hidden {
+  display: none;
+}
+
+.node-status-top {
+  bottom: calc(100% + 8px);
+}
+
+.node-status-bottom {
+  top: calc(100% + 8px);
+}
+
+.node-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: currentColor;
+}
+
+.node-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node-status.status-idle {
+  background: rgba(71, 85, 105, 0.92);
+  color: #e2e8f0;
+}
+
+.node-status.status-running {
+  background: rgba(37, 99, 235, 0.94);
+  color: #dbeafe;
+}
+
+.node-status.status-success {
+  background: rgba(5, 150, 105, 0.94);
+  color: #d1fae5;
+}
+
+.node-status.status-warn {
+  background: rgba(217, 119, 6, 0.96);
+  color: #fef3c7;
+}
+
+.node-status.status-error {
+  background: rgba(220, 38, 38, 0.96);
+  color: #fee2e2;
+}
+
 .node::before {
   content: "";
   position: absolute;

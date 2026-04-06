@@ -262,6 +262,7 @@ const global = context && context.global ? context.global : null;
 const asset = context && context.asset ? context.asset : null;
 const __eventSysRaw = context && context.eventSys ? context.eventSys : null;
 const db = context && context.db ? context.db : null;
+const action = context && context.action ? context.action : null;
 const __actionEventTemplateId = config && typeof config.__eventTemplateId === "string" ? config.__eventTemplateId : "";
 const __actionEventTemplateOverrides = config && config.__eventTemplateOverrides && typeof config.__eventTemplateOverrides === "object"
   ? config.__eventTemplateOverrides

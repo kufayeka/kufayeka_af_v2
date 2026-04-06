@@ -48,6 +48,8 @@ export interface AssetTemplateAttributeDefinition {
   valueType: AssetAttributeType;
   default: unknown;
   unit?: string;
+  numberAllowDecimal?: boolean;
+  numberPrecision?: number;
   historianEnabled?: boolean;
   historianTimeSourcePath?: string;
   historianTargetId?: string;
