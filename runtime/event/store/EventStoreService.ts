@@ -140,7 +140,8 @@ export class EventStoreService implements EventStore {
 
   async deleteByPattern(pattern = "*", status = "*", from = "*", to = "*", severity = "*") {
     const normalizedStatus = normalizeStatus(status || "*");
-    const rowsToDetach = normalizedStatus === "open" ? await this.get(pattern, from, to, "open", {}, { limit: 5000, severity }) : [];
+    const shouldDetachOpenRows = normalizedStatus === "open" || normalizedStatus === "*";
+    const rowsToDetach = shouldDetachOpenRows ? await this.get(pattern, from, to, "open", {}, { limit: 5000, severity }) : [];
     const deletedCount = await this.repository.deleteByPattern({ pattern, status, from, to, severity } as EventDeleteByPatternInput);
     if (deletedCount > 0) {
       rowsToDetach.forEach((row) => this.openEventCache.detach(row));

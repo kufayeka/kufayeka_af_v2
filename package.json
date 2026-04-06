@@ -7,7 +7,13 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
-    "perf:asset": "npm run build --silent && node dist/tests/perf/asset/assetStore.bench.js"
+    "perf:asset": "npm run build --silent && node dist/tests/perf/asset/assetStore.bench.js",
+    "perf:event": "npm run build --silent && node dist/tests/perf/event/eventStore.bench.js",
+    "perf:action": "npm run build --silent && node dist/tests/perf/action/action.bench.js",
+    "perf:flow": "npm run build --silent && node dist/tests/perf/flow/flow.bench.js",
+    "test:stress:event": "npm run build --silent && node --test dist/tests/stress/event/eventStore.stress.test.js",
+    "test:stress:action": "npm run build --silent && node --test dist/tests/stress/action/actionQuality.test.js",
+    "test:stress:flow": "npm run build --silent && node --test dist/tests/stress/flow/flowQuality.test.js"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
