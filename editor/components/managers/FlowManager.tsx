@@ -67,6 +67,16 @@ type FlowNodeStatusItem = {
   ts?: string;
 };
 
+type FlowNodeProfilingItem = {
+  nodeId: string;
+  queueLength: number;
+  inflight: number;
+  droppedCount: number;
+  avgQueueWaitMs: number | null;
+  avgExecMs: number | null;
+  updatedAt: string;
+};
+
 type PaletteItem = {
   key: string;
   section: "watchers" | "timed" | "actions" | "events";
@@ -155,7 +165,11 @@ export default function FlowManager({
   const [nodeStatuses, setNodeStatuses] = useState<Record<string, FlowNodeStatusItem[]>>({});
   const [statusMonitorEnabled, setStatusMonitorEnabled] = useState(false);
   const [statusMonitorLoaded, setStatusMonitorLoaded] = useState(false);
+  const [nodeProfilings, setNodeProfilings] = useState<Record<string, FlowNodeProfilingItem>>({});
+  const [profilingEnabled, setProfilingEnabled] = useState(false);
+  const [profilingLoaded, setProfilingLoaded] = useState(false);
   const lastStatusRevisionRef = useRef<number>(-1);
+  const lastProfilingRevisionRef = useRef<number>(-1);
 
   const allNodes = useMemo(
     () => [
@@ -303,6 +317,21 @@ export default function FlowManager({
     );
   };
 
+  const syncNodeProfilingsToIframe = () => {
+    const target = iframeRef.current?.contentWindow;
+    if (!target) return;
+    target.postMessage(
+      {
+        source: "kufayeka-flow:message",
+        type: "node-profiling-sync",
+        payload: {
+          nodeProfilings
+        }
+      },
+      "*"
+    );
+  };
+
   useEffect(() => {
     syncToIframe();
   }, [activeFlowVariables, diagramNodes, flows, iframeReady, links, nodePositions, paletteItems, selectedFlowId, zoom]);
@@ -311,6 +340,11 @@ export default function FlowManager({
     if (!iframeReady) return;
     syncNodeStatusesToIframe();
   }, [iframeReady, nodeStatuses]);
+
+  useEffect(() => {
+    if (!iframeReady) return;
+    syncNodeProfilingsToIframe();
+  }, [iframeReady, nodeProfilings]);
 
   useEffect(() => {
     let cancelled = false;
@@ -324,6 +358,26 @@ export default function FlowManager({
         if (!cancelled) setStatusMonitorEnabled(false);
       } finally {
         if (!cancelled) setStatusMonitorLoaded(true);
+      }
+    };
+    void loadConfig();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadConfig = async () => {
+      try {
+        const res = await fetch("/api/runtime/node-profiling/config");
+        const data = (await res.json()) as { enabled?: boolean };
+        if (!res.ok || cancelled) return;
+        setProfilingEnabled(data.enabled === true);
+      } catch {
+        if (!cancelled) setProfilingEnabled(false);
+      } finally {
+        if (!cancelled) setProfilingLoaded(true);
       }
     };
     void loadConfig();
@@ -388,6 +442,62 @@ export default function FlowManager({
     };
   }, [statusMonitorEnabled]);
 
+  useEffect(() => {
+    if (!profilingEnabled) {
+      setNodeProfilings({});
+      lastProfilingRevisionRef.current = -1;
+      return;
+    }
+
+    const eventSource = new EventSource("/api/runtime-events/node-profiling");
+
+    eventSource.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as {
+          enabled?: boolean;
+          revision?: number;
+          nodeId?: string;
+          profiling?: FlowNodeProfilingItem;
+          items?: Record<string, FlowNodeProfilingItem>;
+        };
+        if (payload.enabled === false) {
+          setNodeProfilings({});
+          return;
+        }
+        const revision = Number(payload.revision ?? 0);
+        if (revision === lastProfilingRevisionRef.current) return;
+        lastProfilingRevisionRef.current = revision;
+
+        if (payload.items && typeof payload.items === "object") {
+          setNodeProfilings(payload.items);
+          return;
+        }
+
+        if (payload.nodeId) {
+          setNodeProfilings((current) => {
+            const next = { ...current };
+            if (payload.profiling && typeof payload.profiling === "object") {
+              next[payload.nodeId as string] = payload.profiling;
+            } else {
+              delete next[payload.nodeId as string];
+            }
+            return next;
+          });
+        }
+      } catch {
+        // ignore malformed events
+      }
+    };
+
+    eventSource.onerror = () => {
+      // browser EventSource will reconnect automatically
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [profilingEnabled]);
+
   const handleToggleStatusMonitor = async (enabled: boolean) => {
     setStatusMonitorEnabled(enabled);
     if (!enabled) {
@@ -413,6 +523,34 @@ export default function FlowManager({
       }
     } catch {
       setStatusMonitorEnabled((current) => !enabled);
+    }
+  };
+
+  const handleToggleProfiling = async (enabled: boolean) => {
+    setProfilingEnabled(enabled);
+    if (!enabled) {
+      setNodeProfilings({});
+      lastProfilingRevisionRef.current = -1;
+    }
+    try {
+      const res = await fetch("/api/runtime/node-profiling/config", {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ enabled })
+      });
+      const data = (await res.json()) as { enabled?: boolean };
+      if (!res.ok) {
+        throw new Error("Failed to update profiling mode");
+      }
+      setProfilingEnabled(data.enabled === true);
+      if (data.enabled !== true) {
+        setNodeProfilings({});
+        lastProfilingRevisionRef.current = -1;
+      }
+    } catch {
+      setProfilingEnabled((current) => !enabled);
     }
   };
 
@@ -574,18 +712,32 @@ export default function FlowManager({
           background: "rgba(255,255,255,0.92)"
         }}
       >
-        <FormControlLabel
-          sx={{ m: 0 }}
-          control={
-            <Switch
-              size="small"
-              checked={statusMonitorEnabled}
-              onChange={(_, checked) => void handleToggleStatusMonitor(checked)}
-              disabled={!statusMonitorLoaded}
-            />
-          }
-          label="Monitor Status"
-        />
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+          <FormControlLabel
+            sx={{ m: 0 }}
+            control={
+              <Switch
+                size="small"
+                checked={statusMonitorEnabled}
+                onChange={(_, checked) => void handleToggleStatusMonitor(checked)}
+                disabled={!statusMonitorLoaded}
+              />
+            }
+            label="Monitor Status"
+          />
+          <FormControlLabel
+            sx={{ m: 0 }}
+            control={
+              <Switch
+                size="small"
+                checked={profilingEnabled}
+                onChange={(_, checked) => void handleToggleProfiling(checked)}
+                disabled={!profilingLoaded}
+              />
+            }
+            label="Profiling"
+          />
+        </Box>
       </Paper>
       {!iframeReady && (
         <Box

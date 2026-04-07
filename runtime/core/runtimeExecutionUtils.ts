@@ -7,9 +7,14 @@ export interface RuntimeOptions {
   nodeExecutionTimeoutMs?: number;
 }
 
+export interface QueuedRuntimeMessage {
+  msg: RuntimeMessage;
+  enqueuedAt: number;
+}
+
 export interface NodeExecutionState {
   inflight: number;
-  queue: RuntimeMessage[];
+  queue: QueuedRuntimeMessage[];
 }
 
 export interface RuntimeDeps {

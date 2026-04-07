@@ -266,9 +266,9 @@
         }
       },
       {
-        "id": "event.close.evt_znbecaie",
+        "id": "event.close.evt_wy0avps2",
         "kind": "event_close",
-        "refId": "evt_znbecaie",
+        "refId": "evt_wy0avps2",
         "label": "CLOSE Taiyo1.JobActivity",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -336,7 +336,7 @@
         "templateId": "template.taiyo.machine.speed.from.total.input",
         "config": {
           "description": "",
-          "script": "const assetPath = AssetPath.path || \"-\";\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\n\nconst deltaRaw = Number(msg.encoderDeltaRaw ?? NaN);\nif (deltaRaw < 0) {\n  send(msg);\n  return;\n}\n\n// encoder raw is in cm and trigger runs every second, so m/min = cm/s * 60 / 100 = cm * 0.6\nconst speedMpm = deltaRaw * 0.6;\nawait asset.set(machineSpeedPath, speedMpm);\n\naction.status([{ level: \"warn\", text: `speed: ${speedMpm} mtr/min.`, position: \"top\" }]);\n\nsend(msg);",
+          "script": "const assetPath = AssetPath.path || \"-\";\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\n\nconst deltaRaw = Number(msg.encoderDeltaRaw ?? NaN);\nif (deltaRaw < 0) {\n  send(msg);\n  return;\n}\n\n// encoder raw is in cm and trigger runs every second, so m/min = cm/s * 60 / 100 = cm * 0.6\nconst speedMpm = deltaRaw * 0.3;\nawait asset.set(machineSpeedPath, speedMpm);\n\naction.status([{ level: \"warn\", text: `speed: ${speedMpm} mtr/min.`, position: \"top\" }]);\n\nsend(msg);",
           "templateBindingOverrides": {
             "AssetPath": {
               "name": "AssetPath",
@@ -485,9 +485,9 @@
         }
       },
       {
-        "id": "event.open.evt_pazjdl52",
+        "id": "event.open.evt_r7fs6ksq",
         "kind": "event_open",
-        "refId": "evt_pazjdl52",
+        "refId": "evt_r7fs6ksq",
         "label": "Open JobLifecycle Event",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -521,9 +521,9 @@
         }
       },
       {
-        "id": "event.close.evt_vwd23rwp",
+        "id": "event.close.evt_rl50fhpc",
         "kind": "event_close",
-        "refId": "evt_vwd23rwp",
+        "refId": "evt_rl50fhpc",
         "label": "Close JobLifecycle Event",
         "enabled": true,
         "templateId": "template.taiyo.job.lifecycle",
@@ -557,9 +557,9 @@
         }
       },
       {
-        "id": "event.open.evt_qgdrtjtc",
+        "id": "event.open.evt_3akr7iyy",
         "kind": "event_open",
-        "refId": "evt_qgdrtjtc",
+        "refId": "evt_3akr7iyy",
         "label": "Open JobActivity Event",
         "enabled": true,
         "templateId": "template.taiyo.job.activity.production",
@@ -664,67 +664,67 @@
       },
       {
         "from": "act_o750buzm",
-        "to": "event.open.evt_pazjdl52",
+        "to": "event.open.evt_r7fs6ksq",
         "fromPort": "open event",
         "enabled": true
       },
       {
-        "from": "event.open.evt_pazjdl52",
+        "from": "event.open.evt_r7fs6ksq",
         "to": "act_o8dbxj0x",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_pazjdl52",
+        "from": "event.open.evt_r7fs6ksq",
         "to": "act_xi9ttxqd",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_pazjdl52",
+        "from": "event.open.evt_r7fs6ksq",
         "to": "act_xi9ttxqd",
         "fromPort": "onFail",
         "enabled": true
       },
       {
         "from": "act_o750buzm",
-        "to": "event.close.evt_vwd23rwp",
+        "to": "event.close.evt_rl50fhpc",
         "fromPort": "close event",
         "enabled": true
       },
       {
-        "from": "event.close.evt_vwd23rwp",
+        "from": "event.close.evt_rl50fhpc",
         "to": "act_nad2xse9",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.close.evt_vwd23rwp",
+        "from": "event.close.evt_rl50fhpc",
         "to": "act_xi9ttxqd",
         "fromPort": "onFail",
         "enabled": true
       },
       {
-        "from": "event.close.evt_vwd23rwp",
+        "from": "event.close.evt_rl50fhpc",
         "to": "act_xi9ttxqd",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_qgdrtjtc",
+        "from": "event.open.evt_3akr7iyy",
         "to": "act_xi9ttxqd",
         "fromPort": "onSuccess",
         "enabled": true
       },
       {
-        "from": "event.open.evt_qgdrtjtc",
+        "from": "event.open.evt_3akr7iyy",
         "to": "act_xi9ttxqd",
         "fromPort": "onFail",
         "enabled": true
       },
       {
         "from": "act_pqgrrjup",
-        "to": "event.open.evt_qgdrtjtc",
+        "to": "event.open.evt_3akr7iyy",
         "fromPort": "out",
         "enabled": true
       },
@@ -808,19 +808,19 @@
       },
       "act_zxdzcreb": {
         "x": 760,
-        "y": 800
+        "y": 820
       },
       "act_bef4hk9d": {
         "x": 760,
-        "y": 460
+        "y": 440
       },
       "act_otya9inq": {
         "x": 760,
         "y": 660
       },
       "act_o750buzm": {
-        "x": 760,
-        "y": 980
+        "x": 740,
+        "y": 1040
       },
       "act_pqgrrjup": {
         "x": 760,
@@ -852,7 +852,7 @@
       },
       "act_t1pac001": {
         "x": 1240,
-        "y": 580
+        "y": 700
       },
       "trg_mflmvo47": {
         "x": 220,
@@ -868,7 +868,7 @@
       },
       "trg_qsoxfskd": {
         "x": 220,
-        "y": 980
+        "y": 1020
       },
       "trg_4je3p1h9": {
         "x": 220,
@@ -878,15 +878,15 @@
         "x": 240,
         "y": 800
       },
-      "event.open.evt_pazjdl52": {
+      "event.open.evt_r7fs6ksq": {
         "x": 1260,
         "y": 960
       },
-      "event.close.evt_vwd23rwp": {
+      "event.close.evt_rl50fhpc": {
         "x": 1260,
         "y": 1080
       },
-      "event.open.evt_qgdrtjtc": {
+      "event.open.evt_3akr7iyy": {
         "x": 1260,
         "y": 1220
       }
@@ -2899,7 +2899,7 @@
       "id": "template.taiyo.machine.speed.from.total.input",
       "name": "TaiyoMachineSpeedFromTotalInput",
       "description": "Calculate machine speed from total paper consumed input changes.",
-      "script": "const assetPath = AssetPath.path || \"-\";\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\n\nconst deltaRaw = Number(msg.encoderDeltaRaw ?? NaN);\nif (deltaRaw < 0) {\n  send(msg);\n  return;\n}\n\n// encoder raw is in cm and trigger runs every second, so m/min = cm/s * 60 / 100 = cm * 0.6\nconst speedMpm = deltaRaw * 0.6;\nawait asset.set(machineSpeedPath, speedMpm);\n\naction.status([{ level: \"warn\", text: `speed: ${speedMpm} mtr/min.`, position: \"top\" }]);\n\nsend(msg);",
+      "script": "const assetPath = AssetPath.path || \"-\";\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\n\nconst deltaRaw = Number(msg.encoderDeltaRaw ?? NaN);\nif (deltaRaw < 0) {\n  send(msg);\n  return;\n}\n\n// encoder raw is in cm and trigger runs every second, so m/min = cm/s * 60 / 100 = cm * 0.6\nconst speedMpm = deltaRaw * 0.3;\nawait asset.set(machineSpeedPath, speedMpm);\n\naction.status([{ level: \"warn\", text: `speed: ${speedMpm} mtr/min.`, position: \"top\" }]);\n\nsend(msg);",
       "variableBindings": [
         {
           "name": "AssetPath",
@@ -3231,9 +3231,9 @@
           }
         },
         {
-          "id": "event.close.evt_znbecaie",
+          "id": "event.close.evt_wy0avps2",
           "kind": "event_close",
-          "refId": "evt_znbecaie",
+          "refId": "evt_wy0avps2",
           "label": "CLOSE Taiyo1.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -3301,7 +3301,7 @@
           "templateId": "template.taiyo.machine.speed.from.total.input",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\n\nconst deltaRaw = Number(msg.encoderDeltaRaw ?? NaN);\nif (deltaRaw < 0) {\n  send(msg);\n  return;\n}\n\n// encoder raw is in cm and trigger runs every second, so m/min = cm/s * 60 / 100 = cm * 0.6\nconst speedMpm = deltaRaw * 0.6;\nawait asset.set(machineSpeedPath, speedMpm);\n\naction.status([{ level: \"warn\", text: `speed: ${speedMpm} mtr/min.`, position: \"top\" }]);\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\n\nconst deltaRaw = Number(msg.encoderDeltaRaw ?? NaN);\nif (deltaRaw < 0) {\n  send(msg);\n  return;\n}\n\n// encoder raw is in cm and trigger runs every second, so m/min = cm/s * 60 / 100 = cm * 0.6\nconst speedMpm = deltaRaw * 0.3;\nawait asset.set(machineSpeedPath, speedMpm);\n\naction.status([{ level: \"warn\", text: `speed: ${speedMpm} mtr/min.`, position: \"top\" }]);\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -3450,9 +3450,9 @@
           }
         },
         {
-          "id": "event.open.evt_pazjdl52",
+          "id": "event.open.evt_r7fs6ksq",
           "kind": "event_open",
-          "refId": "evt_pazjdl52",
+          "refId": "evt_r7fs6ksq",
           "label": "Open JobLifecycle Event",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -3486,9 +3486,9 @@
           }
         },
         {
-          "id": "event.close.evt_vwd23rwp",
+          "id": "event.close.evt_rl50fhpc",
           "kind": "event_close",
-          "refId": "evt_vwd23rwp",
+          "refId": "evt_rl50fhpc",
           "label": "Close JobLifecycle Event",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -3522,9 +3522,9 @@
           }
         },
         {
-          "id": "event.open.evt_qgdrtjtc",
+          "id": "event.open.evt_3akr7iyy",
           "kind": "event_open",
-          "refId": "evt_qgdrtjtc",
+          "refId": "evt_3akr7iyy",
           "label": "Open JobActivity Event",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -3629,67 +3629,67 @@
         },
         {
           "from": "act_o750buzm",
-          "to": "event.open.evt_pazjdl52",
+          "to": "event.open.evt_r7fs6ksq",
           "fromPort": "open event",
           "enabled": true
         },
         {
-          "from": "event.open.evt_pazjdl52",
+          "from": "event.open.evt_r7fs6ksq",
           "to": "act_o8dbxj0x",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_pazjdl52",
+          "from": "event.open.evt_r7fs6ksq",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_pazjdl52",
+          "from": "event.open.evt_r7fs6ksq",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
           "from": "act_o750buzm",
-          "to": "event.close.evt_vwd23rwp",
+          "to": "event.close.evt_rl50fhpc",
           "fromPort": "close event",
           "enabled": true
         },
         {
-          "from": "event.close.evt_vwd23rwp",
+          "from": "event.close.evt_rl50fhpc",
           "to": "act_nad2xse9",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.close.evt_vwd23rwp",
+          "from": "event.close.evt_rl50fhpc",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
-          "from": "event.close.evt_vwd23rwp",
+          "from": "event.close.evt_rl50fhpc",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_qgdrtjtc",
+          "from": "event.open.evt_3akr7iyy",
           "to": "act_xi9ttxqd",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_qgdrtjtc",
+          "from": "event.open.evt_3akr7iyy",
           "to": "act_xi9ttxqd",
           "fromPort": "onFail",
           "enabled": true
         },
         {
           "from": "act_pqgrrjup",
-          "to": "event.open.evt_qgdrtjtc",
+          "to": "event.open.evt_3akr7iyy",
           "fromPort": "out",
           "enabled": true
         },
@@ -3773,19 +3773,19 @@
         },
         "act_zxdzcreb": {
           "x": 760,
-          "y": 800
+          "y": 820
         },
         "act_bef4hk9d": {
           "x": 760,
-          "y": 460
+          "y": 440
         },
         "act_otya9inq": {
           "x": 760,
           "y": 660
         },
         "act_o750buzm": {
-          "x": 760,
-          "y": 980
+          "x": 740,
+          "y": 1040
         },
         "act_pqgrrjup": {
           "x": 760,
@@ -3817,7 +3817,7 @@
         },
         "act_t1pac001": {
           "x": 1240,
-          "y": 580
+          "y": 700
         },
         "trg_mflmvo47": {
           "x": 220,
@@ -3833,7 +3833,7 @@
         },
         "trg_qsoxfskd": {
           "x": 220,
-          "y": 980
+          "y": 1020
         },
         "trg_4je3p1h9": {
           "x": 220,
@@ -3843,15 +3843,15 @@
           "x": 240,
           "y": 800
         },
-        "event.open.evt_pazjdl52": {
+        "event.open.evt_r7fs6ksq": {
           "x": 1260,
           "y": 960
         },
-        "event.close.evt_vwd23rwp": {
+        "event.close.evt_rl50fhpc": {
           "x": 1260,
           "y": 1080
         },
-        "event.open.evt_qgdrtjtc": {
+        "event.open.evt_3akr7iyy": {
           "x": 1260,
           "y": 1220
         }
@@ -4118,9 +4118,9 @@
           }
         },
         {
-          "id": "event.close.evt_7cxk174j",
+          "id": "event.close.evt_v62c5njt",
           "kind": "event_close",
-          "refId": "evt_7cxk174j",
+          "refId": "evt_v62c5njt",
           "label": "CLOSE Taiyo2.JobActivity",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4188,7 +4188,7 @@
           "templateId": "template.taiyo.machine.speed.from.total.input",
           "config": {
             "description": "",
-            "script": "const assetPath = AssetPath.path || \"-\";\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\n\nconst deltaRaw = Number(msg.encoderDeltaRaw ?? NaN);\nif (deltaRaw < 0) {\n  send(msg);\n  return;\n}\n\n// encoder raw is in cm and trigger runs every second, so m/min = cm/s * 60 / 100 = cm * 0.6\nconst speedMpm = deltaRaw * 0.6;\nawait asset.set(machineSpeedPath, speedMpm);\n\naction.status([{ level: \"warn\", text: `speed: ${speedMpm} mtr/min.`, position: \"top\" }]);\n\nsend(msg);",
+            "script": "const assetPath = AssetPath.path || \"-\";\nconst machineSpeedPath = `${assetPath}.Machine Speed`;\n\nconst deltaRaw = Number(msg.encoderDeltaRaw ?? NaN);\nif (deltaRaw < 0) {\n  send(msg);\n  return;\n}\n\n// encoder raw is in cm and trigger runs every second, so m/min = cm/s * 60 / 100 = cm * 0.6\nconst speedMpm = deltaRaw * 0.3;\nawait asset.set(machineSpeedPath, speedMpm);\n\naction.status([{ level: \"warn\", text: `speed: ${speedMpm} mtr/min.`, position: \"top\" }]);\n\nsend(msg);",
             "templateBindingOverrides": {
               "AssetPath": {
                 "name": "AssetPath",
@@ -4337,9 +4337,9 @@
           }
         },
         {
-          "id": "event.open.evt_k0yi63wu",
+          "id": "event.open.evt_h0598ehg",
           "kind": "event_open",
-          "refId": "evt_k0yi63wu",
+          "refId": "evt_h0598ehg",
           "label": "Open JobLifecycle Event",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -4373,9 +4373,9 @@
           }
         },
         {
-          "id": "event.close.evt_371n3yuq",
+          "id": "event.close.evt_2h9chjr8",
           "kind": "event_close",
-          "refId": "evt_371n3yuq",
+          "refId": "evt_2h9chjr8",
           "label": "Close JobLifecycle Event",
           "enabled": true,
           "templateId": "template.taiyo.job.lifecycle",
@@ -4409,9 +4409,9 @@
           }
         },
         {
-          "id": "event.open.evt_czl3d34v",
+          "id": "event.open.evt_22cv0g9g",
           "kind": "event_open",
-          "refId": "evt_czl3d34v",
+          "refId": "evt_22cv0g9g",
           "label": "Open JobActivity Event",
           "enabled": true,
           "templateId": "template.taiyo.job.activity.production",
@@ -4516,67 +4516,67 @@
         },
         {
           "from": "act_dlgwztd0",
-          "to": "event.open.evt_k0yi63wu",
+          "to": "event.open.evt_h0598ehg",
           "fromPort": "open event",
           "enabled": true
         },
         {
-          "from": "event.open.evt_k0yi63wu",
+          "from": "event.open.evt_h0598ehg",
           "to": "act_jg01wnrl",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_k0yi63wu",
+          "from": "event.open.evt_h0598ehg",
           "to": "act_z1kdf1oo",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_k0yi63wu",
+          "from": "event.open.evt_h0598ehg",
           "to": "act_z1kdf1oo",
           "fromPort": "onFail",
           "enabled": true
         },
         {
           "from": "act_dlgwztd0",
-          "to": "event.close.evt_371n3yuq",
+          "to": "event.close.evt_2h9chjr8",
           "fromPort": "close event",
           "enabled": true
         },
         {
-          "from": "event.close.evt_371n3yuq",
+          "from": "event.close.evt_2h9chjr8",
           "to": "act_9elon898",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.close.evt_371n3yuq",
+          "from": "event.close.evt_2h9chjr8",
           "to": "act_z1kdf1oo",
           "fromPort": "onFail",
           "enabled": true
         },
         {
-          "from": "event.close.evt_371n3yuq",
+          "from": "event.close.evt_2h9chjr8",
           "to": "act_z1kdf1oo",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_czl3d34v",
+          "from": "event.open.evt_22cv0g9g",
           "to": "act_z1kdf1oo",
           "fromPort": "onSuccess",
           "enabled": true
         },
         {
-          "from": "event.open.evt_czl3d34v",
+          "from": "event.open.evt_22cv0g9g",
           "to": "act_z1kdf1oo",
           "fromPort": "onFail",
           "enabled": true
         },
         {
           "from": "act_9yue80v9",
-          "to": "event.open.evt_czl3d34v",
+          "to": "event.open.evt_22cv0g9g",
           "fromPort": "out",
           "enabled": true
         },
@@ -4660,7 +4660,7 @@
         },
         "act_h7a2huxz": {
           "x": 840,
-          "y": 880
+          "y": 920
         },
         "act_potgd362": {
           "x": 840,
@@ -4672,11 +4672,11 @@
         },
         "act_dlgwztd0": {
           "x": 840,
-          "y": 1060
+          "y": 1120
         },
         "act_9yue80v9": {
           "x": 840,
-          "y": 1280
+          "y": 1340
         },
         "act_xbimncoj": {
           "x": 1780,
@@ -4704,7 +4704,7 @@
         },
         "act_3ptblup8": {
           "x": 1320,
-          "y": 660
+          "y": 720
         },
         "trg27d4af76": {
           "x": 300,
@@ -4730,15 +4730,15 @@
           "x": 320,
           "y": 880
         },
-        "event.open.evt_k0yi63wu": {
+        "event.open.evt_h0598ehg": {
           "x": 1340,
           "y": 1040
         },
-        "event.close.evt_371n3yuq": {
+        "event.close.evt_2h9chjr8": {
           "x": 1340,
           "y": 1160
         },
-        "event.open.evt_czl3d34v": {
+        "event.open.evt_22cv0g9g": {
           "x": 1340,
           "y": 1300
         }

@@ -2,9 +2,11 @@ import type {
   RuntimeMessage,
   RuntimeNodeContext,
   RuntimeNodeHandler,
+  RuntimeNodeProfilingChangeEvent,
+  RuntimeNodeProfilingSnapshot,
   RuntimeNodeStatus,
+  RuntimeNodeStatusChangeEvent,
   RuntimeNodeStatusInput,
-  RuntimeNodeStatusItem
 } from "./core/runtimeTypes";
 import type { ProgramRuntimeComposition } from "./composition/RuntimeComposition";
 import { RuntimeContextFactory } from "./composition/RuntimeContextFactory";
@@ -23,7 +25,8 @@ import {
   resolveOutputLabels,
   resolvePorts
 } from "./core/runtimeMessageUtils";
-import { formatRuntimeDisplayText } from "./core/runtimeNumberUtils";
+import { NodeProfilingMonitor } from "./monitor/NodeProfilingMonitor";
+import { NodeStatusMonitor } from "./monitor/NodeStatusMonitor";
 
 class Runtime {
   private readonly wires = new Map<string, string[]>();
@@ -40,18 +43,16 @@ class Runtime {
   private readonly contextFactory: RuntimeContextFactory;
   private readonly deps: Required<RuntimeDeps>;
   private programComposition: ProgramRuntimeComposition | null = null;
-  private readonly nodeStatuses = new Map<string, RuntimeNodeStatus>();
-  private nodeStatusRevision = 0;
-  private nodeStatusMonitoringEnabled = false;
-  private readonly nodeStatusListeners = new Set<
-    (event: { revision: number; nodeId: string; status: RuntimeNodeStatus | null }) => void
-  >();
+  private readonly nodeStatusMonitor: NodeStatusMonitor;
+  private readonly nodeProfilingMonitor: NodeProfilingMonitor;
 
   constructor(options: RuntimeOptions = {}, deps: RuntimeDeps = {}) {
     this.maxInflightPerNode = options.maxInflightPerNode ?? 50;
     this.maxQueuePerNode = options.maxQueuePerNode ?? 5000;
     this.nodeExecutionTimeoutMs = Math.max(0, Number(options.nodeExecutionTimeoutMs ?? 30000));
     this.deps = createRuntimeDeps(deps);
+    this.nodeStatusMonitor = new NodeStatusMonitor({ now: this.deps.now });
+    this.nodeProfilingMonitor = new NodeProfilingMonitor({ now: this.deps.now });
     this.contextFactory = new RuntimeContextFactory(this, { now: this.deps.now });
   }
 
@@ -104,91 +105,63 @@ class Runtime {
   }
 
   setNodeStatus(nodeId: string, status: RuntimeNodeStatusInput): RuntimeNodeStatus {
-    if (!this.nodeStatusMonitoringEnabled) return [];
-    const sourceItems = Array.isArray(status) ? status : [status];
-    const normalized: RuntimeNodeStatus = sourceItems
-      .filter((item): item is RuntimeNodeStatusItem => !!item && typeof item === "object" && typeof item.level === "string")
-      .map((item) => ({
-        level: item.level,
-        text: formatRuntimeDisplayText(String(item.text || "").trim()),
-        position: item.position === "top" ? "top" : "bottom",
-        ts: String(item.ts || this.deps.now())
-      }));
-    if (normalized.length === 0) {
-      this.clearNodeStatus(nodeId);
-      return [];
-    }
-    this.nodeStatuses.set(nodeId, normalized);
-    this.nodeStatusRevision += 1;
-    this.emitNodeStatusChange(nodeId, normalized);
-    return normalized;
+    return this.nodeStatusMonitor.set(nodeId, status);
   }
 
   clearNodeStatus(nodeId: string): boolean {
-    const deleted = this.nodeStatuses.delete(nodeId);
-    if (deleted) {
-      this.nodeStatusRevision += 1;
-      this.emitNodeStatusChange(nodeId, null);
-    }
-    return deleted;
+    return this.nodeStatusMonitor.clear(nodeId);
   }
 
   clearAllNodeStatuses(): void {
-    if (this.nodeStatuses.size === 0) return;
-    const previousNodeIds = Array.from(this.nodeStatuses.keys());
-    this.nodeStatuses.clear();
-    this.nodeStatusRevision += 1;
-    for (const nodeId of previousNodeIds) {
-      this.emitNodeStatusChange(nodeId, null);
-    }
+    this.nodeStatusMonitor.clearAll();
   }
 
   getNodeStatus(nodeId: string): RuntimeNodeStatus | null {
-    return this.nodeStatuses.get(nodeId) || null;
+    return this.nodeStatusMonitor.get(nodeId);
   }
 
   getNodeStatuses(): Record<string, RuntimeNodeStatus> {
-    return Object.fromEntries(this.nodeStatuses.entries());
+    return this.nodeStatusMonitor.getAll();
   }
 
   getNodeStatusRevision(): number {
-    return this.nodeStatusRevision;
+    return this.nodeStatusMonitor.getRevision();
   }
 
   setNodeStatusMonitoringEnabled(enabled: boolean): boolean {
-    const nextValue = enabled === true;
-    if (this.nodeStatusMonitoringEnabled === nextValue) return this.nodeStatusMonitoringEnabled;
-    this.nodeStatusMonitoringEnabled = nextValue;
-    if (!nextValue) {
-      this.clearAllNodeStatuses();
-    }
-    return this.nodeStatusMonitoringEnabled;
+    return this.nodeStatusMonitor.setEnabled(enabled);
   }
 
   isNodeStatusMonitoringEnabled(): boolean {
-    return this.nodeStatusMonitoringEnabled;
+    return this.nodeStatusMonitor.isEnabled();
   }
 
-  subscribeNodeStatus(
-    listener: (event: { revision: number; nodeId: string; status: RuntimeNodeStatus | null }) => void
-  ): () => void {
-    this.nodeStatusListeners.add(listener);
-    return () => this.nodeStatusListeners.delete(listener);
+  subscribeNodeStatus(listener: (event: RuntimeNodeStatusChangeEvent) => void): () => void {
+    return this.nodeStatusMonitor.subscribe(listener);
   }
 
-  private emitNodeStatusChange(nodeId: string, status: RuntimeNodeStatus | null): void {
-    const event = {
-      revision: this.nodeStatusRevision,
-      nodeId,
-      status
-    };
-    for (const listener of this.nodeStatusListeners) {
-      try {
-        listener(event);
-      } catch (error) {
-        console.error(`[runtime] node status listener error for "${nodeId}":`, error);
-      }
-    }
+  getNodeProfiling(nodeId: string): RuntimeNodeProfilingSnapshot | null {
+    return this.nodeProfilingMonitor.get(nodeId);
+  }
+
+  getNodeProfilings(): Record<string, RuntimeNodeProfilingSnapshot> {
+    return this.nodeProfilingMonitor.getAll();
+  }
+
+  getNodeProfilingRevision(): number {
+    return this.nodeProfilingMonitor.getRevision();
+  }
+
+  setNodeProfilingEnabled(enabled: boolean): boolean {
+    return this.nodeProfilingMonitor.setEnabled(enabled);
+  }
+
+  isNodeProfilingEnabled(): boolean {
+    return this.nodeProfilingMonitor.isEnabled();
+  }
+
+  subscribeNodeProfiling(listener: (event: RuntimeNodeProfilingChangeEvent) => void): () => void {
+    return this.nodeProfilingMonitor.subscribe(listener);
   }
 
   private enqueueAssetWrite<T>(fn: () => T | Promise<T>): Promise<T> {
@@ -247,14 +220,32 @@ class Runtime {
     const state = this.getNodeState(nodeId);
     if (state.queue.length >= this.maxQueuePerNode) {
       console.warn(`Node queue "${nodeId}" is full (${this.maxQueuePerNode}); dropping message`);
+      this.nodeProfilingMonitor.onMessageDropped(nodeId, state.queue.length, state.inflight);
       return;
     }
-    state.queue.push(msg);
+    state.queue.push({
+      msg,
+      enqueuedAt: Date.now()
+    });
+    this.nodeProfilingMonitor.onMessageEnqueued(nodeId, state.queue.length, state.inflight);
     this.drainNodeQueue(nodeId);
   }
 
-  private executeNodeMessage(nodeId: string, handler: RuntimeNodeHandler, msg: RuntimeMessage, state: NodeExecutionState): void {
+  private executeNodeMessage(
+    nodeId: string,
+    handler: RuntimeNodeHandler,
+    msg: RuntimeMessage,
+    state: NodeExecutionState,
+    queueWaitMs: number
+  ): void {
     setImmediate(async () => {
+      const startedAtMs = Date.now();
+      this.nodeProfilingMonitor.onExecutionStarted(nodeId, {
+        queueLength: state.queue.length,
+        inflight: state.inflight,
+        queueWaitMs
+      });
+      let succeeded = false;
       try {
         const send = this.createSend(nodeId);
         const context = this.createNodeContext(nodeId);
@@ -268,6 +259,7 @@ class Runtime {
         } else {
           await handler(msg, send, context);
         }
+        succeeded = true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.setNodeStatus(nodeId, {
@@ -278,6 +270,12 @@ class Runtime {
         console.error(`Error in node "${nodeId}":`, message);
       } finally {
         state.inflight -= 1;
+        this.nodeProfilingMonitor.onExecutionCompleted(nodeId, {
+          queueLength: state.queue.length,
+          inflight: state.inflight,
+          execMs: Date.now() - startedAtMs,
+          ok: succeeded
+        });
         this.drainNodeQueue(nodeId);
       }
     });
@@ -293,10 +291,11 @@ class Runtime {
     }
 
     while (state.inflight < this.maxInflightPerNode && state.queue.length > 0) {
-      const msg = state.queue.shift();
-      if (!msg) continue;
+      const queued = state.queue.shift();
+      if (!queued) continue;
       state.inflight += 1;
-      this.executeNodeMessage(nodeId, handler, msg, state);
+      const queueWaitMs = Math.max(0, Date.now() - queued.enqueuedAt);
+      this.executeNodeMessage(nodeId, handler, queued.msg, state, queueWaitMs);
     }
   }
 

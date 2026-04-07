@@ -437,6 +437,41 @@ export interface RuntimeNodeStatusItem {
 export type RuntimeNodeStatus = RuntimeNodeStatusItem[];
 export type RuntimeNodeStatusInput = RuntimeNodeStatusItem | RuntimeNodeStatusItem[];
 
+export interface RuntimeNodeStatusChangeEvent {
+  revision: number;
+  nodeId: string;
+  status: RuntimeNodeStatus | null;
+}
+
+export interface RuntimeNodeProfilingSnapshot {
+  nodeId: string;
+  enabledAt: string;
+  updatedAt: string;
+  queueLength: number;
+  inflight: number;
+  receivedCount: number;
+  startedCount: number;
+  completedCount: number;
+  successCount: number;
+  errorCount: number;
+  droppedCount: number;
+  lastEnqueuedAt: string | null;
+  lastStartedAt: string | null;
+  lastCompletedAt: string | null;
+  lastQueueWaitMs: number | null;
+  avgQueueWaitMs: number | null;
+  maxQueueWaitMs: number | null;
+  lastExecMs: number | null;
+  avgExecMs: number | null;
+  maxExecMs: number | null;
+}
+
+export interface RuntimeNodeProfilingChangeEvent {
+  revision: number;
+  nodeId: string;
+  profiling: RuntimeNodeProfilingSnapshot | null;
+}
+
 export interface RuntimeActionApi {
   status(status: RuntimeNodeStatusInput): RuntimeNodeStatus;
 }

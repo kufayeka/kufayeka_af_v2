@@ -579,6 +579,43 @@ input {
   top: calc(100% + 8px);
 }
 
+.node-profiling-stack {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 14px;
+  right: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.node-profiling-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  color: #e2e8f0;
+  font-size: 11px;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
+}
+
+.node-profiling-label {
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+.node-profiling-value {
+  color: #f8fafc;
+  font-weight: 800;
+}
+
 .node-status-dot {
   width: 9px;
   height: 9px;

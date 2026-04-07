@@ -31,6 +31,7 @@ Runtime melayani kebutuhan berikut:
 - [`event/`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/event): event domain
 - [`flow/`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/flow): flow orchestration
 - [`historian/`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/historian): historian bridge
+- [`monitor/`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/monitor): monitor status dan profiling node
 - [`persistence/`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/persistence): persistence runtime state
 - [`program/`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/program): start/load program
 
