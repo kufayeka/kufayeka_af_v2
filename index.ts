@@ -16,7 +16,32 @@ import { createDbConnectionManager } from "./runtime/db/dbConnectionManager";
 import type { AssetStore, AssetHierarchyNode } from "./runtime/core/runtimeTypes";
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (error instanceof AggregateError) {
+    const aggregateCode = (error as AggregateError & { code?: string }).code;
+    const parts = error.errors
+      .map((item) => getErrorMessage(item))
+      .filter((item) => item && item !== "[object Object]");
+    const prefix = aggregateCode ? `${aggregateCode}: ` : "";
+    return `${prefix}${parts.join(" | ")}`.trim() || "AggregateError";
+  }
+  if (error instanceof Error) {
+    if (error.message) {
+      const code = (error as { code?: string }).code;
+      return code && !error.message.includes(code) ? `${code}: ${error.message}` : error.message;
+    }
+    const code = (error as { code?: string }).code;
+    return code || error.name || "Unknown error";
+  }
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const message = (error as { message?: unknown }).message;
+    const code = (error as { code?: unknown }).code;
+    if (typeof message === "string" && message.trim()) {
+      return typeof code === "string" && !message.includes(code) ? `${code}: ${message}` : message;
+    }
+    if (typeof code === "string" && code.trim()) return code;
+  }
+  return String(error);
 }
 
 async function bootstrap(): Promise<void> {

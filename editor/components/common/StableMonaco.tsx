@@ -7,7 +7,7 @@ import {
   buildBindingExtraLibSource,
   buildScriptEditorOptions,
   configureScriptEditorMonaco,
-  type ScriptEditorProfile
+  type ScriptEditorProfile 
 } from "../../lib/scriptEditorConfig";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });

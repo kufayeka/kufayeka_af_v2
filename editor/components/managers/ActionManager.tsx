@@ -29,6 +29,7 @@ import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
 import { FileCode2, FolderTree } from "lucide-react";
 import StableMonaco from "../common/StableMonaco";
+import BufferedTextField from "../domains/shared/BufferedTextField";
 import type {
   AssetFrameworkDefinition,
   ScriptNodeSummary,
@@ -522,11 +523,13 @@ export default function ActionManager({
                   Duplicate
                 </Button>
               </Box>
-              <TextField
+              <BufferedTextField
                 size="small"
                 label="Search Script Hierarchy"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                immediate
+                debounceMs={250}
+                onCommit={setSearch}
               />
             </Box>
             <Box sx={{ border: "1px solid #e2e8f0", borderRadius: 0.5, ...scrollBothOverflowSx, maxHeight: "calc(100vh - 260px)" }}>
@@ -581,11 +584,11 @@ export default function ActionManager({
                   <TableRow>
                     <TableCell>Action Label</TableCell>
                     <TableCell>
-                      <TextField
+                      <BufferedTextField
                         size="small"
                         fullWidth
                         value={selectedAction.label ?? ""}
-                        onChange={(e) => onUpdateAction(selectedAction.id, { label: e.target.value })}
+                        onCommit={(next) => onUpdateAction(selectedAction.id, { label: next })}
                       />
                     </TableCell>
                   </TableRow>
@@ -593,11 +596,11 @@ export default function ActionManager({
                   <TableRow>
                     <TableCell>Description</TableCell>
                     <TableCell>
-                      <TextField
+                      <BufferedTextField
                         size="small"
                         fullWidth
                         value={selectedAction.description ?? ""}
-                        onChange={(e) => onUpdateAction(selectedAction.id, { description: e.target.value })}
+                        onCommit={(next) => onUpdateAction(selectedAction.id, { description: next })}
                       />
                     </TableCell>
                   </TableRow>
@@ -948,18 +951,18 @@ export default function ActionManager({
             {selectedTemplate && (
               <Box sx={{ display: "grid", gap: 1 }}>
                 <Typography variant="h6">Script Template Detail</Typography>
-                <TextField
+                <BufferedTextField
                   label="Template Name"
                   value={selectedTemplate.name}
-                  onChange={(e) =>
-                    onUpdateScriptTemplate(selectedTemplate.id, { name: e.target.value })
+                  onCommit={(next) =>
+                    onUpdateScriptTemplate(selectedTemplate.id, { name: next })
                   }
                 />
-                <TextField
+                <BufferedTextField
                   label="Description"
                   value={selectedTemplate.description ?? ""}
-                  onChange={(e) =>
-                    onUpdateScriptTemplate(selectedTemplate.id, { description: e.target.value })
+                  onCommit={(next) =>
+                    onUpdateScriptTemplate(selectedTemplate.id, { description: next })
                   }
                 />
                 <Box sx={{ display: "grid", gap: 0.75 }}>

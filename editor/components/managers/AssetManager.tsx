@@ -33,47 +33,47 @@ import type { SelectChangeEvent } from "@mui/material/Select";
 import Tree from "rc-tree";
 import type { DataNode, Key } from "rc-tree/lib/interface";
 import { Database, RefreshCcw } from "lucide-react";
+import AttributeValueEditorCells from "../domains/asset/AttributeValueEditorCells";
+import DebouncedSearchField from "../domains/asset/DebouncedSearchField";
+import AssetManagerHistorianTab from "../domains/asset/AssetManagerHistorianTab";
+import {
+  ATTRIBUTE_TYPES,
+  DEFAULT_HISTORIAN_TARGET,
+  TREE_BOTTOM_SPACER_KEY,
+  buildChildrenMap,
+  collectTreeKeys,
+  getAssetPath,
+  getDescendantIds,
+  getEffectiveAttributes,
+  makeId,
+  parseByType,
+  parseMaybeJson,
+  serializeValue,
+  type EffectiveAttributeRow,
+  useDebouncedValue
+} from "../domains/asset/assetManagerUtils";
+import {
+  buildAssetAttributePaths,
+  buildAssetTreeData,
+  buildAutoExpandedKeys,
+  buildVisibleAttributeRows,
+  filterEffectiveAttributeRows
+} from "../domains/asset/assetTreeSelectors";
+import {
+  useAssetHistorianHandlers,
+  type HistorianQueryResponse,
+  type MonitorLogEntry,
+  type MonitorLogsKind,
+  type QueryMode,
+  type QueryOrder,
+  type QueryTimeFmt
+} from "../domains/asset/useAssetHistorianHandlers";
 import type {
   AssetAttributeType,
   AssetDefinition,
   AssetFrameworkDefinition,
   HistorianTargetDefinition,
 } from "../../types/program";
-
-const ATTRIBUTE_TYPES: AssetAttributeType[] = [
-  "int8",
-  "uint8",
-  "int16",
-  "uint16",
-  "int32",
-  "uint32",
-  "float32",
-  "float64",
-  "boolean",
-  "string",
-  "array",
-  "object"
-];
-
-const DEFAULT_HISTORIAN_TARGET: HistorianTargetDefinition = {
-  id: "default",
-  name: "Default Historian",
-  timestampUnit: "us",
-  enabled: true
-};
-
-interface EffectiveAttributeRow {
-  name: string;
-  valueType: AssetAttributeType | "custom";
-  unit: string;
-  value: unknown;
-  ts?: string;
-  source: string;
-  overridden: boolean;
-  historianEnabled: boolean;
-  numberAllowDecimal?: boolean;
-  numberPrecision?: number;
-}
 
 interface AssetManagerProps {
   assets: AssetFrameworkDefinition;
@@ -84,228 +84,6 @@ interface AssetManagerProps {
   ) => void;
 }
 
-type MonitorLogsKind = "system" | "ingest" | "";
-
-interface MonitorLogEntry {
-  ts?: string;
-  time?: string;
-  level?: string;
-  msg?: string;
-  message?: string;
-  [key: string]: unknown;
-}
-
-type QueryMode = "raw" | "range" | "last";
-type QueryTimeFmt = "epoch" | "iso";
-type QueryOrder = "asc" | "desc";
-
-interface HistorianQueryMatch {
-  path: string;
-  assetId: string;
-  attributeName: string;
-  tagId: number;
-  historianTargetId?: string;
-  type?: string;
-  unit?: string;
-  latestValue?: unknown;
-  latestTs?: string | null;
-  historianEnabled?: boolean;
-  historianTimeSourcePath?: string;
-}
-
-interface HistorianQueryResponse {
-  error?: string;
-  path?: string;
-  paths?: string[];
-  matches?: HistorianQueryMatch[];
-  rows?: Array<Record<string, unknown>>;
-  truncated?: boolean;
-  agg?: string;
-  historianTargetId?: string;
-}
-
-function makeId(prefix: string): string {
-  return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-}
-
-function parseMaybeJson(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
-  }
-}
-
-function parseByType(type: AssetAttributeType, raw: string): unknown {
-  if (
-    type === "int8" ||
-    type === "uint8" ||
-    type === "int16" ||
-    type === "uint16" ||
-    type === "int32" ||
-    type === "uint32"
-  ) {
-    const n = Number.parseInt(raw, 10);
-    return Number.isFinite(n) ? n : raw;
-  }
-  if (type === "float32" || type === "float64") {
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : raw;
-  }
-  if (type === "boolean") {
-    if (raw.trim().toLowerCase() === "true") return true;
-    if (raw.trim().toLowerCase() === "false") return false;
-    return raw;
-  }
-  if (type === "string") return raw;
-  return parseMaybeJson(raw);
-}
-
-function normalizeNumberForDisplay(
-  value: number,
-  options: { numberAllowDecimal?: boolean; numberPrecision?: number } = {}
-): number {
-  if (!Number.isFinite(value)) return value;
-  const allowDecimal = options.numberAllowDecimal !== false;
-  const precision = Math.max(0, Math.min(10, Number(options.numberPrecision ?? 6) || 0));
-  const maxDecimals = allowDecimal ? precision : 0;
-  const factor = 10 ** maxDecimals;
-  const rounded = Math.round((value + Math.sign(value || 1) * Number.EPSILON) * factor) / factor;
-  if (Math.abs(rounded) < 1e-9) return 0;
-  return rounded;
-}
-
-function serializeValue(
-  value: unknown,
-  options: { numberAllowDecimal?: boolean; numberPrecision?: number } = {}
-): string {
-  if (typeof value === "number") {
-    return String(normalizeNumberForDisplay(value, options));
-  }
-  if (typeof value === "string") return value;
-  return JSON.stringify(value);
-}
-
-function buildChildrenMap(assets: AssetDefinition[]): Map<string | null, AssetDefinition[]> {
-  const map = new Map<string | null, AssetDefinition[]>();
-  for (const asset of assets) {
-    const key = asset.parentId ?? null;
-    const list = map.get(key) || [];
-    list.push(asset);
-    map.set(key, list);
-  }
-  for (const [, list] of map) {
-    list.sort((a, b) => a.name.localeCompare(b.name));
-  }
-  return map;
-}
-
-function getDescendantIds(assets: AssetDefinition[], parentId: string): Set<string> {
-  const descendants = new Set<string>();
-  const childrenMap = buildChildrenMap(assets);
-  const queue = [...(childrenMap.get(parentId) || []).map((item) => item.id)];
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current || descendants.has(current)) continue;
-    descendants.add(current);
-    for (const child of childrenMap.get(current) || []) {
-      queue.push(child.id);
-    }
-  }
-  return descendants;
-}
-
-function getAssetPath(asset: AssetDefinition, byId: Map<string, AssetDefinition>): string {
-  const parts = [asset.name];
-  let parentId = asset.parentId;
-  while (parentId) {
-    const parent = byId.get(parentId);
-    if (!parent) break;
-    parts.unshift(parent.name);
-    parentId = parent.parentId;
-  }
-  return parts.join(".");
-}
-
-function getEffectiveAttributes(
-  asset: AssetDefinition,
-  templateById: Map<string, AssetFrameworkDefinition["attributeTemplates"][number]>
-): EffectiveAttributeRow[] {
-  const rows = new Map<string, EffectiveAttributeRow>();
-
-  for (const templateId of asset.templateIds) {
-    const template = templateById.get(templateId);
-    if (!template) continue;
-    for (const attr of template.attributes) {
-      if (attr.enabled === false) continue;
-      if (!rows.has(attr.name)) {
-        rows.set(attr.name, {
-          name: attr.name,
-          valueType: attr.valueType,
-          unit: attr.unit ?? "",
-          value: attr.default,
-          ts: undefined,
-          source: template.name,
-          overridden: false,
-          historianEnabled: attr.historianEnabled === true,
-          numberAllowDecimal: attr.numberAllowDecimal !== false,
-          numberPrecision: Math.max(0, Number(attr.numberPrecision ?? 0) || 0)
-        });
-      }
-    }
-  }
-
-  for (const [name, val] of Object.entries(asset.attributes || {})) {
-    const existing = rows.get(name);
-    if (existing) {
-      rows.set(name, { ...existing, value: val.value, ts: val.ts, overridden: true });
-    } else {
-      rows.set(name, {
-        name,
-        valueType: "custom",
-        unit: "",
-        value: val.value,
-        ts: val.ts,
-        source: "Custom",
-        overridden: true,
-        historianEnabled: false,
-        numberAllowDecimal: true,
-        numberPrecision: 6
-      });
-    }
-  }
-
-  return Array.from(rows.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function collectTreeKeys(nodes: DataNode[]): Key[] {
-  const keys: Key[] = [];
-  const walk = (items: DataNode[]) => {
-    for (const item of items) {
-      if (String(item.key).startsWith("asset:")) keys.push(item.key);
-      if (Array.isArray(item.children) && item.children.length > 0) {
-        walk(item.children);
-      }
-    }
-  };
-  walk(nodes);
-  return keys;
-}
-
-const TREE_BOTTOM_SPACER_KEY = "__tree-bottom-spacer__";
-
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebounced(value);
-    }, delayMs);
-    return () => window.clearTimeout(timer);
-  }, [delayMs, value]);
-
-  return debounced;
-}
 
 export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [mainTab, setMainTab] = useState(0);
@@ -319,7 +97,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
   const [refreshingAttributeKeys, setRefreshingAttributeKeys] = useState<Record<string, boolean>>({});
   const [refreshingSelectedAssetValues, setRefreshingSelectedAssetValues] = useState(false);
   const [attributeTableScrollTop, setAttributeTableScrollTop] = useState(0);
-  const [fieldDrafts, setFieldDrafts] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<{ open: boolean; kind: "success" | "error"; message: string }>({
     open: false,
     kind: "success",
@@ -413,9 +190,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     }));
   };
 
-  const getDraft = (fieldKey: string, source: string): string =>
-    Object.prototype.hasOwnProperty.call(fieldDrafts, fieldKey) ? fieldDrafts[fieldKey] : source;
-
   const addAsset = (parentId: string | null) => {
     const id = makeId("asset");
     const next: AssetDefinition = {
@@ -489,11 +263,7 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     return effectiveAttributesByAssetId.get(selectedAsset.id) || [];
   }, [effectiveAttributesByAssetId, selectedAsset]);
   const filteredSelectedAssetEffectiveAttributes = useMemo(() => {
-    const keyword = debouncedAttributeSearch.trim().toLowerCase();
-    if (!keyword) return selectedAssetEffectiveAttributes;
-    return selectedAssetEffectiveAttributes.filter((row) =>
-      `${row.name} ${serializeValue(row.value, row)} ${row.unit || ""}`.toLowerCase().includes(keyword)
-    );
+    return filterEffectiveAttributeRows(selectedAssetEffectiveAttributes, debouncedAttributeSearch);
   }, [debouncedAttributeSearch, selectedAssetEffectiveAttributes]);
 
   useEffect(() => {
@@ -510,29 +280,10 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     if (Number.isNaN(parsed.getTime())) return ts;
     return parsed.toLocaleString();
   };
-  const assetAttributePaths = useMemo(() => {
-    const options: string[] = [];
-    for (const asset of assets.assets) {
-      const basePath = getAssetPath(asset, assetById);
-      const names = new Set<string>();
-      for (const templateId of asset.templateIds) {
-        const template = templateById.get(templateId);
-        if (!template) continue;
-        for (const attribute of template.attributes) {
-          if (attribute.enabled === false) continue;
-          names.add(attribute.name);
-        }
-      }
-      for (const name of Object.keys(asset.attributes || {})) {
-        names.add(name);
-      }
-      for (const name of names) {
-        options.push(`${basePath}.${name}`);
-      }
-    }
-    options.sort((a, b) => a.localeCompare(b));
-    return options;
-  }, [assetById, assets.assets, templateById]);
+  const assetAttributePaths = useMemo(
+    () => buildAssetAttributePaths(assets.assets, assetById, templateById),
+    [assetById, assets.assets, templateById]
+  );
 
   useEffect(() => {
     if (queryPath.trim()) return;
@@ -544,85 +295,31 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     if (mainTab > 1) setMainTab(1);
   }, [mainTab]);
 
-  const treeData = useMemo(() => {
-    const assetKeyword = debouncedAssetSearch.trim().toLowerCase();
-    const attributeKeyword = debouncedAttributeSearch.trim().toLowerCase();
-    const childrenMap = buildChildrenMap(assets.assets);
-    const result: DataNode[] = [];
-
-    const includeAsset = (asset: AssetDefinition, attrs: EffectiveAttributeRow[]) => {
-      const path = getAssetPath(asset, assetById).toLowerCase();
-      const assetHit = !assetKeyword || path.includes(assetKeyword);
-      const attrHit =
-        !attributeKeyword ||
-        attrs.some((attr) =>
-          `${attr.name} ${serializeValue(attr.value, attr)} ${attr.unit || ""}`.toLowerCase().includes(attributeKeyword)
-        );
-      return assetHit && attrHit;
-    };
-
-    const buildNode = (asset: AssetDefinition): DataNode | null => {
-      const attrs = effectiveAttributesByAssetId.get(asset.id) || [];
-      const childAssets = (childrenMap.get(asset.id) || []).map(buildNode).filter(Boolean) as DataNode[];
-      const selfIncluded = includeAsset(asset, attrs);
-      if (!selfIncluded && childAssets.length === 0) return null;
-
-      return {
-        key: `asset:${asset.id}`,
-        title: (
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              minHeight: 24
-            }}
-          >
-            <Database size={14} />
-            <span>{asset.name}</span>
-          </span>
-        ),
-        children: childAssets
-      };
-    };
-
-    for (const root of childrenMap.get(null) || []) {
-      const node = buildNode(root);
-      if (node) result.push(node);
-    }
-
-    if (result.length > 0) {
-      result.push({
-        key: TREE_BOTTOM_SPACER_KEY,
-        title: <span style={{ display: "block", height: 96 }} />,
-        disabled: true,
-        selectable: false,
-        isLeaf: true
-      });
-    }
-
-    return result;
-  }, [assetById, assets.assets, debouncedAssetSearch, debouncedAttributeSearch, effectiveAttributesByAssetId]);
+  const treeData = useMemo(
+    () =>
+      buildAssetTreeData({
+        assets: assets.assets,
+        assetById,
+        effectiveAttributesByAssetId,
+        assetSearch: debouncedAssetSearch,
+        attributeSearch: debouncedAttributeSearch
+      }),
+    [assetById, assets.assets, debouncedAssetSearch, debouncedAttributeSearch, effectiveAttributesByAssetId]
+  );
   const autoExpandedKeys = useMemo(
-    () => (debouncedAssetSearch.trim() || debouncedAttributeSearch.trim() ? collectTreeKeys(treeData) : expandedKeys),
+    () => buildAutoExpandedKeys(treeData, expandedKeys, debouncedAssetSearch, debouncedAttributeSearch),
     [debouncedAssetSearch, debouncedAttributeSearch, expandedKeys, treeData]
   );
-  const visibleAttributeRows = useMemo(() => {
-    const overscan = 8;
-    const visibleCount = Math.ceil(effectiveTableViewportHeight / effectiveTableRowHeight);
-    const startIndex = Math.max(0, Math.floor(attributeTableScrollTop / effectiveTableRowHeight) - overscan);
-    const endIndex = Math.min(
-      filteredSelectedAssetEffectiveAttributes.length,
-      startIndex + visibleCount + overscan * 2
-    );
-    return {
-      startIndex,
-      endIndex,
-      rows: filteredSelectedAssetEffectiveAttributes.slice(startIndex, endIndex),
-      topSpacerHeight: startIndex * effectiveTableRowHeight,
-      bottomSpacerHeight: Math.max(0, (filteredSelectedAssetEffectiveAttributes.length - endIndex) * effectiveTableRowHeight)
-    };
-  }, [attributeTableScrollTop, filteredSelectedAssetEffectiveAttributes]);
+  const visibleAttributeRows = useMemo(
+    () =>
+      buildVisibleAttributeRows({
+        scrollTop: attributeTableScrollTop,
+        rows: filteredSelectedAssetEffectiveAttributes,
+        rowHeight: effectiveTableRowHeight,
+        viewportHeight: effectiveTableViewportHeight
+      }),
+    [attributeTableScrollTop, filteredSelectedAssetEffectiveAttributes]
+  );
 
   const reloadFromRuntime = async () => {
     setLoadingRuntime(true);
@@ -663,32 +360,6 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     return until > Date.now();
   };
 
-  const markAttributeRefreshCooldown = (path: string, delayMs = 1200): void => {
-    attributeRefreshCooldownRef.current[path] = Date.now() + delayMs;
-  };
-
-  const isAssetRefreshCoolingDown = (assetId: string): boolean => {
-    const until = assetRefreshCooldownRef.current[assetId] || 0;
-    return until > Date.now();
-  };
-
-  const markAssetRefreshCooldown = (assetId: string, delayMs = 1500): void => {
-    assetRefreshCooldownRef.current[assetId] = Date.now() + delayMs;
-  };
-
-  const syncSelectedAssetAttribute = (assetId: string, attributeName: string, value: unknown, ts?: string) => {
-    updateAssetWith(assetId, (asset) => ({
-      ...asset,
-      attributes: {
-        ...(asset.attributes || {}),
-        [attributeName]: {
-          value,
-          ts: ts && ts.trim() ? ts : new Date().toISOString()
-        }
-      }
-    }));
-  };
-
   const readJsonLike = async (res: Response): Promise<Record<string, unknown>> => {
     const text = await res.text();
     try {
@@ -698,248 +369,47 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
     }
   };
 
-  const toLogEntries = (payload: Record<string, unknown>): MonitorLogEntry[] => {
-    const items = payload.items;
-    if (Array.isArray(items)) {
-      return items.filter((item) => item && typeof item === "object") as MonitorLogEntry[];
-    }
-    const direct = payload.logs;
-    if (Array.isArray(direct)) {
-      return direct.filter((item) => item && typeof item === "object") as MonitorLogEntry[];
-    }
-    if (direct && typeof direct === "object") {
-      const byKind = direct as Record<string, unknown>;
-      const merged: MonitorLogEntry[] = [];
-      for (const value of Object.values(byKind)) {
-        if (!Array.isArray(value)) continue;
-        merged.push(...(value.filter((item) => item && typeof item === "object") as MonitorLogEntry[]));
-      }
-      return merged;
-    }
-    return [];
-  };
-
-  const refreshSingleAttributeValue = async (asset: AssetDefinition, attributeName: string): Promise<void> => {
-    const assetPath = getAssetPath(asset, assetById);
-    const fullPath = `${assetPath}.${attributeName}`;
-    if (isAttributeRefreshCoolingDown(fullPath)) return;
-    markAttributeRefreshCooldown(fullPath);
-    setRefreshingAttributeKeys((prev) => ({ ...prev, [fullPath]: true }));
-    try {
-      const res = await fetch(`${runtimeApiBase}/assets/value/${encodeURIComponent(fullPath)}`);
-      const data = await readJsonLike(res);
-      if (!res.ok) {
-        throw new Error(String(data.error || `Runtime API error ${res.status}`));
-      }
-      const matches = Array.isArray(data.matches) ? data.matches : [];
-      const match = matches.find(
-        (item) =>
-          item &&
-          typeof item === "object" &&
-          String((item as { assetId?: unknown }).assetId || "") === asset.id &&
-          String((item as { attributeName?: unknown }).attributeName || "") === attributeName
-      ) as { value?: unknown; ts?: string } | undefined;
-      if (!match) {
-        throw new Error("Runtime did not return the requested attribute");
-      }
-      syncSelectedAssetAttribute(asset.id, attributeName, match.value, match.ts);
-      showNotice("success", `Refreshed ${fullPath}`);
-    } catch (error) {
-      showNotice("error", `Refresh failed for ${fullPath}: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setRefreshingAttributeKeys((prev) => {
-        const next = { ...prev };
-        delete next[fullPath];
-        return next;
-      });
-    }
-  };
-
-  const refreshSelectedAssetValues = async (): Promise<void> => {
-    if (!selectedAsset || !selectedAssetPath || selectedAssetEffectiveAttributes.length === 0) return;
-    if (isAssetRefreshCoolingDown(selectedAsset.id)) return;
-    markAssetRefreshCooldown(selectedAsset.id);
-    setRefreshingSelectedAssetValues(true);
-    try {
-      const paths = selectedAssetEffectiveAttributes.map((row) => ({
-        name: row.name,
-        fullPath: `${selectedAssetPath}.${row.name}`
-      }));
-      const nextAttributes = { ...(selectedAsset.attributes || {}) };
-      let updatedCount = 0;
-      for (let index = 0; index < paths.length; index += 8) {
-        const chunk = paths.slice(index, index + 8);
-        const chunkResults = await Promise.all(
-          chunk.map(async (item) => {
-            const res = await fetch(`${runtimeApiBase}/assets/value/${encodeURIComponent(item.fullPath)}`);
-            const data = await readJsonLike(res);
-            if (!res.ok) {
-              throw new Error(String(data.error || `Runtime API error ${res.status}`));
-            }
-            const matches = Array.isArray(data.matches) ? data.matches : [];
-            const match = matches.find(
-              (entry) =>
-                entry &&
-                typeof entry === "object" &&
-                String((entry as { assetId?: unknown }).assetId || "") === selectedAsset.id &&
-                String((entry as { attributeName?: unknown }).attributeName || "") === item.name
-            ) as { value?: unknown; ts?: string } | undefined;
-            return { item, match };
-          })
-        );
-
-        for (const result of chunkResults) {
-          if (!result.match) continue;
-          nextAttributes[result.item.name] = {
-            value: Object.prototype.hasOwnProperty.call(result.match, "value") ? result.match.value : null,
-            ts:
-              typeof result.match.ts === "string" && result.match.ts.trim()
-                ? result.match.ts
-                : new Date().toISOString()
-          };
-          updatedCount += 1;
-        }
-      }
-      updateAssetWith(selectedAsset.id, (asset) => ({
-        ...asset,
-        attributes: nextAttributes
-      }));
-      showNotice("success", `Refreshed ${updatedCount} attributes for "${selectedAsset.name}"`);
-    } catch (error) {
-      showNotice("error", `Bulk refresh failed: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setRefreshingSelectedAssetValues(false);
-    }
-  };
-
-  const loadMonitorData = async (
-    target: HistorianTargetDefinition,
-    kind: MonitorLogsKind,
-    limit: number
-  ) => {
-    setMonitorLoading(true);
-    setMonitorError("");
-    try {
-      const [metricsRes, logsRes] = await Promise.all([
-        fetch(`${runtimeApiBase}/historian/target-metrics?targetId=${encodeURIComponent(target.id)}`),
-        fetch(
-          `${runtimeApiBase}/historian/target-logs?targetId=${encodeURIComponent(target.id)}&kind=${encodeURIComponent(
-            kind
-          )}&limit=${encodeURIComponent(String(limit))}`
-        )
-      ]);
-      const metricsJson = await readJsonLike(metricsRes);
-      const logsJson = await readJsonLike(logsRes);
-      if (!metricsRes.ok) {
-        setMonitorError(String(metricsJson.error || `Metrics request failed (${metricsRes.status})`));
-      }
-      if (!logsRes.ok) {
-        setMonitorError((prev) =>
-          prev
-            ? `${prev}; ${String(logsJson.error || `Logs request failed (${logsRes.status})`)}`
-            : String(logsJson.error || `Logs request failed (${logsRes.status})`)
-        );
-      }
-      setMonitorMetrics(metricsJson);
-      setMonitorLogs(toLogEntries(logsJson));
-    } catch (error) {
-      setMonitorError(`Monitor request failed: ${(error as Error).message}`);
-    } finally {
-      setMonitorLoading(false);
-    }
-  };
-
-  const openMonitor = async (target: HistorianTargetDefinition) => {
-    setMonitorTarget(target);
-    setMonitorOpen(true);
-    await loadMonitorData(target, monitorLogsKind, monitorLogsLimit);
-  };
-
-  const runQueryTester = async () => {
-    const path = queryPath.trim();
-    if (!path) {
-      setQueryError("Path is required. You can pass multiple paths separated by commas.");
-      return;
-    }
-    setQueryLoading(true);
-    setQueryError("");
-    try {
-      const params = new URLSearchParams();
-      params.set("path", path);
-      params.set("time", queryTime);
-      if (queryMode !== "last") {
-        params.set("from", queryFrom.trim());
-        params.set("to", queryTo.trim());
-        params.set("order", queryOrder);
-      }
-      if (queryMode === "raw") {
-        params.set("limit", queryLimit.trim() || "1000");
-      }
-      if (queryMode === "range") {
-        params.set("bucketMs", queryBucketMs.trim() || "1000");
-        params.set("agg", queryAgg);
-      }
-      const res = await fetch(`${runtimeApiBase}/historian/${queryMode}?${params.toString()}`);
-      const json = (await readJsonLike(res)) as HistorianQueryResponse;
-      if (!res.ok) {
-        setQueryResult(json);
-        setQueryError(String(json.error || `Query failed (${res.status})`));
-        return;
-      }
-      setQueryResult(json);
-    } catch (error) {
-      setQueryError(`Query failed: ${(error as Error).message}`);
-    } finally {
-      setQueryLoading(false);
-    }
-  };
-
-  const deleteHistorianByPath = async (path: string) => {
-    try {
-      const res = await fetch(`${runtimeApiBase}/historian/delete-attribute?path=${encodeURIComponent(path)}`, {
-        method: "DELETE"
-      });
-      const json = (await readJsonLike(res)) as {
-        error?: string;
-        message?: string;
-        deletedRecords?: number;
-      };
-      if (!res.ok) {
-        showNotice("error", json.error || "Failed deleting historian records");
-        return;
-      }
-      showNotice(
-        "success",
-        `${json.message || "historian has been deleted"} (${json.deletedRecords ?? 0} records)`
-      );
-    } catch (error) {
-      showNotice("error", `Failed deleting historian records: ${(error as Error).message}`);
-    }
-  };
-
-  const deleteHistorianByTemplateAttribute = async (templateId: string, attributeName: string) => {
-    try {
-      const res = await fetch(
-        `${runtimeApiBase}/historian/delete-template-attribute?templateId=${encodeURIComponent(templateId)}&attributeName=${encodeURIComponent(attributeName)}`,
-        { method: "DELETE" }
-      );
-      const json = (await readJsonLike(res)) as {
-        error?: string;
-        message?: string;
-        deletedRecords?: number;
-      };
-      if (!res.ok) {
-        showNotice("error", json.error || "Failed deleting inherited historian records");
-        return;
-      }
-      showNotice(
-        "success",
-        `${json.message || "historian has been deleted"} (${json.deletedRecords ?? 0} records)`
-      );
-    } catch (error) {
-      showNotice("error", `Failed deleting inherited historian records: ${(error as Error).message}`);
-    }
-  };
+  const {
+    deleteHistorianByPath,
+    deleteHistorianByTemplateAttribute,
+    loadMonitorData,
+    openMonitor,
+    refreshSelectedAssetValues,
+    refreshSingleAttributeValue,
+    runQueryTester
+  } = useAssetHistorianHandlers({
+    runtimeApiBase,
+    assetById,
+    showNotice,
+    updateAssetWith,
+    selectedAsset,
+    selectedAssetPath,
+    selectedAssetEffectiveAttributes,
+    attributeRefreshCooldownRef,
+    assetRefreshCooldownRef,
+    setRefreshingAttributeKeys,
+    setRefreshingSelectedAssetValues,
+    setMonitorTarget,
+    setMonitorOpen,
+    setMonitorLoading,
+    setMonitorError,
+    setMonitorMetrics,
+    setMonitorLogs,
+    monitorLogsKind,
+    monitorLogsLimit,
+    queryPath,
+    queryTime,
+    queryMode,
+    queryFrom,
+    queryTo,
+    queryOrder,
+    queryLimit,
+    queryBucketMs,
+    queryAgg,
+    setQueryLoading,
+    setQueryError,
+    setQueryResult
+  });
 
   return (
     <>
@@ -1014,12 +484,11 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                 Collapse All
               </Button>
             </Box>
-            <TextField
-              size="small"
+            <DebouncedSearchField
               fullWidth
               placeholder="Search asset"
-              value={assetSearch}
-              onChange={(e) => setAssetSearch(e.target.value)}
+              initialValue={assetSearch}
+              onCommit={setAssetSearch}
               sx={{ mb: 1 }}
             />
             <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
@@ -1184,12 +653,11 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                   </Button>
               </Box>
 
-                <TextField
-                  size="small"
+                <DebouncedSearchField
                   fullWidth
                   placeholder="Search effective attributes"
-                  value={attributeSearch}
-                  onChange={(e) => setAttributeSearch(e.target.value)}
+                  initialValue={attributeSearch}
+                  onCommit={setAttributeSearch}
                   sx={{ flexShrink: 0 }}
                 />
 
@@ -1229,138 +697,88 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
                       {visibleAttributeRows.rows.map((row) => (
                         <TableRow key={row.name}>
                           <TableCell sx={{ fontFamily: "monospace" }}>{row.name}</TableCell>
-                          <TableCell sx={{ minWidth: 280 }}>
-                            {(() => {
-                              const fieldKey = `asset-attr:${selectedAsset.id}:${row.name}`;
-                              const currentValue = serializeValue(row.value, row);
-                              const draftValue = getDraft(fieldKey, currentValue);
-                              return (
-                                <TextField
-                                  size="small"
-                                  fullWidth
-                                  value={draftValue}
-                                  onChange={(e) => {
-                                    const raw = e.target.value;
-                                    setFieldDrafts((prev) => ({ ...prev, [fieldKey]: raw }));
-                                  }}
-                                />
-                              );
-                            })()}
-                          </TableCell>
-                          <TableCell>
-                            {(() => {
-                              const fieldKey = `asset-attr:${selectedAsset.id}:${row.name}`;
-                              const currentValue = serializeValue(row.value, row);
-                              const draftValue = getDraft(fieldKey, currentValue);
-                              const hasDraft = Object.prototype.hasOwnProperty.call(fieldDrafts, fieldKey);
-                              const fullPath = `${selectedAssetPath}.${row.name}`;
-                              const isRefreshingThisAttribute =
-                                refreshingAttributeKeys[fullPath] === true || isAttributeRefreshCoolingDown(fullPath);
-
-                              return (
-                                <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
-                                  <IconButton
-                                    size="small"
-                                    aria-label={`Refresh runtime value for ${fullPath}`}
-                                    title={`Refresh runtime value for ${fullPath}`}
-                                    disabled={isRefreshingThisAttribute}
-                                    onClick={() => void refreshSingleAttributeValue(selectedAsset, row.name)}
-                                  >
-                                    <RefreshCcw size={15} />
-                                  </IconButton>
-                                  <Button
-                                    size="small"
-                                    variant="contained"
-                                    disabled={!hasDraft}
-                                    onClick={() => {
-                                      void (async () => {
-                                        try {
-                                          if (!selectedAssetPath) {
-                                            throw new Error("Asset path is empty");
-                                          }
-                                        const nextValue =
-                                          row.valueType === "custom"
-                                            ? parseMaybeJson(draftValue)
-                                            : parseByType(row.valueType, draftValue);
-                                          const res = await fetch(
-                                            `${runtimeApiBase}/assets/value/${encodeURIComponent(fullPath)}`,
-                                            {
-                                              method: "PUT",
-                                              headers: { "content-type": "application/json" },
-                                              body: JSON.stringify({ value: nextValue })
-                                            }
-                                          );
-                                          const data = await readJsonLike(res);
-                                          if (!res.ok) {
-                                            throw new Error(
-                                              String(data.error || `Runtime API error ${res.status}`)
-                                            );
-                                          }
-                                          const matched = Number(data.matchedCount ?? data.count ?? 0);
-                                          if (matched <= 0) {
-                                            throw new Error("Runtime did not match any attribute");
-                                          }
-                                          const nextMatch = Array.isArray(data.matches) && data.matches.length > 0
-                                            ? (data.matches[0] as { value?: unknown; ts?: string })
-                                            : null;
-                                          updateAssetWith(selectedAsset.id, (asset) => ({
-                                            ...asset,
-                                            attributes: {
-                                              ...(asset.attributes || {}),
-                                              [row.name]: {
-                                                value: nextMatch && Object.prototype.hasOwnProperty.call(nextMatch, "value")
-                                                  ? nextMatch.value
-                                                  : nextValue,
-                                                ts:
-                                                  nextMatch && typeof nextMatch.ts === "string" && nextMatch.ts.trim()
-                                                    ? nextMatch.ts
-                                                    : new Date().toISOString()
-                                              }
-                                            }
-                                          }));
-                                          setFieldDrafts((prev) => {
-                                            const cloned = { ...prev };
-                                            delete cloned[fieldKey];
-                                            return cloned;
-                                          });
-                                          showNotice("success", `Applied value for ${fullPath}`);
-                                        } catch (error) {
-                                          showNotice(
-                                            "error",
-                                            `Failed applying ${row.name}: ${
-                                              error instanceof Error ? error.message : String(error)
-                                            }`
-                                          );
-                                        }
-                                      })();
-                                    }}
-                                  >
-                                    Apply
-                                  </Button>
-                                  {row.historianEnabled ? (
-                                    <Button
-                                      size="small"
-                                      color="error"
-                                      variant="outlined"
-                                      onClick={() => {
-                                        const fullPath = `${selectedAssetPath}.${row.name}`;
-                                        if (
-                                          !window.confirm(
-                                            `Delete historian records for attribute "${fullPath}"? This cannot be undone.`
-                                          )
-                                        ) {
-                                          return;
-                                        }
-                                        void deleteHistorianByPath(fullPath);
-                                      }}
-                                    >
-                                      Delete Historian
-                                    </Button>
-                                  ) : null}
-                                </Box>
-                              );
-                            })()}
-                          </TableCell>
+                          <AttributeValueEditorCells
+                            assetId={selectedAsset.id}
+                            attributeName={row.name}
+                            initialValue={serializeValue(row.value, row)}
+                            fullPath={`${selectedAssetPath}.${row.name}`}
+                            isRefreshing={
+                              refreshingAttributeKeys[`${selectedAssetPath}.${row.name}`] === true ||
+                              isAttributeRefreshCoolingDown(`${selectedAssetPath}.${row.name}`)
+                            }
+                            historianEnabled={row.historianEnabled}
+                            onRefresh={() => void refreshSingleAttributeValue(selectedAsset, row.name)}
+                            onApply={async (draftValue) => {
+                              try {
+                                if (!selectedAssetPath) {
+                                  throw new Error("Asset path is empty");
+                                }
+                                const fullPath = `${selectedAssetPath}.${row.name}`;
+                                const nextValue =
+                                  row.valueType === "custom"
+                                    ? parseMaybeJson(draftValue)
+                                    : parseByType(row.valueType, draftValue);
+                                const res = await fetch(
+                                  `${runtimeApiBase}/assets/value/${encodeURIComponent(fullPath)}`,
+                                  {
+                                    method: "PUT",
+                                    headers: { "content-type": "application/json" },
+                                    body: JSON.stringify({ value: nextValue })
+                                  }
+                                );
+                                const data = await readJsonLike(res);
+                                if (!res.ok) {
+                                  throw new Error(String(data.error || `Runtime API error ${res.status}`));
+                                }
+                                const matched = Number(data.matchedCount ?? data.count ?? 0);
+                                if (matched <= 0) {
+                                  throw new Error("Runtime did not match any attribute");
+                                }
+                                const nextMatch = Array.isArray(data.matches) && data.matches.length > 0
+                                  ? (data.matches[0] as { value?: unknown; ts?: string })
+                                  : null;
+                                updateAssetWith(selectedAsset.id, (asset) => ({
+                                  ...asset,
+                                  attributes: {
+                                    ...(asset.attributes || {}),
+                                    [row.name]: {
+                                      value: nextMatch && Object.prototype.hasOwnProperty.call(nextMatch, "value")
+                                        ? nextMatch.value
+                                        : nextValue,
+                                      ts:
+                                        nextMatch && typeof nextMatch.ts === "string" && nextMatch.ts.trim()
+                                          ? nextMatch.ts
+                                          : new Date().toISOString()
+                                    }
+                                  }
+                                }));
+                                showNotice("success", `Applied value for ${fullPath}`);
+                              } catch (error) {
+                                showNotice(
+                                  "error",
+                                  `Failed applying ${row.name}: ${
+                                    error instanceof Error ? error.message : String(error)
+                                  }`
+                                );
+                                throw error;
+                              }
+                            }}
+                            onDeleteHistorian={
+                              row.historianEnabled
+                                ? () => {
+                                    const fullPath = `${selectedAssetPath}.${row.name}`;
+                                    if (
+                                      !window.confirm(
+                                        `Delete historian records for attribute "${fullPath}"? This cannot be undone.`
+                                      )
+                                    ) {
+                                      return;
+                                    }
+                                    void deleteHistorianByPath(fullPath);
+                                  }
+                                : undefined
+                            }
+                          />
                           <TableCell>{row.valueType}</TableCell>
                           <TableCell>{row.unit || "-"}</TableCell>
                           <TableCell>{formatAttributeTimestamp(row.ts)}</TableCell>
@@ -1690,330 +1108,73 @@ export default function AssetManager({ assets, onChange }: AssetManagerProps) {
       )}
 
       {mainTab === 2 && (
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
-          <Paper sx={{ p: 1.25, ...scrollBothOverflowSx }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                Historian Targets
-              </Typography>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={() => {
-                  const next: HistorianTargetDefinition = {
-                    id: `hist_${Date.now()}`,
-                    name: `Historian ${historianTargets.length + 1}`,
-                    timestampUnit: "us",
-                    enabled: true
-                  };
-                  updateHistorians([...historianTargets, next]);
-                  showNotice("success", `Historian target "${next.name}" created`);
-                }}
-              >
-                Add Historian
-              </Button>
-            </Box>
-            <TableContainer sx={{ border: "1px solid #dbe3ef", borderRadius: 1, maxHeight: 340, ...scrollBothOverflowSx }}>
-              <Table size="small" stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 120 }}>ID</TableCell>
-                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 150 }}>Name</TableCell>
-                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 90 }}>TS Unit</TableCell>
-                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 90 }}>Enabled</TableCell>
-                    <TableCell sx={{ backgroundColor: "#d0dfdb", minWidth: 220 }}>Action</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {historianTargets.map((target, idx) => (
-                    <TableRow key={`hist-target:${target.id}`}>
-                      <TableCell>
-                        <TextField
-                          size="small"
-                          value={target.id}
-                          disabled={target.id === "default"}
-                          onChange={(e) => {
-                            const id = e.target.value;
-                            updateHistorians(
-                              historianTargets.map((item, itemIdx) =>
-                                itemIdx === idx ? { ...item, id } : item
-                              )
-                            );
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextField
-                          size="small"
-                          value={target.name}
-                          onChange={(e) => {
-                            const name = e.target.value;
-                            updateHistorians(
-                              historianTargets.map((item, itemIdx) =>
-                                itemIdx === idx ? { ...item, name } : item
-                              )
-                            );
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <FormControl size="small" sx={{ minWidth: 90 }}>
-                          <Select
-                            value={target.timestampUnit}
-                            onChange={(e: SelectChangeEvent<"us" | "ns">) => {
-                              const timestampUnit = e.target.value as "us" | "ns";
-                              updateHistorians(
-                                historianTargets.map((item, itemIdx) =>
-                                  itemIdx === idx ? { ...item, timestampUnit } : item
-                                )
-                              );
-                            }}
-                          >
-                            <MenuItem value="us">us</MenuItem>
-                            <MenuItem value="ns">ns</MenuItem>
-                          </Select>
-                        </FormControl>
-                      </TableCell>
-                      <TableCell>
-                        <Checkbox
-                          checked={target.enabled !== false}
-                          onChange={(_e, checked) => {
-                            updateHistorians(
-                              historianTargets.map((item, itemIdx) =>
-                                itemIdx === idx ? { ...item, enabled: checked } : item
-                              )
-                            );
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => {
-                              void openMonitor(target);
-                            }}
-                          >
-                            Monitor
-                          </Button>
-                          <Button
-                            size="small"
-                            color="error"
-                            onClick={() => {
-                              if (target.id === "default") {
-                                showNotice("error", "default historian cannot be removed");
-                                return;
-                              }
-                              if (!window.confirm(`Remove historian target "${target.name}"?`)) return;
-                              updateHistorians(historianTargets.filter((_item, itemIdx) => itemIdx !== idx));
-                              showNotice("success", `Historian target "${target.name}" removed`);
-                            }}
-                          >
-                            Remove
-                          </Button>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-
-          <Paper sx={{ p: 1.25 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Query Tester
-            </Typography>
-            <Box sx={{ display: "grid", gridTemplateColumns: "180px 1fr 1fr", gap: 1, mb: 1 }}>
-              <FormControl size="small">
-                <InputLabel>Mode</InputLabel>
-                <Select
-                  label="Mode"
-                  value={queryMode}
-                  onChange={(e: SelectChangeEvent<QueryMode>) => setQueryMode(e.target.value as QueryMode)}
-                >
-                  <MenuItem value="raw">raw</MenuItem>
-                  <MenuItem value="range">range</MenuItem>
-                  <MenuItem value="last">last</MenuItem>
-                </Select>
-              </FormControl>
-              <Autocomplete
-                freeSolo
-                options={assetAttributePaths}
-                value={queryPath}
-                onInputChange={(_e, value) => setQueryPath(value)}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    size="small"
-                    label="Path (single/multi comma-separated)"
-                    placeholder="Jasuindo.Taiyo1.Machine Speed,Jasuindo.Taiyo1.Temperature"
-                  />
-                )}
-              />
-              <Box sx={{ display: "flex", gap: 1 }}>
-                <FormControl size="small" sx={{ minWidth: 120 }}>
-                  <InputLabel>Order</InputLabel>
-                  <Select
-                    label="Order"
-                    value={queryOrder}
-                    onChange={(e: SelectChangeEvent<QueryOrder>) => setQueryOrder(e.target.value as QueryOrder)}
-                  >
-                    <MenuItem value="asc">asc</MenuItem>
-                    <MenuItem value="desc">desc</MenuItem>
-                  </Select>
-                </FormControl>
-                <FormControl size="small" sx={{ minWidth: 120 }}>
-                  <InputLabel>Time</InputLabel>
-                  <Select
-                    label="Time"
-                    value={queryTime}
-                    onChange={(e: SelectChangeEvent<QueryTimeFmt>) => setQueryTime(e.target.value as QueryTimeFmt)}
-                  >
-                    <MenuItem value="iso">iso</MenuItem>
-                    <MenuItem value="epoch">epoch</MenuItem>
-                  </Select>
-                </FormControl>
-                <TextField
-                  size="small"
-                  label="Limit"
-                  value={queryLimit}
-                  onChange={(e) => setQueryLimit(e.target.value)}
-                  disabled={queryMode !== "raw"}
-                />
-                <TextField
-                  size="small"
-                  label="Bucket ms"
-                  value={queryBucketMs}
-                  onChange={(e) => setQueryBucketMs(e.target.value)}
-                  disabled={queryMode !== "range"}
-                />
-                <FormControl size="small" sx={{ minWidth: 120 }}>
-                  <InputLabel>Agg</InputLabel>
-                  <Select
-                    label="Agg"
-                    value={queryAgg}
-                    onChange={(e: SelectChangeEvent<string>) => setQueryAgg(e.target.value)}
-                    disabled={queryMode !== "range"}
-                  >
-                    <MenuItem value="min">min</MenuItem>
-                    <MenuItem value="max">max</MenuItem>
-                    <MenuItem value="avg">avg</MenuItem>
-                    <MenuItem value="first">first</MenuItem>
-                    <MenuItem value="last">last</MenuItem>
-                    <MenuItem value="count">count</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
-            </Box>
-            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr auto auto", gap: 1, mb: 1 }}>
-              <TextField
-                size="small"
-                label="From (epoch or ISO)"
-                value={queryFrom}
-                onChange={(e) => setQueryFrom(e.target.value)}
-                disabled={queryMode === "last"}
-              />
-              <TextField
-                size="small"
-                label="To (epoch or ISO)"
-                value={queryTo}
-                onChange={(e) => setQueryTo(e.target.value)}
-                disabled={queryMode === "last"}
-              />
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => {
-                  const end = new Date();
-                  const start = new Date(end.getTime() - 15 * 60 * 1000);
-                  setQueryFrom(start.toISOString());
-                  setQueryTo(end.toISOString());
-                }}
-              >
-                Last 15m
-              </Button>
-              <Button
-                size="small"
-                variant="contained"
-                disabled={queryLoading}
-                onClick={() => void runQueryTester()}
-              >
-                {queryLoading ? "Running..." : "Run Query"}
-              </Button>
-            </Box>
-
-            {queryError ? (
-              <Alert severity="error" sx={{ mb: 1 }}>
-                {queryError}
-              </Alert>
-            ) : null}
-
-            {queryResult ? (
-              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.25 }}>
-                <Paper sx={{ p: 1, border: "1px solid #dbe3ef" }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
-                    Attribute Metadata
-                  </Typography>
-                  <TableContainer sx={{ maxHeight: 300, ...scrollBothOverflowSx }}>
-                    <Table size="small" stickyHeader>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Path</TableCell>
-                          <TableCell>Type</TableCell>
-                          <TableCell>Unit</TableCell>
-                          <TableCell>TagID</TableCell>
-                          <TableCell>Target</TableCell>
-                          <TableCell>Latest</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {(queryResult.matches || []).map((m) => (
-                          <TableRow key={`query-match:${m.assetId}:${m.attributeName}`}>
-                            <TableCell sx={{ fontFamily: "monospace" }}>{m.path}</TableCell>
-                            <TableCell>{m.type || "-"}</TableCell>
-                            <TableCell>{m.unit || "-"}</TableCell>
-                            <TableCell>{m.tagId}</TableCell>
-                            <TableCell>{m.historianTargetId || "-"}</TableCell>
-                            <TableCell sx={{ fontFamily: "monospace" }}>
-                              {m.latestValue == null ? "-" : serializeValue(m.latestValue)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Paper>
-                <Paper sx={{ p: 1, border: "1px solid #dbe3ef" }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
-                    Query Result
-                  </Typography>
-                  <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 0.75 }}>
-                    <Typography variant="caption">rows: {(queryResult.rows || []).length}</Typography>
-                    <Typography variant="caption">truncated: {String(queryResult.truncated === true)}</Typography>
-                    <Typography variant="caption">agg: {queryResult.agg || "-"}</Typography>
-                    <Typography variant="caption">target: {queryResult.historianTargetId || "-"}</Typography>
-                  </Box>
-                  <Box
-                    sx={{
-                      maxHeight: 300,
-                      ...scrollBothOverflowSx,
-                      border: "1px solid #edf1f7",
-                      borderRadius: 1,
-                      p: 1,
-                      fontFamily: "monospace",
-                      fontSize: 12,
-                      whiteSpace: "pre-wrap"
-                    }}
-                  >
-                    {JSON.stringify(queryResult.rows || [], null, 2)}
-                  </Box>
-                </Paper>
-              </Box>
-            ) : null}
-          </Paper>
-        </Box>
+        <AssetManagerHistorianTab
+          assetAttributePaths={assetAttributePaths}
+          historianTargets={historianTargets}
+          queryAgg={queryAgg}
+          queryBucketMs={queryBucketMs}
+          queryError={queryError}
+          queryFrom={queryFrom}
+          queryLimit={queryLimit}
+          queryLoading={queryLoading}
+          queryMode={queryMode}
+          queryOrder={queryOrder}
+          queryPath={queryPath}
+          queryResult={queryResult}
+          queryTime={queryTime}
+          queryTo={queryTo}
+          onAddHistorian={() => {
+            const next: HistorianTargetDefinition = {
+              id: `hist_${Date.now()}`,
+              name: `Historian ${historianTargets.length + 1}`,
+              timestampUnit: "us",
+              enabled: true
+            };
+            updateHistorians([...historianTargets, next]);
+            showNotice("success", `Historian target "${next.name}" created`);
+          }}
+          onOpenMonitor={(target) => {
+            void openMonitor(target);
+          }}
+          onRemoveHistorian={(idx) => {
+            const target = historianTargets[idx];
+            if (!target) return;
+            if (target.id === "default") {
+              showNotice("error", "default historian cannot be removed");
+              return;
+            }
+            if (!window.confirm(`Remove historian target "${target.name}"?`)) return;
+            updateHistorians(historianTargets.filter((_item, itemIdx) => itemIdx !== idx));
+            showNotice("success", `Historian target "${target.name}" removed`);
+          }}
+          onRunQuery={() => {
+            void runQueryTester();
+          }}
+          onSetHistorianEnabled={(idx, enabled) =>
+            updateHistorians(historianTargets.map((item, itemIdx) => (itemIdx === idx ? { ...item, enabled } : item)))
+          }
+          onSetHistorianId={(idx, id) =>
+            updateHistorians(historianTargets.map((item, itemIdx) => (itemIdx === idx ? { ...item, id } : item)))
+          }
+          onSetHistorianName={(idx, name) =>
+            updateHistorians(historianTargets.map((item, itemIdx) => (itemIdx === idx ? { ...item, name } : item)))
+          }
+          onSetHistorianTimestampUnit={(idx, unit) =>
+            updateHistorians(
+              historianTargets.map((item, itemIdx) => (itemIdx === idx ? { ...item, timestampUnit: unit } : item))
+            )
+          }
+          onSetQueryAgg={setQueryAgg}
+          onSetQueryBucketMs={setQueryBucketMs}
+          onSetQueryFrom={setQueryFrom}
+          onSetQueryLimit={setQueryLimit}
+          onSetQueryMode={setQueryMode}
+          onSetQueryOrder={setQueryOrder}
+          onSetQueryPath={setQueryPath}
+          onSetQueryTime={setQueryTime}
+          onSetQueryTo={setQueryTo}
+          serializeValue={(value) => serializeValue(value)}
+        />
       )}
     </Box>
     <datalist id="asset-attribute-paths">
