@@ -304,6 +304,15 @@ class Runtime {
     const normalized = normalizeMessage(msg, this.deps);
     const wireKey = buildWireKey(fromId, fromPort);
     const nexts = this.wires.get(wireKey) ?? [];
+    if (nexts.length === 1) {
+      // Single destination: no sibling node can ever observe this object, so
+      // there is no one left to protect with a clone -- hand it off directly.
+      // Mirrors Node-RED's single-wire fast path (Node.prototype.send's
+      // `this._wire` case, which also skips cloning). Most flow topologies
+      // are linear chains, so this is the common case, not the exception.
+      this.enqueueNodeMessage(nexts[0], normalized);
+      return;
+    }
     for (const nextId of nexts) {
       const msgClone = this.deps.cloneMessage(normalized);
       this.enqueueNodeMessage(nextId, msgClone);
