@@ -9,6 +9,12 @@ interface AssetStateServiceDeps {
   historianController?: HistorianDomainController;
 }
 
+/**
+ * Owns the AssetStore lifecycle for a Runtime instance.
+ *
+ * The domain service decides what operation is requested; this class makes sure
+ * the store exists, normalized input is used, and repository mirrors stay fresh.
+ */
 export class AssetStateService {
   private runtime: Runtime | null;
   private readonly normalizationService: AssetNormalizationServiceContract;
@@ -53,7 +59,7 @@ export class AssetStateService {
   }
 
   private requireRepository(): AssetStoreRepositoryContract {
-    if (!this.runtime || !this.repository) throw new Error("AssetStateService is not bound to a runtime");
+    if (!this.runtime || !this.repository) throw new Error("AssetStateService is not bound to a runtime; call bindRuntime() or construct it with a runtime first");
     return this.repository;
   }
 }

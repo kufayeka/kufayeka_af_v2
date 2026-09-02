@@ -20,6 +20,28 @@ Runtime melayani kebutuhan berikut:
 - tiap domain punya controller/service/folder sendiri
 - `globalStore` hanya untuk compatibility mirror atau state ringan, bukan dependency injection utama
 
+## Jalur Baca Yang Disarankan
+
+Kalau baru mempelajari runtime, jangan mulai dari file paling besar. Mulai dari jalur orchestration dulu:
+
+1. [`flow/ProgramBootstrap.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/flow/ProgramBootstrap.ts) adalah entrypoint ketika program dijalankan
+2. [`composition/RuntimeServiceRegistry.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/composition/RuntimeServiceRegistry.ts) merakit controller domain
+3. [`composition/RuntimeBootstrap.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/composition/RuntimeBootstrap.ts) menginisialisasi asset dan event store
+4. [`composition/ProgramRuntimeCompositionFactory.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/composition/ProgramRuntimeCompositionFactory.ts) membuat snapshot dependency yang dipakai flow
+5. [`flow/ProgramNodeRegistration.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/flow/ProgramNodeRegistration.ts) mendaftarkan node handler ke `Runtime`
+6. [`flow/ProgramTriggerStarter.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/flow/ProgramTriggerStarter.ts) menyalakan trigger interval/watcher
+7. [`Runtime.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/Runtime.ts) menjalankan queue, wire, send, context, status, dan shutdown
+
+Setelah alur ini terasa jelas, baru masuk ke domain yang ingin dipelajari, misalnya `asset/` atau `event/`.
+
+## Boundary Penting
+
+- `Runtime.ts` tidak seharusnya tahu detail domain seperti schema asset, SQL event, atau historian target
+- `composition/` adalah tempat dependency antar-domain terlihat eksplisit
+- `flow/` menerjemahkan program JSON menjadi node runtime, link, trigger, dan handler
+- `core/` menyimpan shared types dan utility level engine, bukan use-case domain
+- `db/` adalah integrasi Postgres dan batching persistence, bukan tempat aturan asset/event ditentukan
+
 ## Peta Folder
 
 - [`Runtime.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/Runtime.ts): engine inti

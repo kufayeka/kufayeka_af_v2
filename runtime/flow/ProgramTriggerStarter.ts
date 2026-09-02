@@ -18,7 +18,7 @@ import {
 } from "./ProgramTriggerSupport";
 
 interface AssetStoreSubscription {
-  subscribe: (cb: (state: unknown, meta: unknown) => void) => () => void;
+  subscribe: (cb: (meta: unknown) => void) => () => void;
 }
 
 function requireAssetStore(composition: ProgramRuntimeComposition, triggerId: string): AssetStoreSubscription {
@@ -63,7 +63,7 @@ function startWatcherTrigger(
   const assetStore = requireAssetStore(composition, trigger.id);
   const watchPath = normalizeWatchPath(trigger, "*.*.*");
   const lastSeenByKey = new Map<string, string>();
-  const unsubscribe = assetStore.subscribe((_state, meta) => {
+  const unsubscribe = assetStore.subscribe((meta) => {
     for (const change of getAttributeChanges(meta)) {
       if (!shouldEmitAttributeChange(mode, change, watchPath, lastSeenByKey)) continue;
       runtime.send(
@@ -144,6 +144,23 @@ function startEventOpenTrigger(
   );
 }
 
+function startSingleTrigger(
+  runtime: Runtime,
+  trigger: ProgramTrigger,
+  composition: ProgramRuntimeComposition,
+  deps: Required<TriggerRuntimeDeps>
+): () => void {
+  if (!trigger.id) throw new Error("Trigger must have an id");
+  if (trigger.type === "interval") return startIntervalTrigger(runtime, trigger, deps);
+  if (trigger.type === "watcher_set") return startWatcherTrigger(runtime, trigger, "set", composition, deps);
+  if (trigger.type === "watcher_valuechange") return startWatcherTrigger(runtime, trigger, "valuechange", composition, deps);
+  if (trigger.type === "watcher_event_falling" || trigger.type === "watcher_event_close") {
+    return startEventFallingTrigger(runtime, trigger, composition, deps);
+  }
+  if (trigger.type === "watcher_event_open") return startEventOpenTrigger(runtime, trigger, composition, deps);
+  throw new Error(`Unsupported trigger type "${String(trigger.type)}"`);
+}
+
 export function startTriggers(
   runtime: Runtime,
   triggerNodes: ProgramFlowNode[] = [],
@@ -156,29 +173,8 @@ export function startTriggers(
   const derivedTriggers = resolveTriggers(triggerNodes, composition.triggerTemplates, legacyTriggers);
 
   for (const trigger of derivedTriggers) {
-    if (!trigger.id) throw new Error("Trigger must have an id");
     if (trigger.enabled === false) continue;
-    if (trigger.type === "interval") {
-      stops.push(startIntervalTrigger(runtime, trigger, deps));
-      continue;
-    }
-    if (trigger.type === "watcher_set") {
-      stops.push(startWatcherTrigger(runtime, trigger, "set", composition, deps));
-      continue;
-    }
-    if (trigger.type === "watcher_valuechange") {
-      stops.push(startWatcherTrigger(runtime, trigger, "valuechange", composition, deps));
-      continue;
-    }
-    if (trigger.type === "watcher_event_falling" || trigger.type === "watcher_event_close") {
-      stops.push(startEventFallingTrigger(runtime, trigger, composition, deps));
-      continue;
-    }
-    if (trigger.type === "watcher_event_open") {
-      stops.push(startEventOpenTrigger(runtime, trigger, composition, deps));
-      continue;
-    }
-    throw new Error(`Unsupported trigger type "${String(trigger.type)}"`);
+    stops.push(startSingleTrigger(runtime, trigger, composition, deps));
   }
 
   return stops;

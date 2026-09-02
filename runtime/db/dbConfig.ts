@@ -24,12 +24,10 @@ export interface DbRuntimeConfig {
       batchSize: number;
       flushIntervalMs: number;
       maxQueue: number;
-    };
-    event: {
-      enabled: boolean;
-      batchSize: number;
-      flushIntervalMs: number;
-      maxQueue: number;
+      retry: {
+        baseDelayMs: number;
+        maxDelayMs: number;
+      };
     };
   };
 }
@@ -56,13 +54,11 @@ const DEFAULT_CONFIG: DbRuntimeConfig = {
       enabled: true,
       batchSize: 1000,
       flushIntervalMs: 250,
-      maxQueue: 250000
-    },
-    event: {
-      enabled: true,
-      batchSize: 500,
-      flushIntervalMs: 300,
-      maxQueue: 100000
+      maxQueue: 250000,
+      retry: {
+        baseDelayMs: 500,
+        maxDelayMs: 30000
+      }
     }
   }
 };
@@ -117,7 +113,7 @@ export function loadDbConfig(): DbRuntimeConfig {
   const tables = toObject(fileConfig.tables);
   const queue = toObject(fileConfig.queue);
   const queueHistorian = toObject(queue.historian);
-  const queueEvent = toObject(queue.event);
+  const queueHistorianRetry = toObject(queueHistorian.retry);
 
   const cfg: DbRuntimeConfig = {
     enabled: toBoolean(fileConfig.enabled, DEFAULT_CONFIG.enabled),
@@ -141,13 +137,11 @@ export function loadDbConfig(): DbRuntimeConfig {
         enabled: toBoolean(queueHistorian.enabled, DEFAULT_CONFIG.queue.historian.enabled),
         batchSize: toPositiveInt(queueHistorian.batchSize, DEFAULT_CONFIG.queue.historian.batchSize),
         flushIntervalMs: toPositiveInt(queueHistorian.flushIntervalMs, DEFAULT_CONFIG.queue.historian.flushIntervalMs),
-        maxQueue: toPositiveInt(queueHistorian.maxQueue, DEFAULT_CONFIG.queue.historian.maxQueue)
-      },
-      event: {
-        enabled: toBoolean(queueEvent.enabled, DEFAULT_CONFIG.queue.event.enabled),
-        batchSize: toPositiveInt(queueEvent.batchSize, DEFAULT_CONFIG.queue.event.batchSize),
-        flushIntervalMs: toPositiveInt(queueEvent.flushIntervalMs, DEFAULT_CONFIG.queue.event.flushIntervalMs),
-        maxQueue: toPositiveInt(queueEvent.maxQueue, DEFAULT_CONFIG.queue.event.maxQueue)
+        maxQueue: toPositiveInt(queueHistorian.maxQueue, DEFAULT_CONFIG.queue.historian.maxQueue),
+        retry: {
+          baseDelayMs: toPositiveInt(queueHistorianRetry.baseDelayMs, DEFAULT_CONFIG.queue.historian.retry.baseDelayMs),
+          maxDelayMs: toPositiveInt(queueHistorianRetry.maxDelayMs, DEFAULT_CONFIG.queue.historian.retry.maxDelayMs)
+        }
       }
     }
   };

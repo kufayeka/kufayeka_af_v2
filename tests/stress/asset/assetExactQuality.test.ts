@@ -62,7 +62,7 @@ describe("Asset exact-path quality and stress", () => {
     const store = createAssetStore(fixture.section);
     const numericPaths = selectNumericPaths(fixture.hotAttributePaths);
     const observed: Array<{ revision: number; updatedAt: string; paths: string[] }> = [];
-    const unsubscribe = store.subscribe((_state, meta) => {
+    const unsubscribe = store.subscribe((meta) => {
       observed.push({
         revision: meta.revision,
         updatedAt: meta.updatedAt,

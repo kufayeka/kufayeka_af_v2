@@ -151,7 +151,8 @@ export interface AssetStore {
   getSnapshot(): AssetSnapshot;
   getRevision(): number;
   getUpdatedAt(): string;
-  subscribe(listener: (state: AssetSection, meta: AssetChangeMeta) => void): () => void;
+  getHistorianTargets(): HistorianTarget[];
+  subscribe(listener: (meta: AssetChangeMeta) => void): () => void;
   replace(nextState: unknown): AssetSection;
   query(path: string): QueryMatch[];
   getAttribute(path: string, defaultValue?: unknown): unknown;

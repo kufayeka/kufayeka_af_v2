@@ -121,7 +121,7 @@ describe("Flow quality and stress", () => {
     const runtime = new FakeFlowRuntime();
     const composition = createComposition({
       assetStore: {
-        subscribe: (cb: (state: unknown, meta: unknown) => void) => assetStore.subscribe((payload) => cb({}, payload))
+        subscribe: (cb: (meta: unknown) => void) => assetStore.subscribe(cb)
       } as any,
       eventStore: {
         subscribe: (cb: (meta: any) => void) => eventStore.subscribe(cb)

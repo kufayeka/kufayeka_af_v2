@@ -5,11 +5,38 @@ import { normalizeAssetSection } from "../asset/AssetStoreFactory";
 import type { AssetDefinition, AssetStore } from "../core/runtimeTypes";
 import type Runtime from "../Runtime";
 
+const PERSISTED_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS attribute_values (
+    asset_id TEXT NOT NULL,
+    attribute_name TEXT NOT NULL,
+    value_json TEXT NOT NULL,
+    ts TEXT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (asset_id, attribute_name)
+  );
+`;
+
 interface PersistedAttributeItem {
   assetId: string;
   attributeName: string;
   value: unknown;
   ts?: string;
+}
+
+export interface PersistenceStatement {
+  run(...params: unknown[]): unknown;
+}
+
+export interface PersistenceDb {
+  pragma(source: string): unknown;
+  exec(source: string): unknown;
+  prepare(source: string): PersistenceStatement;
+  transaction(fn: () => void): () => void;
+  close(): unknown;
+}
+
+export interface AttributeValuePersistenceDeps {
+  db?: PersistenceDb;
 }
 
 function getTemplateAttributeNamesByAssetId(state: ReturnType<AssetStore["getState"]>): Map<string, Set<string>> {
@@ -28,33 +55,6 @@ function getTemplateAttributeNamesByAssetId(state: ReturnType<AssetStore["getSta
     out.set(asset.id, names);
   }
   return out;
-}
-
-function toAttributeValue(value: unknown): { value: unknown; ts?: string } {
-  if (value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "value")) {
-    const typed = value as { value: unknown; ts?: unknown };
-    return {
-      value: typed.value,
-      ts: typeof typed.ts === "string" ? typed.ts : undefined
-    };
-  }
-  return { value, ts: undefined };
-}
-
-function collectPersistedItems(state: ReturnType<AssetStore["getState"]>): PersistedAttributeItem[] {
-  const items: PersistedAttributeItem[] = [];
-  for (const asset of state.assets || []) {
-    for (const [attributeName, raw] of Object.entries(asset.attributes || {})) {
-      const typed = toAttributeValue(raw);
-      items.push({
-        assetId: asset.id,
-        attributeName,
-        value: typed.value,
-        ts: typed.ts
-      });
-    }
-  }
-  return items;
 }
 
 export function loadPersistedValuesIntoAssets(
@@ -124,7 +124,8 @@ export function loadPersistedValuesIntoAssets(
 
 export function startAttributeValuePersistence(
   runtime: Runtime,
-  options: { filePath: string; intervalMs?: number }
+  options: { filePath: string; intervalMs?: number },
+  deps: AttributeValuePersistenceDeps = {}
 ): { stop: () => void; flushNow: () => void } {
   const dbPath = path.resolve(options.filePath);
   const intervalMs = Math.max(1000, Number(options.intervalMs || 5000));
@@ -132,58 +133,70 @@ export function startAttributeValuePersistence(
   if (!store) {
     return { stop: () => {}, flushNow: () => {} };
   }
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  const db = new Database(dbPath);
+  let db: PersistenceDb;
+  if (deps.db) {
+    db = deps.db;
+  } else {
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    db = new Database(dbPath);
+  }
   db.pragma("journal_mode = WAL");
   db.pragma("synchronous = NORMAL");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS attribute_values (
-      asset_id TEXT NOT NULL,
-      attribute_name TEXT NOT NULL,
-      value_json TEXT NOT NULL,
-      ts TEXT NULL,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (asset_id, attribute_name)
-    );
-  `);
-  const truncateStmt = db.prepare(`DELETE FROM attribute_values`);
-  const insertStmt = db.prepare(`
+  db.exec(PERSISTED_TABLE_SQL);
+  const upsertStmt = db.prepare(`
     INSERT INTO attribute_values (asset_id, attribute_name, value_json, ts, updated_at)
     VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(asset_id, attribute_name) DO UPDATE SET
+      value_json = excluded.value_json,
+      ts = excluded.ts,
+      updated_at = excluded.updated_at
   `);
 
-  let lastSavedRevision = -1;
+  // AOF-style: accumulate only the attributes that actually changed since the
+  // last flush, streamed in as writes happen, instead of polling the whole
+  // asset store and re-dumping every tag on every cycle.
+  const dirty = new Map<string, PersistedAttributeItem>();
+  const unsubscribe = store.subscribe((meta) => {
+    if (meta?.change?.type !== "attribute.set") return;
+    for (const change of meta.change.changes || []) {
+      if (change.kind !== "attribute" || !change.assetId || !change.attributeName) continue;
+      dirty.set(`${change.assetId}:${change.attributeName}`, {
+        assetId: change.assetId,
+        attributeName: change.attributeName,
+        value: change.value,
+        ts: change.ts
+      });
+    }
+  });
+
   let isWriting = false;
   let hasPending = false;
 
   const flushNow = (): void => {
+    if (dirty.size === 0) return;
     if (isWriting) {
       hasPending = true;
       return;
     }
-    const revision = store.getRevision();
-    if (revision === lastSavedRevision) return;
-
     isWriting = true;
+    const rows = Array.from(dirty.values());
+    dirty.clear();
     try {
-      const state = store.getState();
       const now = new Date().toISOString();
-      const rows = collectPersistedItems(state);
       const writeTx = db.transaction(() => {
-        truncateStmt.run();
         for (const row of rows) {
-          insertStmt.run(
-            row.assetId,
-            row.attributeName,
-            JSON.stringify(row.value ?? null),
-            row.ts || null,
-            now
-          );
+          upsertStmt.run(row.assetId, row.attributeName, JSON.stringify(row.value ?? null), row.ts || null, now);
         }
       });
       writeTx();
-      lastSavedRevision = revision;
     } catch (error) {
+      // Merge the failed rows back in (unless a newer value for the same key
+      // has arrived meanwhile, which should win) so the next tick retries
+      // instead of silently losing them.
+      for (const row of rows) {
+        const key = `${row.assetId}:${row.attributeName}`;
+        if (!dirty.has(key)) dirty.set(key, row);
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[runtime] attribute persistence write error: ${message}`);
     } finally {
@@ -200,7 +213,9 @@ export function startAttributeValuePersistence(
 
   return {
     stop: () => {
+      unsubscribe();
       clearInterval(timer);
+      flushNow();
       db.close();
     },
     flushNow

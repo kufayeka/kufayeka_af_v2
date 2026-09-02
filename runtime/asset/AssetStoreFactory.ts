@@ -1,4 +1,4 @@
-import type { AssetChangeMeta, AssetSection, AssetStore, AttributeQueryMatch } from "../core/runtimeTypes";
+import type { AssetChangeMeta, AssetSection, AssetStore } from "../core/runtimeTypes";
 import { AssetSchemaService } from "./AssetSchemaService";
 import { AssetStoreIndex } from "./AssetStoreIndex";
 
@@ -8,23 +8,24 @@ export function normalizeAssetSection(input: unknown = {}): AssetSection {
 
 export function createAssetStore(initialSection: unknown = {}): AssetStore {
   const templateService = new AssetSchemaService();
-  let state = templateService.normalizeSection(initialSection);
+  const initialState = templateService.normalizeSection(initialSection);
   let revision = 0;
   let updatedAt = new Date().toISOString();
-  const listeners = new Set<(state: AssetSection, meta: AssetChangeMeta) => void>();
-  let index = new AssetStoreIndex(state, templateService);
+  const listeners = new Set<(meta: AssetChangeMeta) => void>();
+  const index = new AssetStoreIndex(initialState, templateService);
 
-  const getState = (): AssetSection => structuredClone(state);
-
+  // Store mutations are applied by AssetStoreIndex, which owns the keyspace.
+  // This wrapper owns revision metadata and subscriber notifications. Unlike
+  // the old design, listeners get the delta (`meta`) only — never a cloned
+  // full-state snapshot, mirroring Redis keyspace notifications rather than
+  // handing every subscriber a `DUMP` on every single write.
   const emitChange = (change: AssetChangeMeta["change"] = { type: "state.replace", changes: [] }): void => {
     revision += 1;
     updatedAt = new Date().toISOString();
-    const shouldCaptureSnapshot = listeners.size > 0;
-    const snapshot = shouldCaptureSnapshot ? getState() : null;
+    const meta: AssetChangeMeta = { revision, updatedAt, change };
     for (const listener of listeners) {
       try {
-        if (!snapshot) continue;
-        listener(snapshot, { revision, updatedAt, change });
+        listener(meta);
       } catch (error) {
         console.error("asset store listener error:", error);
       }
@@ -32,15 +33,20 @@ export function createAssetStore(initialSection: unknown = {}): AssetStore {
   };
 
   return {
-    getState,
+    getState() {
+      return index.getState();
+    },
     getSnapshot() {
-      return { state: getState(), revision, updatedAt };
+      return { state: index.getState(), revision, updatedAt };
     },
     getRevision() {
       return revision;
     },
     getUpdatedAt() {
       return updatedAt;
+    },
+    getHistorianTargets() {
+      return index.getHistorianTargets();
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -49,12 +55,10 @@ export function createAssetStore(initialSection: unknown = {}): AssetStore {
     replace(nextState) {
       const normalizedNext = templateService.normalizeSection(nextState);
       const replaced = index.replaceState(normalizedNext);
-      state = replaced.state;
-      index = new AssetStoreIndex(state, templateService);
       const changed = replaced.changedMatches;
       if (changed.length > 0) emitChange({ type: "attribute.set", pattern: "*", changes: changed });
       else emitChange({ type: "state.replace", changes: [] });
-      return getState();
+      return index.getState();
     },
     query(pathValue: string) {
       return index.query(pathValue);
@@ -71,7 +75,6 @@ export function createAssetStore(initialSection: unknown = {}): AssetStore {
     setAttribute(pathValue, value) {
       const changedMatches = index.setAttribute(pathValue, value);
       if (changedMatches.length > 0) {
-        state = index.getState();
         emitChange({
           type: "attribute.set",
           pattern: pathValue,
@@ -84,7 +87,6 @@ export function createAssetStore(initialSection: unknown = {}): AssetStore {
       const results = index.setAttributes(items);
       const changedMatches = results.flatMap((result) => result.matches);
       if (changedMatches.length > 0) {
-        state = index.getState();
         emitChange({
           type: "attribute.set",
           pattern: results.length === 1 ? results[0].path : "__batch__",

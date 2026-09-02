@@ -8,6 +8,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
     "perf:asset": "npm run build --silent && node dist/tests/perf/asset/assetStore.bench.js",
+    "perf:asset:subscribed": "npm run build --silent && node dist/tests/perf/asset/assetStoreSubscribed.bench.js",
     "perf:asset:exact": "npm run build --silent && node dist/tests/perf/asset/assetExact.bench.js",
     "perf:event": "npm run build --silent && node dist/tests/perf/event/eventStore.bench.js",
     "perf:action": "npm run build --silent && node dist/tests/perf/action/action.bench.js",
@@ -15,7 +16,9 @@
     "test:stress:event": "npm run build --silent && node --test dist/tests/stress/event/eventStore.stress.test.js",
     "test:stress:asset": "npm run build --silent && node --test dist/tests/stress/asset/assetExactQuality.test.js",
     "test:stress:action": "npm run build --silent && node --test dist/tests/stress/action/actionQuality.test.js",
-    "test:stress:flow": "npm run build --silent && node --test dist/tests/stress/flow/flowQuality.test.js"
+    "test:stress:flow": "npm run build --silent && node --test dist/tests/stress/flow/flowQuality.test.js",
+    "test:stress:db": "npm run build --silent && node --test dist/tests/stress/db/historianFlushRetry.test.js",
+    "test:stress:persistence": "npm run build --silent && node --test dist/tests/stress/persistence/attributeValuePersistence.test.js"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

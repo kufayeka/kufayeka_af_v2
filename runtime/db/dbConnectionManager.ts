@@ -7,27 +7,6 @@ export interface HistorianPointRow {
   value: unknown;
 }
 
-export interface EventMirrorRow {
-  id: string;
-  event_path: string;
-  start_ts: string;
-  end_ts: string | null;
-  status: "open" | "closed";
-  severity: string;
-  context: Record<string, unknown>;
-  is_acknowledge: boolean;
-  acknowledged_ts: string | null;
-  notes_on_open: string | null;
-  notes_on_close: string | null;
-  event_metadata: Record<string, unknown> | null;
-  captured_data_on_open: unknown | null;
-  captured_data_on_close: unknown | null;
-}
-
-type EventQueueItem =
-  | { kind: "upsert"; row: EventMirrorRow }
-  | { kind: "delete"; id: string };
-
 interface QueryOptions {
   from?: string;
   to?: string;
@@ -104,6 +83,15 @@ function accumulateAgg(state: BucketAggState, value: unknown): void {
   if (state.max == null || n > state.max) state.max = n;
 }
 
+export function computeBackoffMs(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
+  const safeAttempt = Math.max(1, Math.trunc(attempt));
+  const base = Math.max(1, baseDelayMs);
+  const cap = Math.max(base, maxDelayMs);
+  const exponential = Math.min(cap, base * Math.pow(2, safeAttempt - 1));
+  const jitter = exponential * 0.2 * (Math.random() * 2 - 1);
+  return Math.max(0, Math.round(exponential + jitter));
+}
+
 function aggregateValue(agg: string, state: BucketAggState): unknown {
   const op = String(agg || "avg").toLowerCase();
   if (op === "count") return state.count;
@@ -115,28 +103,41 @@ function aggregateValue(agg: string, state: BucketAggState): unknown {
   return state.numCount > 0 ? state.sum / state.numCount : null;
 }
 
+export interface InjectableQueryResult {
+  rows: unknown[];
+  rowCount: number | null;
+}
+
+export interface InjectablePool {
+  query(sql: string, params?: unknown[]): Promise<InjectableQueryResult>;
+}
+
+export interface DbConnectionManagerDeps {
+  pool?: InjectablePool;
+}
+
 export class DbConnectionManager {
   private readonly cfg: DbRuntimeConfig;
+  private readonly injectedPool: InjectablePool | null;
   private pool: Pool | null = null;
   private historianQueue: HistorianPointRow[] = [];
-  private eventQueue: EventQueueItem[] = [];
   private historianTimer: NodeJS.Timeout | null = null;
-  private eventTimer: NodeJS.Timeout | null = null;
   private historianFlushing = false;
-  private eventFlushing = false;
+  private historianConsecutiveFailures = 0;
+  private historianNextAttemptAt = 0;
   private readonly logs: Array<{ ts: string; level: string; message: string; meta?: Record<string, unknown> }> = [];
   private metrics = {
     historianInsertedRowsTotal: 0,
     historianDroppedRowsTotal: 0,
-    eventUpsertedRowsTotal: 0,
-    eventDeletedRowsTotal: 0,
+    historianFlushRetriesTotal: 0,
     flushErrorsTotal: 0,
     queryCountTotal: 0,
     queryErrorsTotal: 0
   };
 
-  constructor(config: DbRuntimeConfig) {
+  constructor(config: DbRuntimeConfig, deps: DbConnectionManagerDeps = {}) {
     this.cfg = config;
+    this.injectedPool = deps.pool ?? null;
   }
 
   private log(level: "info" | "warn" | "error", message: string, meta?: Record<string, unknown>): void {
@@ -199,6 +200,12 @@ export class DbConnectionManager {
   }
 
   async init(): Promise<void> {
+    if (this.injectedPool) {
+      this.pool = this.injectedPool as unknown as Pool;
+      this.startHistorianTimer();
+      return;
+    }
+
     await this.createDatabaseIfNeeded();
     this.pool = new Pool({
       host: this.cfg.connection.host,
@@ -290,18 +297,15 @@ export class DbConnectionManager {
       client.release();
     }
 
-    if (this.cfg.queue.historian.enabled) {
-      this.historianTimer = setInterval(() => {
-        void this.flushHistorian();
-      }, Math.max(50, this.cfg.queue.historian.flushIntervalMs));
-      this.historianTimer.unref?.();
-    }
-    if (this.cfg.queue.event.enabled) {
-      this.eventTimer = setInterval(() => {
-        void this.flushEvent();
-      }, Math.max(50, this.cfg.queue.event.flushIntervalMs));
-      this.eventTimer.unref?.();
-    }
+    this.startHistorianTimer();
+  }
+
+  private startHistorianTimer(): void {
+    if (!this.cfg.queue.historian.enabled) return;
+    this.historianTimer = setInterval(() => {
+      void this.flushHistorian();
+    }, Math.max(50, this.cfg.queue.historian.flushIntervalMs));
+    this.historianTimer.unref?.();
   }
 
   async testConnection(): Promise<{ ok: boolean; message: string; latencyMs: number }> {
@@ -324,44 +328,23 @@ export class DbConnectionManager {
       return;
     }
     this.historianQueue.push(row);
-    if (this.historianQueue.length > this.cfg.queue.historian.maxQueue) {
-      const overflow = this.historianQueue.length - this.cfg.queue.historian.maxQueue;
-      this.historianQueue.splice(0, overflow);
-      this.metrics.historianDroppedRowsTotal += overflow;
-    }
+    this.enforceHistorianMaxQueue();
     if (this.historianQueue.length >= this.cfg.queue.historian.batchSize) {
       void this.flushHistorian();
     }
   }
 
-  enqueueEventUpsert(row: EventMirrorRow): void {
-    if (!this.cfg.queue.event.enabled || !this.cfg.enabled) return;
-    this.eventQueue.push({ kind: "upsert", row });
-    if (this.eventQueue.length > this.cfg.queue.event.maxQueue) {
-      const overflow = this.eventQueue.length - this.cfg.queue.event.maxQueue;
-      this.eventQueue.splice(0, overflow);
-    }
-    if (this.eventQueue.length >= this.cfg.queue.event.batchSize) {
-      void this.flushEvent();
-    }
-  }
-
-  enqueueEventDelete(id: string): void {
-    if (!this.cfg.queue.event.enabled || !this.cfg.enabled) return;
-    if (!id) return;
-    this.eventQueue.push({ kind: "delete", id });
-    if (this.eventQueue.length > this.cfg.queue.event.maxQueue) {
-      const overflow = this.eventQueue.length - this.cfg.queue.event.maxQueue;
-      this.eventQueue.splice(0, overflow);
-    }
-    if (this.eventQueue.length >= this.cfg.queue.event.batchSize) {
-      void this.flushEvent();
-    }
+  private enforceHistorianMaxQueue(): void {
+    if (this.historianQueue.length <= this.cfg.queue.historian.maxQueue) return;
+    const overflow = this.historianQueue.length - this.cfg.queue.historian.maxQueue;
+    this.historianQueue.splice(0, overflow);
+    this.metrics.historianDroppedRowsTotal += overflow;
   }
 
   private async flushHistorian(): Promise<void> {
     if (this.historianFlushing) return;
     if (!this.pool || this.historianQueue.length === 0) return;
+    if (Date.now() < this.historianNextAttemptAt) return;
     this.historianFlushing = true;
     try {
       const batchSize = Math.max(1, this.cfg.queue.historian.batchSize);
@@ -377,91 +360,34 @@ export class DbConnectionManager {
         }
         if (valuesSql.length === 0) continue;
         const sql = `INSERT INTO ${this.historianTableRef} (ts, attribute_path, value) VALUES ${valuesSql.join(",")}`;
-        await this.pool.query(sql, params);
-        this.metrics.historianInsertedRowsTotal += valuesSql.length;
+        try {
+          await this.pool.query(sql, params);
+          this.metrics.historianInsertedRowsTotal += valuesSql.length;
+          this.historianConsecutiveFailures = 0;
+          this.historianNextAttemptAt = 0;
+        } catch (error: unknown) {
+          this.historianQueue.unshift(...chunk);
+          this.enforceHistorianMaxQueue();
+          this.metrics.flushErrorsTotal += 1;
+          this.metrics.historianFlushRetriesTotal += 1;
+          this.historianConsecutiveFailures += 1;
+          const backoffMs = computeBackoffMs(
+            this.historianConsecutiveFailures,
+            this.cfg.queue.historian.retry.baseDelayMs,
+            this.cfg.queue.historian.retry.maxDelayMs
+          );
+          this.historianNextAttemptAt = Date.now() + backoffMs;
+          this.log("error", "historian flush error, will retry", {
+            error: error instanceof Error ? error.message : String(error),
+            backoffMs,
+            consecutiveFailures: this.historianConsecutiveFailures,
+            pendingRows: this.historianQueue.length
+          });
+          break;
+        }
       }
-    } catch (error: unknown) {
-      this.metrics.flushErrorsTotal += 1;
-      this.log("error", "historian flush error", { error: error instanceof Error ? error.message : String(error) });
     } finally {
       this.historianFlushing = false;
-    }
-  }
-
-  private async flushEvent(): Promise<void> {
-    if (this.eventFlushing) return;
-    if (!this.pool || this.eventQueue.length === 0) return;
-    this.eventFlushing = true;
-    try {
-      const batchSize = Math.max(1, this.cfg.queue.event.batchSize);
-      while (this.eventQueue.length > 0) {
-        const chunk = this.eventQueue.splice(0, batchSize);
-        const upserts = chunk.filter((item): item is { kind: "upsert"; row: EventMirrorRow } => item.kind === "upsert");
-        const deletes = chunk.filter((item): item is { kind: "delete"; id: string } => item.kind === "delete");
-
-        if (upserts.length > 0) {
-          const valuesSql: string[] = [];
-          const params: unknown[] = [];
-          let idx = 1;
-          for (const { row } of upserts) {
-            valuesSql.push(
-              `($${idx},$${idx + 1},$${idx + 2},$${idx + 3},$${idx + 4},$${idx + 5},$${idx + 6}::jsonb,$${idx + 7},$${idx + 8},$${idx + 9},$${idx + 10},$${idx + 11}::jsonb,$${idx + 12}::jsonb,$${idx + 13}::jsonb,NOW())`
-            );
-            params.push(
-              row.id,
-              row.event_path,
-              row.start_ts,
-              row.end_ts,
-              row.status,
-              row.severity,
-              JSON.stringify(row.context ?? {}),
-              row.is_acknowledge,
-              row.acknowledged_ts,
-              row.notes_on_open,
-              row.notes_on_close,
-              JSON.stringify((row as { event_metadata?: unknown }).event_metadata ?? null),
-              JSON.stringify(row.captured_data_on_open ?? null),
-              JSON.stringify(row.captured_data_on_close ?? null)
-            );
-            idx += 14;
-          }
-          const sql = `
-            INSERT INTO ${this.eventTableRef}
-            (id,event_path,start_ts,end_ts,status,severity,context,is_acknowledge,acknowledged_ts,notes_on_open,notes_on_close,event_metadata,captured_data_on_open,captured_data_on_close,updated_at)
-            VALUES ${valuesSql.join(",")}
-            ON CONFLICT (id) DO UPDATE SET
-              event_path = EXCLUDED.event_path,
-              start_ts = EXCLUDED.start_ts,
-              end_ts = EXCLUDED.end_ts,
-              status = EXCLUDED.status,
-              severity = EXCLUDED.severity,
-              context = EXCLUDED.context,
-              is_acknowledge = EXCLUDED.is_acknowledge,
-              acknowledged_ts = EXCLUDED.acknowledged_ts,
-              notes_on_open = EXCLUDED.notes_on_open,
-              notes_on_close = EXCLUDED.notes_on_close,
-              event_metadata = EXCLUDED.event_metadata,
-              captured_data_on_open = EXCLUDED.captured_data_on_open,
-              captured_data_on_close = EXCLUDED.captured_data_on_close,
-              updated_at = NOW()
-          `;
-          await this.pool.query(sql, params);
-          this.metrics.eventUpsertedRowsTotal += upserts.length;
-        }
-
-        if (deletes.length > 0) {
-          const ids = deletes.map((item) => item.id).filter(Boolean);
-          if (ids.length > 0) {
-            await this.pool.query(`DELETE FROM ${this.eventTableRef} WHERE id = ANY($1::text[])`, [ids]);
-            this.metrics.eventDeletedRowsTotal += ids.length;
-          }
-        }
-      }
-    } catch (error: unknown) {
-      this.metrics.flushErrorsTotal += 1;
-      this.log("error", "event flush error", { error: error instanceof Error ? error.message : String(error) });
-    } finally {
-      this.eventFlushing = false;
     }
   }
 
@@ -700,9 +626,10 @@ export class DbConnectionManager {
     return {
       ...this.metrics,
       queue: {
-        historian: this.historianQueue.length,
-        event: this.eventQueue.length
+        historian: this.historianQueue.length
       },
+      historianConsecutiveFailures: this.historianConsecutiveFailures,
+      historianNextAttemptInMs: Math.max(0, this.historianNextAttemptAt - Date.now()),
       database: this.cfg.connection.database,
       schema: this.cfg.connection.schema,
       historianTable: this.cfg.tables.historian,
@@ -723,7 +650,24 @@ export class DbConnectionManager {
 
   async flushNow(): Promise<void> {
     await this.flushHistorian();
-    await this.flushEvent();
+  }
+
+  private async flushHistorianWithRetryOnShutdown(): Promise<void> {
+    const maxAttempts = 5;
+    const delayMs = 400;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      this.historianNextAttemptAt = 0;
+      await this.flushHistorian();
+      if (this.historianQueue.length === 0) return;
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    if (this.historianQueue.length > 0) {
+      this.log("warn", "shutdown: dropping unflushed historian points after retry budget exhausted", {
+        pendingRows: this.historianQueue.length
+      });
+    }
   }
 
   async shutdown(): Promise<void> {
@@ -731,19 +675,22 @@ export class DbConnectionManager {
       clearInterval(this.historianTimer);
       this.historianTimer = null;
     }
-    if (this.eventTimer) {
-      clearInterval(this.eventTimer);
-      this.eventTimer = null;
-    }
-    await this.flushNow();
+    await this.flushHistorianWithRetryOnShutdown();
     if (!this.pool) return;
+    if (this.injectedPool) {
+      this.pool = null;
+      return;
+    }
     await this.pool.end();
     this.pool = null;
   }
 }
 
-export async function createDbConnectionManager(config: DbRuntimeConfig): Promise<DbConnectionManager> {
-  const manager = new DbConnectionManager(config);
+export async function createDbConnectionManager(
+  config: DbRuntimeConfig,
+  deps: DbConnectionManagerDeps = {}
+): Promise<DbConnectionManager> {
+  const manager = new DbConnectionManager(config, deps);
   await manager.init();
   return manager;
 }

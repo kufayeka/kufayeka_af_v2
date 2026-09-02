@@ -1,14 +1,19 @@
 import type Runtime from "../Runtime";
 import type { AssetHierarchyNode, AssetSection, AssetStore, AttributeQueryMatch, FindAttributesResult, QueryMatch } from "../core/runtimeTypes";
 import type { HistorianDomainController } from "../historian/HistorianDomainController";
-import type { AssetDomainServiceContract } from "./AssetContracts";
 import { AssetStateService } from "./AssetStateService";
 
 interface AssetDomainServiceDeps {
   historianController?: HistorianDomainController;
 }
 
-export class AssetDomainService implements AssetDomainServiceContract {
+/**
+ * Use-case layer for asset operations.
+ *
+ * Lifecycle calls are handled by AssetStateService. Read/write calls require
+ * the active AssetStore and fail fast when the domain has not been initialized.
+ */
+export class AssetDomainService {
   private readonly stateService: AssetStateService;
 
   constructor(runtime: Runtime, deps: AssetDomainServiceDeps = {}) {
@@ -65,7 +70,7 @@ export class AssetDomainService implements AssetDomainServiceContract {
 
   private requireStore(): AssetStore {
     const store = this.getStore();
-    if (!store) throw new Error("Asset store is not initialized");
+    if (!store) throw new Error("Asset domain cannot read or write before initialize() creates the active store");
     return store;
   }
 }

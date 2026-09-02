@@ -20,13 +20,11 @@
       "enabled": true,
       "batchSize": 1000,
       "flushIntervalMs": 250,
-      "maxQueue": 250000
-    },
-    "event": {
-      "enabled": true,
-      "batchSize": 500,
-      "flushIntervalMs": 300,
-      "maxQueue": 100000
+      "maxQueue": 250000,
+      "retry": {
+        "baseDelayMs": 500,
+        "maxDelayMs": 30000
+      }
     }
   }
 }

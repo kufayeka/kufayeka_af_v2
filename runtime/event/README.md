@@ -85,3 +85,31 @@ Gunakan pembagian ini:
 - operasi domain store baru: `EventStoreService`
 - adaptasi backend SQL baru: repository layer
 - behavior template baru: `template/`
+
+
+
+```mermaid
+flowchart TD
+    Start([Perintah Open Event]) --> Template[1. Ambil Template & Gabungkan Overrides]
+    Template --> Interpolate[2. Selesaikan String Interpolation: eventPath, assetPaths]
+    Interpolate --> ResolveTime[3. Selesaikan start_ts: dari sensor atau waktu sistem]
+    ResolveTime --> ParentCheck{4. Butuh Parent Event?}
+    
+    ParentCheck -- Ya --> QueryParent[Cari Parent Aktif di DB]
+    QueryParent --> ParentActive{Ketemu?}
+    ParentActive -- Tidak --> ThrowError1[Lempar Error: Parent wajib aktif]
+    ParentActive -- Ya --> BindParent[Hubungkan parent_event_id] --> CloseOpen
+    
+    ParentCheck -- Tidak --> CloseOpen[5. Cari & Tutup Event yang Saling Pengecualian: closeOnOpenPatterns]
+    CloseOpen --> ConcurrencyCheck{6. Mode Concurrency?}
+    
+    ConcurrencyCheck -- parallel --> Snapshot[7. Ambil Snapshot Atribut Sensor Mesin]
+    ConcurrencyCheck -- unique --> QueryExisting[Cari Event Aktif Serupa]
+    QueryExisting --> ExistingActive{Ketemu?}
+    ExistingActive -- Ya --> ReturnExisting[Kembalikan Event Aktif yang Sudah Ada]
+    ExistingActive -- Tidak --> Snapshot
+    
+    Snapshot --> SaveDB[(8. Simpan Record Baru status=open ke DB)]
+    SaveDB --> Dispatch[9. Kirim Event Notification ke Engine Loop]
+    Dispatch --> End([Selesai])
+```

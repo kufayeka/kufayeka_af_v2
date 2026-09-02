@@ -41,6 +41,28 @@ Folder `flow` adalah orchestration layer yang mengubah program definition menjad
 - [`ProgramTriggerSupport.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/flow/ProgramTriggerSupport.ts)
 - [`ProgramTriggerStarter.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/flow/ProgramTriggerStarter.ts)
 
+## Jalur Aktif Saat Ini
+
+Jalur utama ketika program mulai dijalankan:
+
+1. [`ProgramBootstrap.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/flow/ProgramBootstrap.ts) menerima `Runtime` dan `ProgramDefinition`
+2. `RuntimeServiceRegistry` dan `RuntimeBootstrap` menyiapkan domain service, asset store, dan event store
+3. `ProgramBootstrap` mengambil flow yang enabled, lalu meratakan node dan link per flow
+4. [`ProgramNodeRegistration.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/flow/ProgramNodeRegistration.ts) mengubah node declarative menjadi handler runtime
+5. [`ProgramNodeRegistration.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/flow/ProgramNodeRegistration.ts) juga mendaftarkan link menjadi wire runtime
+6. [`ProgramTriggerStarter.ts`](/d:/DEV/kufayeka/node_red_style_event_loop/runtime/flow/ProgramTriggerStarter.ts) menyalakan trigger interval, asset watcher, dan event watcher
+7. `startProgram()` mengembalikan stop function untuk mematikan trigger aktif
+
+Kalau sedang tracing "program ini jalan dari mana?", mulai dari `startProgram()` dulu. Kalau sedang tracing "node ini jadi handler apa?", masuk ke `ProgramNodeRegistration`.
+
+## Pembagian Tanggung Jawab
+
+- `ProgramBootstrap` adalah orchestration entrypoint
+- `ProgramNodeRegistration` hanya mendaftarkan handler dan wire
+- `ProgramTriggerStarter` hanya menyalakan trigger dan subscription
+- `ProgramTriggerSupport` berisi helper pure untuk match path, resolve trigger config, dan bentuk message trigger
+- `ProgramFlowSupport` berisi helper untuk membangun flow dan resolve flow variable
+
 ## Rules Internal
 
 - `flow` tidak boleh menjadi service locator

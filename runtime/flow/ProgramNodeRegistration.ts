@@ -11,6 +11,10 @@ import type {
   ProgramLink,
 } from "./ProgramFlowContracts";
 
+function isEventActionNode(node: ProgramFlowNode): boolean {
+  return node.kind === "event_open" || node.kind === "event_close";
+}
+
 function createActionHandler(
   action: ProgramAction,
   composition: ProgramRuntimeComposition
@@ -55,6 +59,8 @@ function registerDisabledNode(runtime: Runtime, node: ProgramFlowNode): void {
 }
 
 function registerTriggerNode(runtime: Runtime, node: ProgramFlowNode): void {
+  // Trigger nodes are pass-through nodes. The trigger starter injects messages
+  // into this node id, and normal runtime wires fan the message out.
   runtime.addNode(node.id, async (msg, send) => {
     send(msg);
   });
@@ -129,6 +135,8 @@ function registerSingleFlowNode(
   node: ProgramFlowNode,
   composition: ProgramRuntimeComposition
 ): void {
+  // Disabled or unknown nodes are still registered as no-op handlers so links
+  // pointing at them fail quietly instead of breaking startup.
   if (node.enabled === false) {
     registerDisabledNode(runtime, node);
     return;
@@ -144,7 +152,7 @@ function registerSingleFlowNode(
     return;
   }
 
-  if (node.kind === "event_open" || node.kind === "event_close") {
+  if (isEventActionNode(node)) {
     registerEventActionNode(runtime, node, composition);
     return;
   }
@@ -161,6 +169,8 @@ export function registerFlowNodes(
   const nodeConfigById = buildNodeConfigById(typedNodes);
   validateUniqueNodeIds(typedNodes);
 
+  // Registration turns declarative flow nodes into executable Runtime handlers.
+  // The handler implementation still belongs to the owning domain.
   for (const node of typedNodes) {
     registerSingleFlowNode(runtime, node, composition);
   }
