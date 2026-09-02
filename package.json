@@ -14,6 +14,7 @@
     "perf:event:capture": "npm run build --silent && node dist/tests/perf/event/eventCaptureTiming.bench.js",
     "perf:action": "npm run build --silent && node dist/tests/perf/action/action.bench.js",
     "perf:flow": "npm run build --silent && node dist/tests/perf/flow/flow.bench.js",
+    "perf:flow:contention": "npm run build --silent && node dist/tests/perf/flow/queueContention.bench.js",
     "test:stress:event": "npm run build --silent && node --test dist/tests/stress/event/eventStore.stress.test.js",
     "test:stress:asset": "npm run build --silent && node --test dist/tests/stress/asset/assetExactQuality.test.js",
     "test:stress:action": "npm run build --silent && node --test dist/tests/stress/action/actionQuality.test.js",
