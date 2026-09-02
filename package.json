@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "build:native": "napi build --manifest-path native/asset-store/Cargo.toml --output-dir native/asset-store --platform --release",
     "perf:native:ffi": "npm run build:native --silent && npm run build --silent && node dist/tests/perf/native/ffiOverhead.bench.js",
+    "perf:asset:rustvsts": "npm run build:native --silent && npm run build --silent && node dist/tests/perf/asset/assetStoreRustVsTs.bench.js",
     "perf:asset": "npm run build --silent && node dist/tests/perf/asset/assetStore.bench.js",
     "perf:asset:subscribed": "npm run build --silent && node dist/tests/perf/asset/assetStoreSubscribed.bench.js",
     "perf:asset:exact": "npm run build --silent && node dist/tests/perf/asset/assetExact.bench.js",
@@ -23,7 +24,8 @@
     "test:stress:flow": "npm run build --silent && node --test dist/tests/stress/flow/flowQuality.test.js",
     "test:stress:db": "npm run build --silent && node --test dist/tests/stress/db/historianFlushRetry.test.js",
     "test:stress:persistence": "npm run build --silent && node --test dist/tests/stress/persistence/attributeValuePersistence.test.js",
-    "test:stress:eventcapture": "npm run build --silent && node --test dist/tests/stress/event/eventCaptureTiming.test.js"
+    "test:stress:eventcapture": "npm run build --silent && node --test dist/tests/stress/event/eventCaptureTiming.test.js",
+    "test:stress:assetrust": "npm run build:native --silent && npm run build --silent && node --test dist/tests/stress/asset/assetRustParity.test.js"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3.8.6",
