@@ -11,6 +11,12 @@ editor/.next/
 editor/out/
 editor/dist/
 
+# Rust native module build artifacts (regenerate with `npm run build:native`)
+native/**/target/
+native/**/*.node
+native/**/index.js
+native/**/index.d.ts
+
 # Logs
 *.log
 npm-debug.log*

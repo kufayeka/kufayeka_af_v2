@@ -7,6 +7,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
+    "build:native": "napi build --manifest-path native/asset-store/Cargo.toml --output-dir native/asset-store --platform --release",
+    "perf:native:ffi": "npm run build:native --silent && npm run build --silent && node dist/tests/perf/native/ffiOverhead.bench.js",
     "perf:asset": "npm run build --silent && node dist/tests/perf/asset/assetStore.bench.js",
     "perf:asset:subscribed": "npm run build --silent && node dist/tests/perf/asset/assetStoreSubscribed.bench.js",
     "perf:asset:exact": "npm run build --silent && node dist/tests/perf/asset/assetExact.bench.js",
@@ -24,6 +26,7 @@
     "test:stress:eventcapture": "npm run build --silent && node --test dist/tests/stress/event/eventCaptureTiming.test.js"
   },
   "devDependencies": {
+    "@napi-rs/cli": "^3.8.6",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.3",
     "@types/node": "^22.15.3",
@@ -35,13 +38,13 @@
     "@nestjs/core": "^11.1.6",
     "@nestjs/platform-express": "^11.1.6",
     "@nestjs/swagger": "^11.2.0",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2",
     "axios": "^1.13.6",
     "better-sqlite3": "^12.6.2",
     "cors": "^2.8.6",
     "cron": "^4.4.0",
     "express": "^5.2.1",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
   }
 }
