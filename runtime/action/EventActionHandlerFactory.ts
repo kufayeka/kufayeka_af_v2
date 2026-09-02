@@ -6,6 +6,8 @@ import {
   type EventActionFactoryOptions,
   type EventRequestPayload
 } from "./EventActionSupport";
+import { mergeTemplate } from "../event/template/EventTemplateNormalizer";
+import { buildResolvedContext, buildTemplateMetadata, resolveTime, type AssetReader } from "../event/template/EventTemplateResolver";
 
 type EventNodeMode = "open" | "close";
 
@@ -55,12 +57,29 @@ export function createEventActionHandler(
           ? action.templateOverrides
           : undefined;
 
+    // Resolve captureFields/timeSource NOW, right after our own bindings are
+    // known, instead of letting openTemplate()/closeTemplate() re-read the
+    // live asset store whenever it eventually gets called. Reuses the exact
+    // same pure functions those lifecycle calls would otherwise use
+    // internally -- just invoked as early as possible, before any further
+    // queueing/async work can let the underlying values drift.
+    const assetReader: AssetReader = {
+      getAttribute: (path, defaultValue) => context.asset.get(path, defaultValue),
+      query: (path) => context.asset.query(path)
+    };
+    const mergedTemplate = mergeTemplate(template, overrides);
+    const metadata = buildTemplateMetadata(mergedTemplate, vars);
+    const ts = resolveTime(assetReader, mergedTemplate.timeSource?.[mode], vars, metadata.assetPaths || {}, undefined);
+    const preresolvedCapture = buildResolvedContext(assetReader, mergedTemplate, vars, {}, metadata.assetPaths || {});
+
     try {
       if (mode === "open") {
         const row = await context.eventSys.openTemplate(templateId, {
           vars,
           notes,
-          templateOverrides: overrides
+          templateOverrides: overrides,
+          ts,
+          preresolvedCapture
         });
         const next = {
           ...msg,
@@ -81,7 +100,9 @@ export function createEventActionHandler(
       const result = await context.eventSys.closeTemplate(templateId, {
         vars,
         notes,
-        templateOverrides: overrides
+        templateOverrides: overrides,
+        ts,
+        preresolvedCapture
       });
       const success = Number(result?.closedCount || 0) > 0;
       const next = {

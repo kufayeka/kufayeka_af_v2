@@ -90,7 +90,9 @@ export async function openEventFromTemplate(options: {
     });
   }
   const explicitContext = toRecord(options.openOptions?.context);
-  const { capturedValues, context } = buildResolvedContext(options.assetStore, template, vars, explicitContext, metadata.assetPaths || {});
+  const { capturedValues, context } =
+    options.openOptions?.preresolvedCapture ??
+    buildResolvedContext(options.assetStore, template, vars, explicitContext, metadata.assetPaths || {});
   const concurrencyMode = template.concurrencyMode || (template.allowParallel === false ? "unique_exact_path" : "parallel");
   if (concurrencyMode !== "parallel") {
     const uniquePattern = concurrencyMode === "unique_pattern"
@@ -118,8 +120,10 @@ function buildCloseRowsCapture(
   assetStore: AssetStore,
   row: EventRow,
   templateMap: Map<string, EventTemplateDefinition>,
-  explicit: unknown
+  explicit: unknown,
+  preresolvedCapturedValues?: Record<string, unknown>
 ): unknown {
+  if (preresolvedCapturedValues) return mergeCaptured(preresolvedCapturedValues, explicit);
   const metadata = getEventTemplateMetadataFromRow(row);
   const templateId = String(metadata.id || "").trim();
   const template = templateMap.get(templateId);
@@ -138,6 +142,7 @@ export async function closeEventsWithAutoCapture(options: {
   notes?: string;
   ts?: string;
   explicitCaptured?: unknown;
+  preresolvedCapturedValues?: Record<string, unknown>;
 }): Promise<{ pattern: string; closedCount: number; ts: string; notes_on_close: string | null; rows: EventRow[] }> {
   const closedRows: EventRow[] = [];
   let effectiveTs = options.ts;
@@ -159,7 +164,7 @@ export async function closeEventsWithAutoCapture(options: {
       row.id,
       resolvedTs,
       options.notes || "",
-      buildCloseRowsCapture(options.assetStore, row, options.templateMap, options.explicitCaptured)
+      buildCloseRowsCapture(options.assetStore, row, options.templateMap, options.explicitCaptured, options.preresolvedCapturedValues)
     );
     if (result.closedCount > 0) {
       const closedRow = await options.eventStore.getById(row.id);
@@ -224,7 +229,8 @@ export async function closeEventFromTemplate(options: {
       rows: [row],
       notes: options.closeOptions?.notes,
       ts,
-      explicitCaptured: options.closeOptions?.capturedDataOnClose
+      explicitCaptured: options.closeOptions?.capturedDataOnClose,
+      preresolvedCapturedValues: options.closeOptions?.preresolvedCapture?.capturedValues
     });
   }
   const pattern = String(options.closeOptions?.pattern || metadata.closePattern || metadata.eventPath || "*");
@@ -236,6 +242,7 @@ export async function closeEventFromTemplate(options: {
     rows,
     notes: options.closeOptions?.notes,
     ts,
-    explicitCaptured: options.closeOptions?.capturedDataOnClose
+    explicitCaptured: options.closeOptions?.capturedDataOnClose,
+    preresolvedCapturedValues: options.closeOptions?.preresolvedCapture?.capturedValues
   });
 }

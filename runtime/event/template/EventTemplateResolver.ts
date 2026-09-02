@@ -9,8 +9,16 @@ import type {
 } from "../../core/runtimeTypes";
 import { firstNonEmptyString, hasRenderableValue, renderTemplate, toRecord } from "./EventTemplateNormalizer";
 
+// Every function below only ever calls `.getAttribute()` / `.query()` on the
+// store it's given. Narrowing to this shape (instead of the full AssetStore)
+// lets callers pass a lightweight adapter over `RuntimeAssetApi` (what node
+// handlers actually have access to) without needing the real AssetStore
+// instance — used to resolve captureFields eagerly, before the live store
+// state can drift. The real AssetStore trivially satisfies this type.
+export type AssetReader = Pick<AssetStore, "getAttribute" | "query">;
+
 function resolveBindingValue(
-  assetStore: AssetStore,
+  assetStore: AssetReader,
   binding: EventTemplateBinding,
   vars: Record<string, unknown>
 ): unknown {
@@ -26,7 +34,7 @@ function resolveBindingValue(
 }
 
 function resolveContext(
-  assetStore: AssetStore,
+  assetStore: AssetReader,
   template: EventTemplateDefinition,
   vars: Record<string, unknown>,
   extra: Record<string, unknown>
@@ -68,7 +76,7 @@ export function resolveAssetPathReference(
 }
 
 export function resolveTime(
-  assetStore: AssetStore,
+  assetStore: AssetReader,
   timeSource: EventTemplateTimeSource | undefined,
   vars: Record<string, unknown>,
   assetPaths: Record<string, string>,
@@ -88,7 +96,7 @@ export function resolveTime(
   return value == null ? undefined : String(value);
 }
 
-export function captureAssetSnapshot(assetStore: AssetStore, assetPath: string): Record<string, unknown> {
+export function captureAssetSnapshot(assetStore: AssetReader, assetPath: string): Record<string, unknown> {
   const normalizedAssetPath = String(assetPath || "").trim();
   if (!normalizedAssetPath) return {};
   const matches = assetStore.query(`${normalizedAssetPath}.*`);
@@ -110,7 +118,7 @@ export function captureAssetSnapshot(assetStore: AssetStore, assetPath: string):
 }
 
 function resolveTemplateFieldValue(
-  assetStore: AssetStore,
+  assetStore: AssetReader,
   field: EventTemplateField,
   vars: Record<string, unknown>,
   assetPaths: Record<string, string>,
@@ -126,7 +134,7 @@ function resolveTemplateFieldValue(
 }
 
 export function resolveCapturedFields(
-  assetStore: AssetStore,
+  assetStore: AssetReader,
   template: EventTemplateDefinition,
   vars: Record<string, unknown>,
   assetPaths: Record<string, string>
@@ -139,7 +147,7 @@ export function resolveCapturedFields(
 }
 
 export function resolveContextFields(
-  assetStore: AssetStore,
+  assetStore: AssetReader,
   template: EventTemplateDefinition,
   vars: Record<string, unknown>,
   assetPaths: Record<string, string>,
@@ -226,7 +234,7 @@ export function parseTimestampMs(value: string | undefined | null): number | nul
 }
 
 export function buildResolvedContext(
-  assetStore: AssetStore,
+  assetStore: AssetReader,
   template: EventTemplateDefinition,
   vars: Record<string, unknown>,
   explicitContext: Record<string, unknown>,

@@ -342,6 +342,11 @@ export interface EventTemplateMetadata {
   };
 }
 
+export interface PreresolvedEventCapture {
+  capturedValues: Record<string, unknown>;
+  context: Record<string, unknown>;
+}
+
 export interface EventTemplateOpenOptions {
   vars?: Record<string, unknown>;
   context?: Record<string, unknown>;
@@ -350,6 +355,7 @@ export interface EventTemplateOpenOptions {
   ts?: string;
   capturedDataOnOpen?: unknown | null;
   templateOverrides?: Partial<EventTemplateDefinition>;
+  preresolvedCapture?: PreresolvedEventCapture;
 }
 
 export interface EventTemplateCloseOptions {
@@ -362,6 +368,7 @@ export interface EventTemplateCloseOptions {
   ts?: string;
   capturedDataOnClose?: unknown | null;
   templateOverrides?: Partial<EventTemplateDefinition>;
+  preresolvedCapture?: PreresolvedEventCapture;
 }
 
 export interface RuntimeEventApi {
