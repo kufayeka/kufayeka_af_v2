@@ -326,16 +326,16 @@ export class AssetStoreIndex {
         attributes: nextAttributes
       };
 
-      this.refreshAssetIndexes(updatedAsset);
+      this.refreshAssetIndexes(updatedAsset, attributeWrites.keys());
     }
   }
 
-  private refreshAssetIndexes(updatedAsset: AssetDefinition): void {
+  private refreshAssetIndexes(updatedAsset: AssetDefinition, writtenNames: Iterable<string>): void {
     this.assetById.set(updatedAsset.id, updatedAsset);
 
     const assetPath = this.assetPathById.get(updatedAsset.id) || "";
     this.assetByPath.set(assetPath, updatedAsset);
-    this.rebuildAttributeIndexForAsset(updatedAsset, assetPath);
+    this.updateAttributeIndexForWrittenNames(updatedAsset, assetPath, writtenNames);
   }
 
   private collectChangedAttributes(writeRequests: AttributeWriteRequest[]): Map<string, AttributeQueryMatch> {
@@ -475,6 +475,37 @@ export class AssetStoreIndex {
       nextMap.set(attributeName, match);
       this.attributeByPath.set(match.path, match);
     }
+    this.attributeMapByAssetId.set(asset.id, nextMap);
+  }
+
+  // Write-path counterpart to rebuildAttributeIndexForAsset(): mutates the
+  // asset's existing attribute map in place, touching only the specific
+  // names that were actually written, instead of re-deriving every
+  // attribute the asset has. Mutating in place (not `new Map(existingMap)`)
+  // avoids an O(total attributes) copy on every write too -- safe because
+  // this runs synchronously with no yield point, and nothing else holds a
+  // reference to this map expecting it to stay frozen across a write. Safe
+  // to skip handling a template-membership change here because
+  // setAttribute()/setAttributes() never touch asset.templateIds (only
+  // replace() does, which always goes through the full rebuildAllIndexes()
+  // path instead), so every OTHER cached entry is still valid untouched.
+  private updateAttributeIndexForWrittenNames(asset: AssetDefinition, assetPath: string, writtenNames: Iterable<string>): void {
+    const nextMap = this.attributeMapByAssetId.get(asset.id) ?? new Map<string, AttributeQueryMatch>();
+
+    for (const attributeName of writtenNames) {
+      const previousMatch = nextMap.get(attributeName);
+      if (previousMatch) this.attributeByPath.delete(previousMatch.path);
+
+      const effective = this.templateService.buildEffectiveAttributeForName(asset, this.templateById, attributeName);
+      if (!effective) {
+        nextMap.delete(attributeName);
+        continue;
+      }
+      const match = this.toAttributeMatch(asset.id, assetPath, attributeName, effective);
+      nextMap.set(attributeName, match);
+      this.attributeByPath.set(match.path, match);
+    }
+
     this.attributeMapByAssetId.set(asset.id, nextMap);
   }
 
